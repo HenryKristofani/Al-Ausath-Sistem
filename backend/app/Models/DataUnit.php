@@ -1,0 +1,21 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class DataUnit extends Model
+{
+    protected $table = 'data_unit';
+    protected $primaryKey = 'id_unit';
+
+    protected $fillable = [
+        'kode_unit', 'nama_unit', 'jenis_unit', 'status',
+        'kepala_unit', 'alamat', 'nomor_telepon',
+    ];
+
+    public function kelas()
+    {
+        return $this->hasMany(DataKelas::class, 'kode_unit', 'kode_unit');
+    }
+}
