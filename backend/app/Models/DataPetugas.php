@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-class DataPetugas extends Model
+class DataPetugas extends Authenticatable
 {
+    use HasApiTokens, Notifiable; 
+
     protected $table = 'data_petugas';
     protected $primaryKey = 'id_petugas';
 
@@ -21,4 +25,9 @@ class DataPetugas extends Model
     protected $casts = [
         'last_login' => 'datetime',
     ];
+
+    public function getAuthPassword()
+    {
+        return $this->password_hash;
+    }
 }

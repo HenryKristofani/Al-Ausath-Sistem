@@ -40,6 +40,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        'petugas' => [
+        'driver' => 'session',
+        'provider' => 'data_petugas',
+        ],
+        'santri' => [
+            'driver' => 'session',
+            'provider' => 'data_santri', 
+        ],
     ],
 
     /*
@@ -63,6 +71,14 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
+        ],
+        'data_petugas' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\DataPetugas::class, // Model Petugas
+        ],
+        'data_santri' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\DataAkunSantri::class, // Model Santri
         ],
 
         // 'users' => [
