@@ -64,4 +64,83 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'Logout Berhasil!']);
     }
+
+    /**
+     * auth.register
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function register(Request $request)
+    {
+        // 1. Validasi inputan dari Frontend
+        $request->validate([
+            'role' => 'required|in:petugas,santri',
+            'nama_lengkap' => 'required|string|max:255',
+            'password' => 'required|string|min:6|confirmed',
+            'password_confirmation' => 'required|string|min:6',
+            
+            // Validasi spesifik untuk petugas
+            'alamat_email' => 'required_if:role,petugas|email|unique:data_petugas,alamat_email',
+            'nomor_induk' => 'required_if:role,petugas|string|unique:data_petugas,nomor_induk',
+            'peran_akun' => 'required_if:role,petugas|string',
+            'pilihan_unit' => 'nullable|string',
+            'nomor_telepon' => 'nullable|string',
+            
+            // Validasi spesifik untuk santri
+            'nama_akun' => 'required_if:role,santri|string|unique:data_akun_santri,nama_akun',
+            'nama_unit' => 'nullable|string',
+            'nama_kelas' => 'nullable|string',
+            'tahun_ajaran' => 'nullable|string',
+        ]);
+
+        // 2. Hash password
+        $hashedPassword = Hash::make($request->password);
+
+        // 3. Buat akun sesuai role
+        if ($request->role === 'petugas') {
+            $user = DataPetugas::create([
+                'nomor_induk' => $request->nomor_induk,
+                'nama_lengkap' => $request->nama_lengkap,
+                'peran_akun' => $request->peran_akun,
+                'pilihan_unit' => $request->pilihan_unit,
+                'alamat_email' => $request->alamat_email,
+                'nomor_telepon' => $request->nomor_telepon,
+                'password_hash' => $hashedPassword,
+                'status' => 'aktif',
+            ]);
+            
+            $guard = 'petugas';
+        } else {
+            // Untuk santri
+            $user = DataAkunSantri::create([
+                'nomor_induk' => $request->nomor_induk ?? null,
+                'nama_akun' => $request->nama_akun,
+                'nama_lengkap' => $request->nama_lengkap,
+                'nama_unit' => $request->nama_unit,
+                'nama_kelas' => $request->nama_kelas,
+                'tahun_ajaran' => $request->tahun_ajaran,
+                'alamat_email' => $request->alamat_email ?? null,
+                'nomor_telepon' => $request->nomor_telepon,
+                'password_hash' => $hashedPassword,
+                'status' => 'aktif',
+            ]);
+            
+            $guard = 'santri';
+        }
+
+        // 4. Auto-login setelah registrasi
+        Auth::guard($guard)->login($user);
+
+        // 5. Response sukses
+        return response()->json([
+            'message' => 'Registrasi berhasil!',
+            'role' => $guard,
+            'user' => [
+                'id' => $user->getKey(),
+                'nama_lengkap' => $user->nama_lengkap,
+                'role' => $guard,
+            ]
+        ], 201);
+    }
 }

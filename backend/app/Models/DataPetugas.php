@@ -15,7 +15,7 @@ class DataPetugas extends Authenticatable
 
     protected $fillable = [
         'nomor_induk', 'nama_lengkap', 'peran_akun', 'pilihan_unit',
-        'alamat_email', 'nomor_telepon', 'status',
+        'alamat_email', 'nomor_telepon', 'status', 'password_hash',
     ];
 
     protected $hidden = [

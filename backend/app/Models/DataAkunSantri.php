@@ -16,7 +16,7 @@ class DataAkunSantri extends Authenticatable
     protected $fillable = [
         'nomor_induk', 'nama_akun', 'nama_lengkap', 'nama_unit',
         'nama_kelas', 'tahun_ajaran', 'alamat_email',
-        'nomor_telepon', 'status',
+        'nomor_telepon', 'status', 'password_hash',
     ];
 
     protected $hidden = ['password_hash'];
