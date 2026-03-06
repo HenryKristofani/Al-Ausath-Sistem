@@ -1,0 +1,6 @@
+# Prevent Copilot from reading sensitive files
+.env
+.env.*
+*.key
+auth.json
+/storage/*.key
