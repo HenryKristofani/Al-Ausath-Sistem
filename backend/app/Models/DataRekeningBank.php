@@ -9,8 +9,19 @@ class DataRekeningBank extends Model
     protected $table = 'data_rekening_bank';
     protected $primaryKey = 'id_rekening';
 
-    protected $fillable = [
-        'nama_bank', 'nomor_rekening', 'nama_pemilik',
-        'kode_unit', 'status',
+        protected $fillable = [
+        'kode_unit',
+        'kode_rekening',
+        'nama_rekening',
+        'nama_pemilik',
+        'nomor_rekening',
+        'nama_bank',
+        'cabang_bank',
+        'logo_bank',
+        'peruntukan',
+        'status',
+        'is_connect',
     ];
 }
+
+

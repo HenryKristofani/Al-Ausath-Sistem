@@ -13,15 +13,23 @@ class DataAkunSantri extends Authenticatable
     protected $table = 'data_akun_santri';
     protected $primaryKey = 'id_akun_santri';
 
-    protected $fillable = [
-        'nomor_induk', 'nama_akun', 'nama_lengkap', 'nama_unit',
-        'nama_kelas', 'tahun_ajaran', 'alamat_email',
-        'nomor_telepon', 'status', 'password_hash',
+        protected $fillable = [
+        'nomor_induk',
+        'nama_akun',
+        'nama_lengkap',
+        'nama_unit',
+        'nama_kelas',
+        'tahun_ajaran',
+        'alamat_email',
+        'nomor_telepon',
+        'password_hash',
+        'status',
+        'last_login',
     ];
 
     protected $hidden = ['password_hash'];
 
-    protected $casts = [
+        protected $casts = [
         'last_login' => 'datetime',
     ];
 
@@ -35,3 +43,4 @@ class DataAkunSantri extends Authenticatable
         return $this->password_hash;
     }
 }
+

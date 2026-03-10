@@ -9,12 +9,18 @@ class DataNilaiSiswa extends Model
     protected $table = 'data_nilai_siswa';
     protected $primaryKey = 'id_nilai';
 
-    protected $fillable = [
-        'id_santri', 'id_kelas_mapel', 'jenis_penilaian',
-        'nilai', 'semester', 'tahun_ajaran', 'keterangan',
-    ];
-
-    protected $casts = [
-        'nilai' => 'decimal:2',
+        protected $fillable = [
+        'nomor_induk',
+        'kode_mapel',
+        'kode_kelas',
+        'tahun_ajaran',
+        'semester',
+        'nilai_harian',
+        'nilai_uts',
+        'nilai_uas',
+        'keterangan',
+        'id_petugas_input',
     ];
 }
+
+

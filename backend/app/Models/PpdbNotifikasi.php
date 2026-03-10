@@ -7,14 +7,17 @@ use Illuminate\Database\Eloquent\Model;
 class PpdbNotifikasi extends Model
 {
     protected $table = 'ppdb_notifikasi';
-    protected $primaryKey = 'id_notifikasi';
+    protected $primaryKey = 'id_notif';
 
-    protected $fillable = [
-        'id_pendaftaran', 'jenis_notifikasi', 'isi_pesan',
-        'status_kirim', 'waktu_kirim',
-    ];
+    public $timestamps = false;
 
-    protected $casts = [
-        'waktu_kirim' => 'datetime',
+        protected $fillable = [
+        'id_pendaftaran',
+        'type',
+        'konten',
+        'sent_at',
+        'status_kirim',
     ];
 }
+
+

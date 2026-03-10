@@ -9,9 +9,13 @@ class PpdbBerkas extends Model
     protected $table = 'ppdb_berkas';
     protected $primaryKey = 'id_berkas';
 
-    protected $fillable = [
-        'id_pendaftaran', 'jenis_berkas', 'nama_file',
-        'path_file', 'status_verifikasi', 'keterangan',
+    public $timestamps = false;
+
+        protected $fillable = [
+        'id_pendaftaran',
+        'jenis_berkas',
+        'file_path',
+        'uploaded_at',
     ];
 
     public function pendaftar()
@@ -19,3 +23,5 @@ class PpdbBerkas extends Model
         return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');
     }
 }
+
+

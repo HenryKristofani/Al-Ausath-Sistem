@@ -13,16 +13,23 @@ class DataPetugas extends Authenticatable
     protected $table = 'data_petugas';
     protected $primaryKey = 'id_petugas';
 
-    protected $fillable = [
-        'nomor_induk', 'nama_lengkap', 'peran_akun', 'pilihan_unit',
-        'alamat_email', 'nomor_telepon', 'status', 'password_hash',
+        protected $fillable = [
+        'nomor_induk',
+        'nama_lengkap',
+        'peran_akun',
+        'pilihan_unit',
+        'alamat_email',
+        'nomor_telepon',
+        'password_hash',
+        'status',
+        'last_login',
     ];
 
     protected $hidden = [
         'password_hash',
     ];
 
-    protected $casts = [
+        protected $casts = [
         'last_login' => 'datetime',
     ];
 
@@ -31,3 +38,4 @@ class DataPetugas extends Authenticatable
         return $this->password_hash;
     }
 }
+

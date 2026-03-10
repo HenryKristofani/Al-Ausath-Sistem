@@ -7,15 +7,21 @@ use Illuminate\Database\Eloquent\Model;
 class LogPerubahanAbsensi extends Model
 {
     protected $table = 'log_perubahan_absensi';
-    protected $primaryKey = 'id_log_absensi';
+    protected $primaryKey = 'id_log';
+
     public $timestamps = false;
 
-    protected $fillable = [
-        'id_absensi', 'id_petugas', 'status_lama',
-        'status_baru', 'alasan', 'waktu_perubahan',
-    ];
-
-    protected $casts = [
-        'waktu_perubahan' => 'datetime',
+        protected $fillable = [
+        'tabel_terkait',
+        'id_record',
+        'field_diubah',
+        'nilai_lama',
+        'nilai_baru',
+        'alasan_perubahan',
+        'diubah_oleh',
+        'diubah_pada',
+        'ip_address',
     ];
 }
+
+

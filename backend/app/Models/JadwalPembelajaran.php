@@ -9,9 +9,14 @@ class JadwalPembelajaran extends Model
     protected $table = 'jadwal_pembelajaran';
     protected $primaryKey = 'id_jadwal';
 
-    protected $fillable = [
-        'id_kelas_mapel', 'tahun_ajaran', 'hari',
-        'jam_mulai', 'jam_selesai', 'ruangan', 'status',
+        protected $fillable = [
+        'id_kelas_mapel',
+        'tahun_ajaran',
+        'hari',
+        'jam_mulai',
+        'jam_selesai',
+        'ruangan',
+        'status',
     ];
 
     public function kelasMapel()
@@ -19,3 +24,5 @@ class JadwalPembelajaran extends Model
         return $this->belongsTo(DataKelasMapel::class, 'id_kelas_mapel', 'id_kelas_mapel');
     }
 }
+
+

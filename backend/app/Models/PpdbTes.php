@@ -9,14 +9,17 @@ class PpdbTes extends Model
     protected $table = 'ppdb_tes';
     protected $primaryKey = 'id_tes';
 
-    protected $fillable = [
-        'id_pendaftaran', 'jenis_tes', 'nilai',
-        'tanggal_tes', 'keterangan', 'status',
+    public $timestamps = false;
+
+        protected $fillable = [
+        'id_pendaftaran',
+        'nilai',
+        'status_tes',
+        'catatan',
     ];
 
-    protected $casts = [
-        'tanggal_tes' => 'date',
-        'nilai'       => 'decimal:2',
+        protected $casts = [
+        'nilai' => 'decimal:2',
     ];
 
     public function pendaftar()
@@ -24,3 +27,5 @@ class PpdbTes extends Model
         return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');
     }
 }
+
+

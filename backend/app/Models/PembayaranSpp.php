@@ -9,14 +9,21 @@ class PembayaranSpp extends Model
     protected $table = 'pembayaran_spp';
     protected $primaryKey = 'id_pembayaran';
 
+    public $timestamps = false;
+
     public $timestamps = false; // tabel ini tidak punya created_at/updated_at
 
-    protected $fillable = [
-        'id_santri', 'id_setting', 'nominal_bayar',
-        'tanggal_bayar', 'metode_bayar', 'id_rekening', 'status',
+        protected $fillable = [
+        'id_santri',
+        'id_setting',
+        'nominal_bayar',
+        'tanggal_bayar',
+        'metode_bayar',
+        'id_rekening',
+        'status',
     ];
 
-    protected $casts = [
+        protected $casts = [
         'tanggal_bayar' => 'datetime',
         'nominal_bayar' => 'decimal:2',
     ];
@@ -36,3 +43,5 @@ class PembayaranSpp extends Model
         return $this->belongsTo(DataRekeningBank::class, 'id_rekening', 'id_rekening');
     }
 }
+
+
