@@ -10,7 +10,6 @@ class LogPerubahanAbsensi extends Model
     protected $primaryKey = 'id_log';
 
     public $timestamps = false;
-    public $timestamps = false;
 
         protected $fillable = [
         'tabel_terkait',
