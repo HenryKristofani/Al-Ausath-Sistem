@@ -9,12 +9,16 @@ class SppSetting extends Model
     protected $table = 'spp_setting';
     protected $primaryKey = 'id_setting';
 
-    protected $fillable = [
-        'kode_unit', 'nama_tagihan', 'nominal', 'bulan',
-        'tahun_ajaran', 'status',
-    ];
+    public $timestamps = false;
 
-    protected $casts = [
-        'nominal' => 'decimal:2',
+        protected $fillable = [
+        'id_unit',
+        'jenjang',
+        'kategori_tagihan_id',
+        'jumlah',
+        'periode',
+        'keterangan',
     ];
 }
+
+

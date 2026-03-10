@@ -9,15 +9,24 @@ class PpdbPendaftar extends Model
     protected $table = 'ppdb_pendaftar';
     protected $primaryKey = 'id_pendaftaran';
 
-    protected $fillable = [
-        'id_akun', 'no_pendaftaran', 'no_pendaftaran_final',
-        'nama_calon', 'jenjang', 'nomor_umi', 'asal_kota',
-        'is_luar_kota', 'status_verifikasi', 'tanggal_daftar',
+    const UPDATED_AT = null;
+
+        protected $fillable = [
+        'id_akun',
+        'no_pendaftaran',
+        'no_pendaftaran_final',
+        'nama_calon',
+        'jenjang',
+        'nomor_umi',
+        'asal_kota',
+        'is_luar_kota',
+        'status_verifikasi',
+        'tanggal_daftar',
     ];
 
-    protected $casts = [
+        protected $casts = [
         'tanggal_daftar' => 'date',
-        'is_luar_kota'   => 'boolean',
+        'is_luar_kota' => 'boolean',
     ];
 
     public function akun()
@@ -40,3 +49,5 @@ class PpdbPendaftar extends Model
         return $this->hasOne(PpdbTes::class, 'id_pendaftaran', 'id_pendaftaran');
     }
 }
+
+

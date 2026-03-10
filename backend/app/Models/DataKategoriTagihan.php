@@ -9,7 +9,14 @@ class DataKategoriTagihan extends Model
     protected $table = 'data_kategori_tagihan';
     protected $primaryKey = 'id_kategori';
 
-    protected $fillable = [
-        'nama_kategori', 'deskripsi', 'status',
+        protected $fillable = [
+        'pilihan_unit',
+        'kode_kategori',
+        'nama_tagihan',
+        'biaya_tagihan',
+        'keterangan',
+        'status',
     ];
 }
+
+

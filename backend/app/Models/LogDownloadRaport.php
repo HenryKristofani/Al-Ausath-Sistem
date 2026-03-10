@@ -7,15 +7,23 @@ use Illuminate\Database\Eloquent\Model;
 class LogDownloadRaport extends Model
 {
     protected $table = 'log_download_raport';
-    protected $primaryKey = 'id_log_download';
+    protected $primaryKey = 'id_log';
+
+    const UPDATED_AT = null;
     public $timestamps = false;
 
-    protected $fillable = [
-        'id_raport', 'id_pengguna', 'tipe_pengguna',
-        'waktu_download', 'ip_address',
-    ];
-
-    protected $casts = [
-        'waktu_download' => 'datetime',
+        protected $fillable = [
+        'id_raport',
+        'nomor_induk',
+        'id_petugas',
+        'tipe_pengunduh',
+        'aksi',
+        'nama_file_pdf',
+        'ip_address',
+        'user_agent',
+        'status_aksi',
+        'keterangan',
     ];
 }
+
+

@@ -9,12 +9,15 @@ class KwitansiPdf extends Model
     protected $table = 'kwitansi_pdf';
     protected $primaryKey = 'id_kwitansi';
 
-    protected $fillable = [
-        'id_pembayaran', 'nama_file', 'path_file',
-        'dibuat_oleh', 'tanggal_cetak',
-    ];
+    const UPDATED_AT = null;
 
-    protected $casts = [
-        'tanggal_cetak' => 'datetime',
+        protected $fillable = [
+        'id_pembayaran',
+        'id_petugas',
+        'jenis',
+        'jumlah',
+        'file_path_pdf',
     ];
 }
+
+

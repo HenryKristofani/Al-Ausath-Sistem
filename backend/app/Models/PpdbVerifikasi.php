@@ -7,15 +7,16 @@ use Illuminate\Database\Eloquent\Model;
 class PpdbVerifikasi extends Model
 {
     protected $table = 'ppdb_verifikasi';
-    protected $primaryKey = 'id_verifikasi';
+    protected $primaryKey = 'id_verif';
 
-    protected $fillable = [
-        'id_pendaftaran', 'id_petugas', 'status_verifikasi',
-        'catatan', 'tanggal_verifikasi',
-    ];
+    public $timestamps = false;
 
-    protected $casts = [
-        'tanggal_verifikasi' => 'datetime',
+        protected $fillable = [
+        'id_pendaftaran',
+        'id_petugas',
+        'tanggal_verif',
+        'hasil',
+        'catatan',
     ];
 
     public function pendaftar()
@@ -23,3 +24,5 @@ class PpdbVerifikasi extends Model
         return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');
     }
 }
+
+

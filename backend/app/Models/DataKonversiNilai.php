@@ -9,7 +9,16 @@ class DataKonversiNilai extends Model
     protected $table = 'data_konversi_nilai';
     protected $primaryKey = 'id_konversi';
 
-    protected $fillable = [
-        'nilai_min', 'nilai_max', 'predikat', 'keterangan', 'kode_unit',
+    const UPDATED_AT = null;
+
+        protected $fillable = [
+        'kode_unit',
+        'nilai_min',
+        'nilai_max',
+        'nilai_huruf',
+        'predikat',
+        'status',
     ];
 }
+
+

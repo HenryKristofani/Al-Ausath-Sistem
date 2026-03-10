@@ -9,12 +9,16 @@ class AbsensiSantri extends Model
     protected $table = 'absensi_santri';
     protected $primaryKey = 'id_absensi';
 
-    protected $fillable = [
-        'id_sesi', 'nomor_induk', 'status_kehadiran',
-        'keterangan', 'timestamp_input', 'input_oleh',
+        protected $fillable = [
+        'id_sesi',
+        'nomor_induk',
+        'status_kehadiran',
+        'keterangan',
+        'timestamp_input',
+        'input_oleh',
     ];
 
-    protected $casts = [
+        protected $casts = [
         'timestamp_input' => 'datetime',
     ];
 
@@ -28,3 +32,5 @@ class AbsensiSantri extends Model
         return $this->belongsTo(SesiAbsensi::class, 'id_sesi', 'id_sesi');
     }
 }
+
+

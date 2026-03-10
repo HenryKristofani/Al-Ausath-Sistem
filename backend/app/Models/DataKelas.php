@@ -9,9 +9,14 @@ class DataKelas extends Model
     protected $table = 'data_kelas';
     protected $primaryKey = 'id_kelas';
 
-    protected $fillable = [
-        'kode_unit', 'kode_kelas', 'nama_kelas', 'nama_jurusan',
-        'tahun_ajaran', 'status', 'status_ppdb',
+        protected $fillable = [
+        'kode_unit',
+        'kode_kelas',
+        'nama_kelas',
+        'nama_jurusan',
+        'tahun_ajaran',
+        'status',
+        'status_ppdb',
     ];
 
     // Relasi ke DataUnit
@@ -26,3 +31,5 @@ class DataKelas extends Model
         return $this->hasMany(DataSantri::class, 'kode_kelas', 'kode_kelas');
     }
 }
+
+

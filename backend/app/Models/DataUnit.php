@@ -9,9 +9,13 @@ class DataUnit extends Model
     protected $table = 'data_unit';
     protected $primaryKey = 'id_unit';
 
-    protected $fillable = [
-        'kode_unit', 'nama_unit', 'jenis_unit', 'status',
-        'kepala_unit', 'alamat', 'nomor_telepon',
+        protected $fillable = [
+        'kode_unit',
+        'nama_unit',
+        'nomor_urut',
+        'keterangan',
+        'status',
+        'status_ppdb',
     ];
 
     public function kelas()
@@ -19,3 +23,5 @@ class DataUnit extends Model
         return $this->hasMany(DataKelas::class, 'kode_unit', 'kode_unit');
     }
 }
+
+

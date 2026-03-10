@@ -9,15 +9,20 @@ class SesiAbsensi extends Model
     protected $table = 'sesi_absensi';
     protected $primaryKey = 'id_sesi';
 
-    protected $fillable = [
-        'id_jadwal', 'tanggal_sesi', 'status_sesi',
-        'dibuka_oleh', 'waktu_buka', 'waktu_tutup',
-    ];
+    const UPDATED_AT = null;
 
-    protected $casts = [
-        'tanggal_sesi' => 'date',
-        'waktu_buka'   => 'datetime',
-        'waktu_tutup'  => 'datetime',
+        protected $fillable = [
+        'id_jadwal',
+        'id_petugas_hadir',
+        'id_petugas_pengganti',
+        'tanggal',
+        'waktu_mulai',
+        'waktu_selesai',
+        'status_sesi',
+        'keterangan',
+        'is_validated',
+        'validated_by',
+        'validated_at',
     ];
 
     public function jadwal()
@@ -30,3 +35,5 @@ class SesiAbsensi extends Model
         return $this->hasMany(AbsensiSantri::class, 'id_sesi', 'id_sesi');
     }
 }
+
+
