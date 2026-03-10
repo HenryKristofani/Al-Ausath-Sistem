@@ -34,7 +34,7 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($user->status !== 'AKTIF') {
+        if (strtolower($user->status) !== 'aktif') {
             return response()->json([
                 'message' => 'Akun Anda tidak aktif. Hubungi administrator.'
             ], 403);
@@ -61,46 +61,20 @@ class AuthController extends Controller
     }
 
     public function logout(Request $request)
-{
-    if (Auth::guard('petugas')->check()) {
-        Auth::guard('petugas')->logout();
-    } elseif (Auth::guard('santri')->check()) {
-        Auth::guard('santri')->logout();
+    {
+        if (Auth::guard('petugas')->check()) {
+            Auth::guard('petugas')->logout();
+        } elseif (Auth::guard('santri')->check()) {
+            Auth::guard('santri')->logout();
+        }
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['message' => 'Logout Berhasil!'])
+            ->withCookie(Cookie::forget(config('session.cookie')))
+            ->withCookie(Cookie::forget('XSRF-TOKEN'));
     }
-
-    $request->session()->invalidate();
-    $request->session()->regenerateToken();
-
-    $sessionCookieName = config('session.cookie');
-    
-    return response()->json(['message' => 'Logout Berhasil!'])
-        ->withCookie(
-            cookie(
-                $sessionCookieName,
-                '',
-                -1,                         
-                config('session.path'),      
-                config('session.domain'),   
-                config('session.secure'),    
-                config('session.http_only'), 
-                false,
-                config('session.same_site'), 
-            )
-        )
-        ->withCookie(
-            cookie(
-                'XSRF-TOKEN',
-                '',
-                -1,
-                config('session.path'),
-                config('session.domain'),
-                config('session.secure'),
-                false, // XSRF-TOKEN tidak HttpOnly
-                false,
-                config('session.same_site'),
-            )
-        );
-}
     
     public function register(Request $request)
     {
@@ -155,9 +129,6 @@ class AuthController extends Controller
             $guard = 'santri';
         }
 
-        // Auto-login setelah registrasi
-        Auth::guard($guard)->login($user);
-        $request->session()->regenerate();
 
         return response()->json([
             'message' => 'Registrasi berhasil!',
