@@ -18,6 +18,10 @@ class PpdbBerkas extends Model
         'uploaded_at',
     ];
 
+        protected $casts = [
+        'uploaded_at' => 'datetime',
+    ];
+
     public function pendaftar()
     {
         return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');

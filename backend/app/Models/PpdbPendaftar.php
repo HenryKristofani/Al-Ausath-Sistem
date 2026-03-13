@@ -48,6 +48,11 @@ class PpdbPendaftar extends Model
     {
         return $this->hasOne(PpdbTes::class, 'id_pendaftaran', 'id_pendaftaran');
     }
+
+    public function notifikasi()
+    {
+        return $this->hasMany(PpdbNotifikasi::class, 'id_pendaftaran', 'id_pendaftaran');
+    }
 }
 
 

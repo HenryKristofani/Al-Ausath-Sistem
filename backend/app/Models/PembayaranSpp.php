@@ -11,8 +11,6 @@ class PembayaranSpp extends Model
 
     public $timestamps = false;
 
-    public $timestamps = false; // tabel ini tidak punya created_at/updated_at
-
         protected $fillable = [
         'id_santri',
         'id_setting',

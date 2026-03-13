@@ -18,6 +18,15 @@ class PpdbNotifikasi extends Model
         'sent_at',
         'status_kirim',
     ];
+
+        protected $casts = [
+        'sent_at' => 'datetime',
+    ];
+
+    public function pendaftar()
+    {
+        return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');
+    }
 }
 
 
