@@ -19,9 +19,18 @@ class PpdbVerifikasi extends Model
         'catatan',
     ];
 
+        protected $casts = [
+        'tanggal_verif' => 'datetime',
+    ];
+
     public function pendaftar()
     {
         return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');
+    }
+
+    public function petugas()
+    {
+        return $this->belongsTo(DataPetugas::class, 'id_petugas', 'id_petugas');
     }
 }
 
