@@ -22,10 +22,17 @@ class DataRaport extends Model
         'sakit',
         'izin',
         'alpha',
+        'keseharian_kebersihan',
+        'keseharian_kerapian',
+        'keseharian_keterampilan',
         'status_raport',
         'catatan_wali',
         'id_wali_kelas',
         'tanggal_terbit',
+    ];
+
+    protected $casts = [
+        'semester' => 'integer',
     ];
 }
 

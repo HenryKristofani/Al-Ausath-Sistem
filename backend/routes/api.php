@@ -3,6 +3,9 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
+use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
+use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
 use App\Http\Controllers\Api\Administrasi\DataSantriController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
@@ -14,6 +17,17 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+
+    Route::prefix('akademik')->group(function () {
+        Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
+        Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
+
+        Route::get('/raport/keseharian', [RaportKeseharianController::class, 'index']);
+        Route::post('/raport/keseharian', [RaportKeseharianController::class, 'upsert']);
+
+        Route::get('/raport/catatan-wali', [RaportCatatanWaliController::class, 'show']);
+        Route::post('/raport/catatan-wali', [RaportCatatanWaliController::class, 'upsert']);
+    });
 });
 
 Route::prefix('administrasi')->group(function () {
