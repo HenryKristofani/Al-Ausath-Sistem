@@ -18,10 +18,10 @@ class NilaiAkhlakController extends Controller
 
         $query = NilaiAkhlak::query()
             ->with(['santri', 'petugas'])
-            ->when($request->filled('nomor_induk'), fn ($q) => $q->where('nomor_induk', $request->nomor_induk))
-            ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
-            ->when($request->filled('semester'), fn ($q) => $q->where('semester', $request->semester))
-            ->when($request->filled('aspek'), fn ($q) => $q->where('aspek', $request->aspek))
+            ->when($request->filled('nomor_induk'), fn($q) => $q->where('nomor_induk', $request->nomor_induk))
+            ->when($request->filled('tahun_ajaran'), fn($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
+            ->when($request->filled('semester'), fn($q) => $q->where('semester', $request->semester))
+            ->when($request->filled('aspek'), fn($q) => $q->where('aspek', $request->aspek))
             ->orderByDesc('id_akhlak');
 
         return response()->json($query->paginate($perPage));

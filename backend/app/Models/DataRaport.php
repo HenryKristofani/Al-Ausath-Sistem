@@ -9,7 +9,7 @@ class DataRaport extends Model
     protected $table = 'data_raport';
     protected $primaryKey = 'id_raport';
 
-        protected $fillable = [
+    protected $fillable = [
         'nomor_induk',
         'kode_kelas',
         'tahun_ajaran',
@@ -35,5 +35,3 @@ class DataRaport extends Model
         'semester' => 'integer',
     ];
 }
-
-
