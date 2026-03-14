@@ -8,32 +8,81 @@
 
 ## Fase 1 — Database: Lengkapi Tabel yang Masih Gap
 
-### 1.1 Migration: Konfigurasi Bobot Nilai
+### 1.1 Migration: `bobot_nilai`
+
+> **Keputusan desain:** Tiap jenjang bisa punya bobot berbeda sesuai fitur setting di proposal.
+> Bobot tidak terikat per mapel, tapi per **jenjang + tahun ajaran + semester**.
+> Admin bisa set satu konfigurasi bobot yang berlaku untuk semua mapel pada jenjang tersebut.
 
 - [ ] Buat migration `create_bobot_nilai_table`
-- [ ] Kolom: `id_bobot`, `kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`, `bobot_harian` (%), `bobot_uts` (%), `bobot_uas` (%), `bobot_kehadiran` (%), `created_at`, `updated_at`
-- [ ] Constraint: unique(`kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`)
-- [ ] FK: ke `data_mata_pelajaran` dan `data_unit`
+- [ ] Kolom:
+  - `id_bobot` — primary key
+  - `jenjang` (varchar 20) — e.g. `MTS`, `MA`, `SD` — **bukan kode_unit, tapi jenjang eksplisit**
+  - `kode_unit` (varchar 10, nullable) — FK ke `data_unit`, untuk scope per unit jika diperlukan
+  - `tahun_ajaran` (varchar 20)
+  - `semester` (smallint)
+  - `bobot_harian` (decimal 5,2) — persen
+  - `bobot_uts` (decimal 5,2) — persen
+  - `bobot_uas` (decimal 5,2) — persen
+  - `bobot_kehadiran` (decimal 5,2) — persen, default 0
+  - `created_at`, `updated_at`
+- [ ] Constraint: unique(`jenjang`, `kode_unit`, `tahun_ajaran`, `semester`)
+- [ ] Validasi di application layer: `bobot_harian + bobot_uts + bobot_uas + bobot_kehadiran = 100`
+- [ ] FK: `kode_unit` → `data_unit.kode_unit` (nullable, onDelete setNull)
 
-### 1.2 Migration: KKM per Mata Pelajaran
+### 1.2 Migration: `kkm_mapel`
+
+> **Keputusan desain:** KKM bisa berbeda per **jenjang + mapel + tahun ajaran (angkatan)**.
+> Contoh: Fiqih MTS Angkatan 2025 KKM-nya 70, Fiqih MA Angkatan 2026 KKM-nya 75.
+> Gunakan `jenjang` + `kode_mapel` + `tahun_ajaran` + `semester` sebagai key unik.
 
 - [ ] Buat migration `create_kkm_mapel_table`
-- [ ] Kolom: `id_kkm`, `kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`, `nilai_kkm` (decimal), `keterangan`, `created_at`
-- [ ] Constraint: unique(`kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`)
-- [ ] FK: ke `data_mata_pelajaran` dan `data_unit`
+- [ ] Kolom:
+  - `id_kkm` — primary key
+  - `kode_mapel` (varchar 20) — FK ke `data_mata_pelajaran`
+  - `jenjang` (varchar 20) — e.g. `MTS`, `MA` — **bukan kode_unit**
+  - `kode_unit` (varchar 10, nullable) — FK ke `data_unit`, opsional untuk scope lebih spesifik
+  - `tahun_ajaran` (varchar 20) — merepresentasikan angkatan
+  - `semester` (smallint)
+  - `nilai_kkm` (decimal 5,2)
+  - `keterangan` (text, nullable)
+  - `created_at`
+- [ ] Constraint: unique(`kode_mapel`, `jenjang`, `tahun_ajaran`, `semester`)
+- [ ] FK: `kode_mapel` → `data_mata_pelajaran.kode_mapel`, `kode_unit` → `data_unit.kode_unit` (nullable)
 
-### 1.3 Migration: Nilai Akhlak Santri
+### 1.3 Migration: `nilai_akhlak`
+
+> **Keputusan desain:** Penilaian akhlak terdiri dari **banyak aspek** (kedisiplinan, ibadah, akhlak, kebersihan, dll).
+> Tidak bisa disimpan dalam 1 kolom — gunakan model **1 baris per aspek per santri per semester**.
+> Aspek-aspek bisa bertambah tanpa perlu alter table.
 
 - [ ] Buat migration `create_nilai_akhlak_table`
-- [ ] Kolom: `id_akhlak`, `nomor_induk`, `tahun_ajaran`, `semester`, `aspek` (string, e.g. kedisiplinan/ibadah/akhlak), `predikat` (A/B/C/D), `deskripsi`, `id_petugas_input`, `created_at`, `updated_at`
+- [ ] Kolom:
+  - `id_akhlak` — primary key
+  - `nomor_induk` (varchar 20) — FK ke `data_santri`
+  - `tahun_ajaran` (varchar 20)
+  - `semester` (smallint)
+  - `aspek` (varchar 80) — nama aspek, e.g. `Kedisiplinan`, `Ibadah`, `Akhlak`, `Kebersihan`
+  - `predikat` (varchar 5) — nilai huruf: `A`, `B`, `C`, `D`
+  - `deskripsi` (text, nullable) — catatan narasi opsional per aspek
+  - `id_petugas_input` (integer, nullable) — FK ke `data_petugas`
+  - `created_at`, `updated_at`
 - [ ] Constraint: unique(`nomor_induk`, `tahun_ajaran`, `semester`, `aspek`)
-- [ ] FK: ke `data_santri` dan `data_petugas`
+- [ ] FK: `nomor_induk` → `data_santri.nomor_induk` (onDelete cascade), `id_petugas_input` → `data_petugas.id_petugas` (onDelete setNull)
+- [ ] **Tidak ada master tabel aspek** dulu — aspek diinput bebas sebagai string (bisa distandarisasi later via seeder/config)
 
 ### 1.4 Model Eloquent Baru
 
-- [ ] Buat `app/Models/BobotNilai.php` (fillable, relasi ke DataMataPelajaran, DataUnit)
-- [ ] Buat `app/Models/KkmMapel.php` (fillable, relasi ke DataMataPelajaran, DataUnit)
-- [ ] Buat `app/Models/NilaiAkhlak.php` (fillable, relasi ke DataSantri, DataPetugas)
+- [ ] Buat `app/Models/BobotNilai.php`
+  - fillable: `jenjang`, `kode_unit`, `tahun_ajaran`, `semester`, `bobot_harian`, `bobot_uts`, `bobot_uas`, `bobot_kehadiran`
+  - relasi: `unit()` belongsTo DataUnit
+- [ ] Buat `app/Models/KkmMapel.php`
+  - fillable: `kode_mapel`, `jenjang`, `kode_unit`, `tahun_ajaran`, `semester`, `nilai_kkm`, `keterangan`
+  - relasi: `mataPelajaran()` belongsTo DataMataPelajaran, `unit()` belongsTo DataUnit
+- [ ] Buat `app/Models/NilaiAkhlak.php`
+  - fillable: `nomor_induk`, `tahun_ajaran`, `semester`, `aspek`, `predikat`, `deskripsi`, `id_petugas_input`
+  - relasi: `santri()` belongsTo DataSantri, `petugas()` belongsTo DataPetugas
+  - scope: `scopePerSantri($query, $nomor_induk, $tahun_ajaran, $semester)` untuk ambil semua aspek satu santri
 
 ---
 
@@ -50,6 +99,7 @@
   - `PUT  /bobot-nilai/{id}` — update (validasi total bobot = 100%)
   - `DELETE /bobot-nilai/{id}` — destroy
 - [ ] Validasi: jumlah semua bobot harus == 100
+      r
 
 ### 2.2 KKM
 
