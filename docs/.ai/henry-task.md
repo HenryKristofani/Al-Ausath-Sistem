@@ -1,188 +1,158 @@
-# Henry Kristofani — Task Plan: Modul E-Rapor
+﻿# Henry Kristofani — Task Plan: Modul E-Rapor (Sesuai Client)
 
-> Referensi dokumen: `convert-pdf-sistem-akademik-erapor-henry.md`
-> Status DB audit: fondasi tersedia, beberapa tabel masih gap (bobot, KKM, akhlak)
-> **Scope:** Backend API only — repo ini hanya menyediakan JSON API. Frontend ada di repo terpisah.
-
----
-
-## Fase 1 — Database: Lengkapi Tabel yang Masih Gap
-
-### 1.1 Migration: Konfigurasi Bobot Nilai
-
-- [ ] Buat migration `create_bobot_nilai_table`
-- [ ] Kolom: `id_bobot`, `kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`, `bobot_harian` (%), `bobot_uts` (%), `bobot_uas` (%), `bobot_kehadiran` (%), `created_at`, `updated_at`
-- [ ] Constraint: unique(`kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`)
-- [ ] FK: ke `data_mata_pelajaran` dan `data_unit`
-
-### 1.2 Migration: KKM per Mata Pelajaran
-
-- [ ] Buat migration `create_kkm_mapel_table`
-- [ ] Kolom: `id_kkm`, `kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`, `nilai_kkm` (decimal), `keterangan`, `created_at`
-- [ ] Constraint: unique(`kode_mapel`, `kode_unit`, `tahun_ajaran`, `semester`)
-- [ ] FK: ke `data_mata_pelajaran` dan `data_unit`
-
-### 1.3 Migration: Nilai Akhlak Santri
-
-- [ ] Buat migration `create_nilai_akhlak_table`
-- [ ] Kolom: `id_akhlak`, `nomor_induk`, `tahun_ajaran`, `semester`, `aspek` (string, e.g. kedisiplinan/ibadah/akhlak), `predikat` (A/B/C/D), `deskripsi`, `id_petugas_input`, `created_at`, `updated_at`
-- [ ] Constraint: unique(`nomor_induk`, `tahun_ajaran`, `semester`, `aspek`)
-- [ ] FK: ke `data_santri` dan `data_petugas`
-
-### 1.4 Model Eloquent Baru
-
-- [ ] Buat `app/Models/BobotNilai.php` (fillable, relasi ke DataMataPelajaran, DataUnit)
-- [ ] Buat `app/Models/KkmMapel.php` (fillable, relasi ke DataMataPelajaran, DataUnit)
-- [ ] Buat `app/Models/NilaiAkhlak.php` (fillable, relasi ke DataSantri, DataPetugas)
+> Referensi utama: docs/client-flow.md
+> Scope: Backend API only.
+> Prinsip: mengikuti kebijakan client tanpa asumsi tambahan.
 
 ---
 
-## Fase 2 — Backend API: Master Konfigurasi
+## Fase 1 — Finalisasi Aturan Data (Sudah Ada + Penyesuaian)
 
-> Prefix route: `api/akademik/`
+### 1.1 Bobot Nilai Global
 
-### 2.1 Bobot Nilai
+- [x] Tabel `bobot_nilai` sudah dibuat.
+- [x] Tetapkan kebijakan aktif: bobot sama semua mapel (20/30/50).
+- [x] Batasi penggunaan ke mode global (tidak dibedakan per jenjang).
+- [x] Validasi total bobot = 100.
 
-- [ ] `BobotNilaiController` (CRUD) di `app/Http/Controllers/Api/Akademik/`
-  - `GET  /bobot-nilai` — list (filter: kode_mapel, kode_unit, tahun_ajaran, semester)
-  - `POST /bobot-nilai` — create (validasi total bobot = 100%)
-  - `GET  /bobot-nilai/{id}` — show
-  - `PUT  /bobot-nilai/{id}` — update (validasi total bobot = 100%)
-  - `DELETE /bobot-nilai/{id}` — destroy
-- [ ] Validasi: jumlah semua bobot harus == 100
+### 1.2 KKM per Mapel (Checker Status)
 
-### 2.2 KKM
+- [x] Tabel `kkm_mapel` sudah dibuat.
+- [x] Terapkan kebijakan KKM sama antar jenjang (tidak beda MTQ/MTS/Aliyah).
+- [x] KKM dipakai hanya untuk cek status nilai akhir: melampaui batas atau tidak.
+- [x] KKM bukan komponen perhitungan nilai akhir.
 
-- [ ] `KkmMapelController` (CRUD) di `app/Http/Controllers/Api/Akademik/`
-  - `GET  /kkm` — list (filter: kode_mapel, kode_unit, semester)
-  - `POST /kkm` — create
-  - `GET  /kkm/{id}` — show
-  - `PUT  /kkm/{id}` — update
-  - `DELETE /kkm/{id}` — destroy
+### 1.3 Nilai Akhlak dan Keseharian
 
-### 2.3 Konversi Nilai (tabel sudah ada, API belum)
-
-- [ ] `KonversiNilaiController` (CRUD) di `app/Http/Controllers/Api/Akademik/`
-  - `GET  /konversi-nilai` — list per kode_unit
-  - `POST /konversi-nilai` — create
-  - `GET  /konversi-nilai/{id}` — show
-  - `PUT  /konversi-nilai/{id}` — update
-  - `DELETE /konversi-nilai/{id}` — destroy
-
-### 2.4 Daftarkan Routes
-
-- [ ] Tambah prefix group `Route::prefix('akademik')` di `routes/api.php`
-- [ ] Bungkus semua route akademik dalam `auth:sanctum` middleware
+- [x] Tabel `nilai_akhlak` sudah dibuat.
+- [x] Sesuaikan implementasi ke kebutuhan client:
+  - nilai akhlak/mapel cukup angka
+  - komponen keseharian di rapor menggunakan A/B/C/D
+- [x] Tambahkan endpoint/data field untuk keseharian dan catatan wali kelas.
 
 ---
 
-## Fase 3 — Backend API: Input Nilai
+## Fase 2 — API Konfigurasi Master
 
-### 3.1 Data Nilai Siswa
+### 2.1 API Bobot
 
-- [ ] `NilaiSiswaController` di `app/Http/Controllers/Api/Akademik/`
-  - `GET  /nilai` — list (filter: kode_kelas, kode_mapel, tahun_ajaran, semester)
-  - `POST /nilai` — create (input nilai harian/UTS/UAS)
-  - `GET  /nilai/{id}` — show
-  - `PUT  /nilai/{id}` — update nilai
-  - `DELETE /nilai/{id}` — hapus nilai
+- [ ] `BobotNilaiController` CRUD.
+- [ ] Endpoint khusus set bobot default 20/30/50.
+- [ ] Validasi total bobot = 100.
 
-### 3.2 Kalkulasi Nilai Akhir Otomatis
+### 2.2 API KKM
 
-- [ ] Buat `app/Services/KalkulasiNilaiService.php`
-  - Method `hitungNilaiAkhir(nomor_induk, kode_mapel, tahun_ajaran, semester)`:
-    - Ambil bobot dari `bobot_nilai`
-    - Hitung: `(nilai_harian × bobot_harian) + (nilai_uts × bobot_uts) + (nilai_uas × bobot_uas)`
-    - Tambahkan komponen kehadiran jika ada bobot_kehadiran
-    - Kembalikan nilai akhir + status lulus/tidak (vs KKM)
-- [ ] Panggil service ini setelah setiap create/update nilai
+- [ ] `KkmMapelController` CRUD per mapel.
+- [ ] Setter utama KKM adalah guru mapel (petugas mapel), admin hanya untuk override terkontrol jika dibutuhkan.
+- [ ] Filter utama: `kode_mapel`, `tahun_ajaran`, `semester`.
+- [ ] Hilangkan ketergantungan logika beda jenjang pada proses hitung status.
 
-### 3.3 Nilai Akhlak
+### 2.3 API Konversi Nilai
 
-- [ ] `NilaiAkhlakController` (CRUD) di `app/Http/Controllers/Api/Akademik/`
-  - `GET  /akhlak` — list per nomor_induk, semester
-  - `POST /akhlak` — input penilaian akhlak
-  - `PUT  /akhlak/{id}` — update
-  - `DELETE /akhlak/{id}` — hapus
+- [ ] `KonversiNilaiController` CRUD untuk konversi angka ke huruf/predikat.
+
+### 2.4 Routing dan Security
+
+- [ ] Daftarkan route `api/akademik/*`.
+- [ ] Lindungi dengan `auth:sanctum`.
 
 ---
 
-## Fase 4 — Backend API: Raport & PDF
+## Fase 3 — API Input Nilai (Sesuai Mekanisme Client)
 
-### 4.1 Generate Raport
+### 3.1 Input Komponen Nilai Mapel
 
-- [ ] `RaportController` di `app/Http/Controllers/Api/Akademik/`
-  - `GET  /raport` — list raport (filter: kode_kelas, tahun_ajaran, semester)
-  - `POST /raport/generate` — auto-generate raport satu kelas:
-    - Agregasi semua nilai per santri
-    - Hitung rata-rata, peringkat, total siswa
-    - Rekap kehadiran dari `absensi_santri`
-    - Insert/update `data_raport`
-  - `GET  /raport/{id}` — detail raport satu santri (include nilai per mapel + akhlak)
-  - `PUT  /raport/{id}/catatan` — update catatan wali kelas
-  - `PUT  /raport/{id}/terbitkan` — ubah status DRAFT → TERBIT + set tanggal_terbit
+- [ ] Endpoint input nilai komponen:
+  - nilai tugas (minimal 3 data)
+  - nilai ulangan (minimal 3 data)
+  - nilai ujian akhir
+- [ ] Validasi kriteria tugas yang diakui client:
+  - PR
+  - tugas pengganti saat pengajar tidak hadir
+  - pengerjaan soal kompetensi/modul
+- [ ] Validasi kriteria ulangan yang diakui client:
+  - soal disusun pengajar mapel
+  - pengerjaan diawasi pengajar (tidak diwakilkan)
+- [ ] Simpan data per santri-mapel-semester.
 
-### 4.2 Generate PDF E-Rapor
+### 3.2 Hitung Nilai Akhir Mapel
 
-> **Keputusan Desain:**
->
-> 1. Format rapor **sama untuk semua jenjang** — satu template universal
-> 2. Yang berbeda hanya **jumlah mata pelajaran** (loop dinamis, tidak di-hardcode)
-> 3. Sistem harus **fleksibel** — jenjang baru tidak perlu buat template baru
-> 4. **Tidak ada batasan jumlah mapel** — template loop `@foreach` semua mapel dari `data_nilai_siswa`
-> 5. **Sisakan 3–5 baris kosong** di akhir tabel nilai pada PDF untuk ekspansi mapel masa depan
+- [ ] Hitung dari bobot global client:
+  - tugas 20%
+  - ulangan 30%
+  - ujian akhir 50%
+- [ ] Terapkan pembulatan nilai mapel:
+  - desimal 1-4 turun
+  - desimal 5-9 naik
 
-- [ ] Install library PDF (DomPDF via `barryvdh/laravel-dompdf`)
-- [ ] Buat **satu** Blade template server-side untuk PDF: `resources/views/pdf/raport.blade.php`
-  - Ini **bukan view FE** — hanya dipakai DomPDF di sisi server untuk render PDF binary
-  - Header: identitas santri, kelas, tahun ajaran, semester
-  - Tabel nilai: `@foreach` mapel dari `data_nilai_siswa` (urut berdasarkan `urutan` di `data_mata_pelajaran`)
-    - Kolom: No | Mata Pelajaran | Harian | UTS | UAS | Nilai Akhir | Huruf | KKM | Ket
-    - **Setelah baris data, sisakan 3 baris kosong** untuk keperluan masa depan
-  - Blok nilai akhlak (loop aspek dari `nilai_akhlak`)
-  - Rekap kehadiran: Hadir / Sakit / Izin / Alpha
-  - Peringkat kelas, catatan wali kelas, kolom tanda tangan
-  - **Tidak ada struktural yang berbeda antar jenjang** — perbedaan hanya pada data yang diisi
-- [ ] `GET /raport/{id}/pdf` — generate & return PDF sebagai binary stream (`Content-Type: application/pdf`)
-- [ ] Catat log ke `log_download_raport` setiap kali endpoint PDF dipanggil
+### 3.3 Normalisasi Nilai Tampil Rapor
 
-### 4.3 Akses Santri/Wali
+- [ ] Jika nilai akhir mapel = 100, tampilkan 98.
+- [ ] Jika nilai akhir mapel < 50, tampilkan 50 dengan flag merah.
+- [ ] Jika nilai akhir mapel = 50 asli, tampilkan 50 hitam.
 
-- [ ] `GET /santri/raport` — santri melihat raport sendiri (guard santri)
-- [ ] `GET /santri/raport/{id}/pdf` — santri download PDF raport sendiri
-- [ ] Pastikan authorization: santri hanya bisa akses raport miliknya sendiri
+### 3.4 Cek Status KKM
 
----
+- [ ] Setelah nilai final mapel didapat, bandingkan dengan KKM mapel.
+- [ ] Simpan/return status tuntas atau belum.
+- [ ] Pastikan KKM hanya checker, bukan penghitung nilai.
 
-## Dependency Antar Fase
+### 3.5 Input Nilai Akhlak dan Keseharian
 
-```
-Fase 1 (DB) → Fase 2 (Config API) → Fase 3 (Nilai API) → Fase 4 (Raport API)
-```
-
-Fase 2 dan Fase 3 bisa paralel setelah Fase 1 selesai.
-Fase 4.1 (Generate Raport) dan Fase 4.2 (PDF) bisa dikerjakan paralel.
+- [ ] Endpoint input nilai akhlak (angka).
+- [ ] Endpoint input keseharian anak (A/B/C/D: kebersihan, kerapian, keterampilan).
+- [ ] Endpoint catatan pengembangan diri oleh wali kelas.
+- [ ] Semua endpoint akademik wajib menolak request tanpa `nomor_induk` valid.
 
 ---
 
-## Catatan Implementasi
+## Fase 4 — API Generate Rapor
 
-### Keamanan & Akses
+### 4.1 Rekap Rapor Semester
 
-- Semua route akademik wajib di-protect `auth:sanctum`
-- Pengajar hanya bisa input nilai untuk kelas mapel yang ada di `data_kelas_mapel` dengan `id_petugas`-nya
-- Santri hanya bisa akses data dengan `nomor_induk` yang sesuai akunnya
-- Gunakan `log_perubahan_absensi` (atau buat `log_perubahan_nilai` terpisah) untuk audit trail nilai yang diubah
+- [ ] Agregasi nilai final mapel per santri.
+- [ ] Hitung rata-rata rapor (2 desimal, aturan pembulatan client).
+- [ ] Gabungkan absensi (sakit/izin/tanpa keterangan).
+- [ ] Gabungkan nilai akhlak, keseharian, catatan wali kelas.
+- [ ] Simpan ke `data_raport` status DRAFT.
 
-### Performa
+### 4.2 Peringkat Kelas (Rumus Client)
 
-- Nilai akhir disimpan di kolom terpisah (cached), bukan dihitung on-the-fly, untuk performa
+- [ ] Terapkan rumus:
+  - [(nilai hifzh x 2) + (rata-rata diniyyah x 2) + (rata-rata umum x 1)] / 5
+- [ ] Simpan ranking per kelas.
+- [ ] Atur tampilan ranking:
+  - top 10 untuk kelas besar
+  - top 5 untuk kelas kecil
 
-### Desain Rapor (Format Universal)
+### 4.3 Terbitkan Rapor
 
-- **Satu template PDF untuk semua jenjang** — jangan buat template per jenjang
-- Jumlah mapel **tidak di-hardcode** di template — selalu loop dinamis dari DB
-- Urutan mapel di PDF ditentukan kolom `urutan` di tabel `data_mata_pelajaran`
-- Template harus tetap rapi meskipun mapel berjumlah 5 atau 20+
-- **Sisakan minimal 3 baris kosong** di akhir tabel nilai pada PDF (implementasi via `@for` counter)
-- Jika mapel di masa depan bertambah, tidak perlu ubah template sama sekali
+- [ ] Endpoint ubah status DRAFT ke TERBIT.
+- [ ] Set tanggal terbit.
+
+---
+
+## Fase 5 — PDF dan Akses Santri
+
+### 5.1 Generate PDF
+
+- [ ] Endpoint PDF rapor per santri.
+- [ ] Template universal semua jenjang dengan jumlah mapel dinamis.
+- [ ] Catat log download rapor.
+
+### 5.2 Self-Service Santri
+
+- [ ] Endpoint lihat rapor milik sendiri.
+- [ ] Endpoint download PDF milik sendiri.
+- [ ] Validasi ownership berdasarkan nomor induk.
+
+---
+
+## Catatan Implementasi Penting
+
+- Ikuti kebijakan client apa adanya.
+- Jangan menambah aturan akademik di luar dokumen client tanpa persetujuan.
+- KKM khusus untuk status, bukan kalkulasi nilai akhir.
+- Bobot global aktif adalah 20/30/50 dan sama untuk semua mapel.
+- Nomor induk santri/wati wajib lengkap sebelum input nilai, generate rapor, maupun publish rapor.
+- Catatan operasional non-API (SOP): lembar penilaian dibawa pengajar, direkap wali kelas, lalu diarsipkan sekretariat.
