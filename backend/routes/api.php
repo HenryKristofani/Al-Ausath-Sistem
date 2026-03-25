@@ -16,7 +16,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 });
 
-Route::prefix('administrasi')->group(function () {
+Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('ppdb')->group(function () {
         Route::get('/pendaftar', [PpdbController::class, 'index']);
         Route::post('/pendaftar', [PpdbController::class, 'store']);

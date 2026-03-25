@@ -14,6 +14,11 @@ use Illuminate\Support\Facades\DB;
 
 class PpdbController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+    }
+
     /**
      * List data pendaftar PPDB.
      */

@@ -9,6 +9,11 @@ use Illuminate\Http\Request;
 
 class PembayaranSppController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+    }
+
     /**
      * List pembayaran SPP.
      */

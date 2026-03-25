@@ -10,6 +10,11 @@ use Illuminate\Http\Request;
 
 class SppSettingController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+    }
+
     /**
      * List setting SPP.
      */

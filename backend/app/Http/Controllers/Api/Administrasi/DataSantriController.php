@@ -11,6 +11,11 @@ use Illuminate\Validation\Rule;
 
 class DataSantriController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+    }
+
     /**
      * List data santri.
      */
