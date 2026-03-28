@@ -36,25 +36,25 @@
 
 ### 2.1 API Bobot
 
-- [ ] `BobotNilaiController` CRUD.
-- [ ] Endpoint khusus set bobot default 20/30/50.
-- [ ] Validasi total bobot = 100.
+- [x] `BobotNilaiController` CRUD.
+- [x] Endpoint khusus set bobot default 20/30/50.
+- [x] Validasi total bobot = 100.
 
 ### 2.2 API KKM
 
-- [ ] `KkmMapelController` CRUD per mapel.
-- [ ] Setter utama KKM adalah guru mapel (petugas mapel), admin hanya untuk override terkontrol jika dibutuhkan.
-- [ ] Filter utama: `kode_mapel`, `tahun_ajaran`, `semester`.
-- [ ] Hilangkan ketergantungan logika beda jenjang pada proses hitung status.
+- [x] `KkmMapelController` CRUD per mapel.
+- [x] Setter utama KKM adalah guru mapel (petugas mapel), admin hanya untuk override terkontrol jika dibutuhkan.
+- [x] Filter utama: `kode_mapel`, `tahun_ajaran`, `semester`.
+- [x] Hilangkan ketergantungan logika beda jenjang pada proses hitung status.
 
 ### 2.3 API Konversi Nilai
 
-- [ ] `KonversiNilaiController` CRUD untuk konversi angka ke huruf/predikat.
+- [x] `KonversiNilaiController` CRUD untuk konversi angka ke huruf/predikat.
 
 ### 2.4 Routing dan Security
 
-- [ ] Daftarkan route `api/akademik/*`.
-- [ ] Lindungi dengan `auth:sanctum`.
+- [x] Daftarkan route `api/akademik/*`.
+- [x] Lindungi dengan `auth:sanctum`.
 
 ---
 

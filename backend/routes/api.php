@@ -3,6 +3,9 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Api\Akademik\BobotNilaiController;
+use App\Http\Controllers\Api\Akademik\KkmMapelController;
+use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
@@ -19,6 +22,25 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     Route::prefix('akademik')->group(function () {
+        Route::get('/bobot', [BobotNilaiController::class, 'index']);
+        Route::post('/bobot', [BobotNilaiController::class, 'store']);
+        Route::post('/bobot/set-default', [BobotNilaiController::class, 'setDefault']);
+        Route::get('/bobot/{id}', [BobotNilaiController::class, 'show']);
+        Route::put('/bobot/{id}', [BobotNilaiController::class, 'update']);
+        Route::delete('/bobot/{id}', [BobotNilaiController::class, 'destroy']);
+
+        Route::get('/kkm-mapel', [KkmMapelController::class, 'index']);
+        Route::post('/kkm-mapel', [KkmMapelController::class, 'store']);
+        Route::get('/kkm-mapel/{id}', [KkmMapelController::class, 'show']);
+        Route::put('/kkm-mapel/{id}', [KkmMapelController::class, 'update']);
+        Route::delete('/kkm-mapel/{id}', [KkmMapelController::class, 'destroy']);
+
+        Route::get('/konversi-nilai', [KonversiNilaiController::class, 'index']);
+        Route::post('/konversi-nilai', [KonversiNilaiController::class, 'store']);
+        Route::get('/konversi-nilai/{id}', [KonversiNilaiController::class, 'show']);
+        Route::put('/konversi-nilai/{id}', [KonversiNilaiController::class, 'update']);
+        Route::delete('/konversi-nilai/{id}', [KonversiNilaiController::class, 'destroy']);
+
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
 

@@ -1,0 +1,172 @@
+<?php
+
+namespace App\Http\Controllers\Api\Akademik;
+
+use App\Http\Controllers\Controller;
+use App\Models\DataPetugas;
+use App\Models\KkmMapel;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class KkmMapelController extends Controller
+{
+    private const MAPEL_ROLES = [
+        'guru_mapel',
+        'guru mapel',
+        'mapel',
+    ];
+
+    private const ADMIN_ROLES = [
+        'admin',
+        'administrator',
+    ];
+
+    /**
+     * List KKM mapel.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+
+        $query = KkmMapel::query()
+            ->with(['mataPelajaran', 'unit'])
+            ->when($request->filled('kode_mapel'), fn($q) => $q->where('kode_mapel', $request->kode_mapel))
+            ->when($request->filled('tahun_ajaran'), fn($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
+            ->when($request->filled('semester'), fn($q) => $q->where('semester', (int) $request->semester))
+            ->orderByDesc('id_kkm');
+
+        return response()->json($query->paginate($perPage));
+    }
+
+    /**
+     * Simpan KKM mapel.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        if ($response = $this->authorizeKkmMutation(canOverride: false)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'kode_mapel' => ['required', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
+            'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+            'nilai_kkm' => ['required', 'numeric', 'min:0', 'max:100'],
+            'keterangan' => ['nullable', 'string'],
+        ]);
+
+        $data = KkmMapel::create($validated);
+
+        return response()->json([
+            'message' => 'KKM mapel berhasil dibuat.',
+            'data' => $data,
+        ], 201);
+    }
+
+    /**
+     * Detail KKM mapel.
+     */
+    public function show(int $id): JsonResponse
+    {
+        $data = KkmMapel::with(['mataPelajaran', 'unit'])->findOrFail($id);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Perbarui KKM mapel.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        if ($response = $this->authorizeKkmMutation(canOverride: true, allowMapelOverride: true)) {
+            return $response;
+        }
+
+        $kkm = KkmMapel::findOrFail($id);
+
+        $validated = $request->validate([
+            'kode_mapel' => ['sometimes', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
+            'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
+            'tahun_ajaran' => ['sometimes', 'string', 'max:20'],
+            'semester' => ['sometimes', 'integer', 'in:1,2'],
+            'nilai_kkm' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'keterangan' => ['nullable', 'string'],
+        ]);
+
+        $kkm->update($validated);
+
+        return response()->json([
+            'message' => 'KKM mapel berhasil diperbarui.',
+            'data' => $kkm->fresh(['mataPelajaran', 'unit']),
+        ]);
+    }
+
+    /**
+     * Hapus KKM mapel.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        if ($response = $this->authorizeKkmMutation(canOverride: true, allowMapelOverride: true)) {
+            return $response;
+        }
+
+        $kkm = KkmMapel::findOrFail($id);
+        $kkm->delete();
+
+        return response()->json([
+            'message' => 'KKM mapel berhasil dihapus.',
+        ]);
+    }
+
+    private function authorizeKkmMutation(bool $canOverride, bool $allowMapelOverride = false): ?JsonResponse
+    {
+        $petugas = $this->resolvePetugasAuth();
+
+        if (! $petugas) {
+            return response()->json([
+                'message' => 'Hanya petugas yang dapat mengelola KKM mapel.',
+            ], 403);
+        }
+
+        $role = strtolower(trim((string) $petugas->peran_akun));
+
+        if (in_array($role, self::ADMIN_ROLES, true)) {
+            if ($canOverride) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'Admin hanya diizinkan melakukan override terkontrol (update/hapus).',
+            ], 403);
+        }
+
+        if (in_array($role, self::MAPEL_ROLES, true)) {
+            if (! $canOverride || $allowMapelOverride) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'Hapus KKM hanya diizinkan untuk admin.',
+            ], 403);
+        }
+
+        return response()->json([
+            'message' => 'Akun petugas ini tidak memiliki hak kelola KKM mapel.',
+        ], 403);
+    }
+
+    private function resolvePetugasAuth(): ?DataPetugas
+    {
+        $user = Auth::guard('petugas')->user();
+
+        if ($user instanceof DataPetugas) {
+            return $user;
+        }
+
+        $user = Auth::user();
+
+        return $user instanceof DataPetugas ? $user : null;
+    }
+}
