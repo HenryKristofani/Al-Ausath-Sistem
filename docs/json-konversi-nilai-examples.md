@@ -1,17 +1,21 @@
 # JSON Request Examples - Konversi Nilai API
+
 ## Endpoint: `/api/akademik/konversi-nilai`
 
 ---
 
 ## 1️⃣ INDEX (List All) - GET
+
 **Endpoint:** `GET /api/akademik/konversi-nilai`
 
 ### Request dengan Filter
+
 ```bash
 GET /api/akademik/konversi-nilai?per_page=10&kode_unit=MTS&status=AKTIF
 ```
 
 ### Headers
+
 ```
 Authorization: Bearer {token}
 Accept: application/json
@@ -19,6 +23,7 @@ Content-Type: application/json
 ```
 
 ### Query Parameters (Opsional)
+
 ```json
 {
   "per_page": 10,
@@ -28,6 +33,7 @@ Content-Type: application/json
 ```
 
 ### Response 200 OK
+
 ```json
 {
   "data": [
@@ -86,20 +92,24 @@ Content-Type: application/json
 ---
 
 ## 2️⃣ SHOW (Detail) - GET
+
 **Endpoint:** `GET /api/akademik/konversi-nilai/{id}`
 
 ### Request
+
 ```bash
 GET /api/akademik/konversi-nilai/1
 ```
 
 ### Headers
+
 ```
 Authorization: Bearer {token}
 Accept: application/json
 ```
 
 ### Response 200 OK
+
 ```json
 {
   "data": {
@@ -117,6 +127,7 @@ Accept: application/json
 ```
 
 ### Response 404 Not Found
+
 ```json
 {
   "message": "No query results found for model [App\\Models\\DataKonversiNilai] 999"
@@ -126,9 +137,11 @@ Accept: application/json
 ---
 
 ## 3️⃣ CREATE (Store) - POST
+
 **Endpoint:** `POST /api/akademik/konversi-nilai`
 
 ### Headers
+
 ```
 Authorization: Bearer {token}
 Accept: application/json
@@ -136,6 +149,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 1 (Dengan kode_unit)
+
 ```json
 {
   "kode_unit": "MTS",
@@ -148,6 +162,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 2 (Tanpa kode_unit - Global)
+
 ```json
 {
   "nilai_min": 75,
@@ -159,6 +174,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 3 (Minimal - Status default AKTIF)
+
 ```json
 {
   "kode_unit": "SMA",
@@ -170,6 +186,7 @@ Content-Type: application/json
 ```
 
 ### Response 201 Created
+
 ```json
 {
   "message": "Konversi nilai berhasil dibuat.",
@@ -188,16 +205,13 @@ Content-Type: application/json
 ```
 
 ### Response 422 Unprocessable Entity - Validation Error
+
 ```json
 {
   "message": "The given data was invalid.",
   "errors": {
-    "kode_unit": [
-      "The selected kode_unit is invalid."
-    ],
-    "nilai_min": [
-      "The nilai_min field is required."
-    ],
+    "kode_unit": ["The selected kode_unit is invalid."],
+    "nilai_min": ["The nilai_min field is required."],
     "nilai_max": [
       "The nilai_max field must be greater than or equal to nilai_min."
     ]
@@ -208,9 +222,11 @@ Content-Type: application/json
 ---
 
 ## 4️⃣ UPDATE (Edit) - PUT
+
 **Endpoint:** `PUT /api/akademik/konversi-nilai/{id}`
 
 ### Headers
+
 ```
 Authorization: Bearer {token}
 Accept: application/json
@@ -218,6 +234,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 1 (Update semua field)
+
 ```json
 {
   "kode_unit": "MTS",
@@ -230,6 +247,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 2 (Update partial - hanya predikat)
+
 ```json
 {
   "predikat": "Sangat Baik Sekali"
@@ -237,6 +255,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 3 (Update status ke NONAKTIF)
+
 ```json
 {
   "status": "NONAKTIF"
@@ -244,6 +263,7 @@ Content-Type: application/json
 ```
 
 ### Request Body - Contoh 4 (Update range nilai)
+
 ```json
 {
   "nilai_min": 88,
@@ -252,6 +272,7 @@ Content-Type: application/json
 ```
 
 ### Response 200 OK
+
 ```json
 {
   "message": "Konversi nilai berhasil diperbarui.",
@@ -270,6 +291,7 @@ Content-Type: application/json
 ```
 
 ### Response 422 Unprocessable Entity - Invalid Range
+
 ```json
 {
   "message": "nilai_max harus lebih besar atau sama dengan nilai_min."
@@ -279,15 +301,18 @@ Content-Type: application/json
 ---
 
 ## 5️⃣ DELETE (Hapus) - DELETE
+
 **Endpoint:** `DELETE /api/akademik/konversi-nilai/{id}`
 
 ### Headers
+
 ```
 Authorization: Bearer {token}
 Accept: application/json
 ```
 
 ### Response 200 OK
+
 ```json
 {
   "message": "Konversi nilai berhasil dihapus."
@@ -295,6 +320,7 @@ Accept: application/json
 ```
 
 ### Response 404 Not Found
+
 ```json
 {
   "message": "No query results found for model [App\\Models\\DataKonversiNilai] 999"
@@ -305,14 +331,14 @@ Accept: application/json
 
 ## 📋 Validation Rules
 
-| Field | Rules | Keterangan |
-|-------|-------|-----------|
-| `kode_unit` | nullable, string, max:10, exists:data_unit,kode_unit | Referensi ke tabel data_unit. Boleh null = global |
-| `nilai_min` | required (create), numeric, min:0, max:100 | Nilai minimum range konversi |
-| `nilai_max` | required (create), numeric, min:0, max:100, ≥nilai_min | Nilai maximum, harus ≥ nilai_min |
-| `nilai_huruf` | required (create), string, max:5 | Huruf nilai (A, B, C, dll) |
-| `predikat` | nullable, string, max:50 | Deskripsi predikat (Sangat Baik, dll) |
-| `status` | nullable (default AKTIF), in:AKTIF,NONAKTIF | Status aktif/nonaktif |
+| Field         | Rules                                                  | Keterangan                                        |
+| ------------- | ------------------------------------------------------ | ------------------------------------------------- |
+| `kode_unit`   | nullable, string, max:10, exists:data_unit,kode_unit   | Referensi ke tabel data_unit. Boleh null = global |
+| `nilai_min`   | required (create), numeric, min:0, max:100             | Nilai minimum range konversi                      |
+| `nilai_max`   | required (create), numeric, min:0, max:100, ≥nilai_min | Nilai maximum, harus ≥ nilai_min                  |
+| `nilai_huruf` | required (create), string, max:5                       | Huruf nilai (A, B, C, dll)                        |
+| `predikat`    | nullable, string, max:50                               | Deskripsi predikat (Sangat Baik, dll)             |
+| `status`      | nullable (default AKTIF), in:AKTIF,NONAKTIF            | Status aktif/nonaktif                             |
 
 ---
 
@@ -328,6 +354,7 @@ Accept: application/json
 ## 🧪 Test dengan cURL
 
 ### Test 1 - List
+
 ```bash
 curl -X GET "http://localhost:8000/api/akademik/konversi-nilai?per_page=5" \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -335,6 +362,7 @@ curl -X GET "http://localhost:8000/api/akademik/konversi-nilai?per_page=5" \
 ```
 
 ### Test 2 - Create
+
 ```bash
 curl -X POST "http://localhost:8000/api/akademik/konversi-nilai" \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -350,6 +378,7 @@ curl -X POST "http://localhost:8000/api/akademik/konversi-nilai" \
 ```
 
 ### Test 3 - Show
+
 ```bash
 curl -X GET "http://localhost:8000/api/akademik/konversi-nilai/1" \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -357,6 +386,7 @@ curl -X GET "http://localhost:8000/api/akademik/konversi-nilai/1" \
 ```
 
 ### Test 4 - Update
+
 ```bash
 curl -X PUT "http://localhost:8000/api/akademik/konversi-nilai/1" \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -367,6 +397,7 @@ curl -X PUT "http://localhost:8000/api/akademik/konversi-nilai/1" \
 ```
 
 ### Test 5 - Delete
+
 ```bash
 curl -X DELETE "http://localhost:8000/api/akademik/konversi-nilai/1" \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -378,6 +409,7 @@ curl -X DELETE "http://localhost:8000/api/akademik/konversi-nilai/1" \
 ## ✨ Contoh Use Case Lengkap
 
 ### Workflow: Create Grade Conversion untuk MTS
+
 ```json
 POST /api/akademik/konversi-nilai
 
@@ -418,6 +450,7 @@ POST /api/akademik/konversi-nilai
 ```
 
 ### Workflow: View → Update → Nonaktifkan
+
 ```bash
 # 1. Get detail
 GET /api/akademik/konversi-nilai/1
