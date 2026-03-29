@@ -15,11 +15,22 @@ class KonversiNilaiController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);
+        $kodeUnit = $request->query('kode_unit');
 
         $query = DataKonversiNilai::query()
-            ->when($request->filled('kode_unit'), fn($q) => $q->where('kode_unit', $request->kode_unit))
-            ->when($request->filled('status'), fn($q) => $q->where('status', strtoupper((string) $request->status)))
-            ->orderByDesc('id_konversi');
+            ->when($request->filled('status'), fn($q) => $q->where('status', strtoupper((string) $request->status)));
+
+        if ($request->filled('kode_unit')) {
+            $query->where(function ($q) use ($kodeUnit) {
+                $q->where('kode_unit', $kodeUnit)
+                    ->orWhereNull('kode_unit');
+            });
+
+            // Prioritaskan data spesifik unit, lalu fallback data global.
+            $query->orderByRaw('CASE WHEN kode_unit IS NULL THEN 1 ELSE 0 END');
+        }
+
+        $query->orderByDesc('id_konversi');
 
         return response()->json($query->paginate($perPage));
     }

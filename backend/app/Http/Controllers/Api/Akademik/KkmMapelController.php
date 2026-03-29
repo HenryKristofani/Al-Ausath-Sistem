@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Akademik;
 use App\Http\Controllers\Controller;
 use App\Models\DataPetugas;
 use App\Models\KkmMapel;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -28,13 +29,25 @@ class KkmMapelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);
+        $kodeUnit = $request->query('kode_unit');
 
         $query = KkmMapel::query()
             ->with(['mataPelajaran', 'unit'])
             ->when($request->filled('kode_mapel'), fn($q) => $q->where('kode_mapel', $request->kode_mapel))
             ->when($request->filled('tahun_ajaran'), fn($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
-            ->when($request->filled('semester'), fn($q) => $q->where('semester', (int) $request->semester))
-            ->orderByDesc('id_kkm');
+            ->when($request->filled('semester'), fn($q) => $q->where('semester', (int) $request->semester));
+
+        if ($request->filled('kode_unit')) {
+            $query->where(function ($q) use ($kodeUnit) {
+                $q->where('kode_unit', $kodeUnit)
+                    ->orWhereNull('kode_unit');
+            });
+
+            // Prioritaskan data spesifik unit, lalu fallback data global.
+            $query->orderByRaw('CASE WHEN kode_unit IS NULL THEN 1 ELSE 0 END');
+        }
+
+        $query->orderByDesc('id_kkm');
 
         return response()->json($query->paginate($perPage));
     }
@@ -57,7 +70,17 @@ class KkmMapelController extends Controller
             'keterangan' => ['nullable', 'string'],
         ]);
 
-        $data = KkmMapel::create($validated);
+        try {
+            $data = KkmMapel::create($validated);
+        } catch (QueryException $exception) {
+            if ((string) $exception->getCode() === '23505') {
+                return response()->json([
+                    'message' => 'KKM untuk kombinasi mapel/unit/tahun ajaran/semester ini sudah ada.',
+                ], 422);
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'message' => 'KKM mapel berhasil dibuat.',
@@ -95,7 +118,17 @@ class KkmMapelController extends Controller
             'keterangan' => ['nullable', 'string'],
         ]);
 
-        $kkm->update($validated);
+        try {
+            $kkm->update($validated);
+        } catch (QueryException $exception) {
+            if ((string) $exception->getCode() === '23505') {
+                return response()->json([
+                    'message' => 'KKM untuk kombinasi mapel/unit/tahun ajaran/semester ini sudah ada.',
+                ], 422);
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'message' => 'KKM mapel berhasil diperbarui.',
