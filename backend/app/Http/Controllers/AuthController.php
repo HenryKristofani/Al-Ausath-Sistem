@@ -86,7 +86,7 @@ class AuthController extends Controller
             // Validasi petugas
             'alamat_email' => 'required_if:role,petugas|email|unique:data_petugas,alamat_email',
             'nomor_induk' => 'required_if:role,petugas|string|unique:data_petugas,nomor_induk',
-            'peran_akun' => 'required_if:role,petugas|string',
+            'peran_akun' => 'required_if:role,petugas|string|in:Petugas Admin,Petugas Tata Usaha,Petugas PPDB,Staf Pengajar',
             'pilihan_unit' => 'nullable|string',
             
             // Validasi santri

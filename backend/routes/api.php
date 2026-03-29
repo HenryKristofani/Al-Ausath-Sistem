@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
 use App\Http\Controllers\Api\Administrasi\DataSantriController;
+use App\Http\Controllers\Api\Administrasi\DataPetugasController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
@@ -50,6 +51,15 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/{id}', [DataSantriController::class, 'show']);
         Route::put('/{id}', [DataSantriController::class, 'update']);
         Route::delete('/{id}', [DataSantriController::class, 'destroy']);
+    });
+
+    Route::prefix('petugas')->group(function () {
+        Route::get('/peran-akun-options', [DataPetugasController::class, 'peranAkunOptions']);
+        Route::get('/', [DataPetugasController::class, 'index']);
+        Route::post('/', [DataPetugasController::class, 'store']);
+        Route::get('/{id}', [DataPetugasController::class, 'show']);
+        Route::put('/{id}', [DataPetugasController::class, 'update']);
+        Route::delete('/{id}', [DataPetugasController::class, 'destroy']);
     });
 
     Route::prefix('spp')->group(function () {

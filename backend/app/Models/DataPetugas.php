@@ -10,6 +10,13 @@ class DataPetugas extends Authenticatable
 {
     use HasApiTokens, Notifiable; 
 
+    public const PERAN_AKUN_OPTIONS = [
+        'Petugas Admin',
+        'Petugas Tata Usaha',
+        'Petugas PPDB',
+        'Staf Pengajar',
+    ];
+
     protected $table = 'data_petugas';
     protected $primaryKey = 'id_petugas';
 
