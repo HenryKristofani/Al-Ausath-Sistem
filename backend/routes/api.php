@@ -70,6 +70,10 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('santri')->group(function () {
         Route::get('/', [DataSantriController::class, 'index']);
         Route::post('/', [DataSantriController::class, 'store']);
+        Route::post('/pindah-kelas', [DataSantriController::class, 'pindahKelas']);
+        Route::post('/import', [DataSantriController::class, 'import']);
+        Route::get('/export', [DataSantriController::class, 'export']);
+        Route::get('/import-template', [DataSantriController::class, 'importTemplate']);
         Route::get('/{id}', [DataSantriController::class, 'show']);
         Route::put('/{id}', [DataSantriController::class, 'update']);
         Route::delete('/{id}', [DataSantriController::class, 'destroy']);
@@ -79,6 +83,9 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/peran-akun-options', [DataPetugasController::class, 'peranAkunOptions']);
         Route::get('/', [DataPetugasController::class, 'index']);
         Route::post('/', [DataPetugasController::class, 'store']);
+        Route::post('/import', [DataPetugasController::class, 'import']);
+        Route::get('/export', [DataPetugasController::class, 'export']);
+        Route::get('/import-template', [DataPetugasController::class, 'importTemplate']);
         Route::get('/{id}', [DataPetugasController::class, 'show']);
         Route::put('/{id}', [DataPetugasController::class, 'update']);
         Route::delete('/{id}', [DataPetugasController::class, 'destroy']);

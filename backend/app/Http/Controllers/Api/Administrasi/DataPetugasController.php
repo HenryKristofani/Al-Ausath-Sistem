@@ -8,7 +8,9 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataPetugasController extends Controller
 {
@@ -154,5 +156,253 @@ class DataPetugasController extends Controller
         return response()->json([
             'data' => DataPetugas::PERAN_AKUN_OPTIONS,
         ]);
+    }
+
+    /**
+     * Import data petugas dari CSV (upsert berdasarkan alamat_email).
+     */
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+
+        if ($handle === false) {
+            return response()->json([
+                'message' => 'File CSV tidak dapat dibaca.',
+            ], 422);
+        }
+
+        $headers = fgetcsv($handle);
+
+        if ($headers === false) {
+            fclose($handle);
+
+            return response()->json([
+                'message' => 'Header CSV tidak ditemukan.',
+            ], 422);
+        }
+
+        $normalizedHeaders = array_map([$this, 'normalizeImportHeader'], $headers);
+
+        $inserted = 0;
+        $updated = 0;
+        $failed = [];
+        $lineNumber = 1;
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $lineNumber++;
+
+            $rowData = $this->combineRowData($normalizedHeaders, $row);
+            if ($this->isEmptyRow($rowData)) {
+                continue;
+            }
+
+            $payload = $this->mapPetugasPayload($rowData);
+
+            $validator = Validator::make($payload, [
+                'nomor_induk' => ['nullable', 'string', 'max:20'],
+                'nama_lengkap' => ['required', 'string', 'max:200'],
+                'peran_akun' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
+                'pilihan_unit' => ['nullable', 'string', 'max:10'],
+                'alamat_email' => ['required', 'email', 'max:100'],
+                'nomor_telepon' => ['nullable', 'string', 'max:20'],
+                'password' => ['nullable', 'string', 'min:6'],
+                'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
+            ]);
+
+            if ($validator->fails()) {
+                $failed[] = [
+                    'line' => $lineNumber,
+                    'errors' => $validator->errors()->all(),
+                ];
+                continue;
+            }
+
+            $existing = DataPetugas::where('alamat_email', $payload['alamat_email'])->first();
+
+            if (!$existing && empty($payload['password'])) {
+                $failed[] = [
+                    'line' => $lineNumber,
+                    'errors' => ['Password wajib diisi untuk data petugas baru.'],
+                ];
+                continue;
+            }
+
+            if (!empty($payload['nomor_induk'])) {
+                $nomorIndukOwner = DataPetugas::where('nomor_induk', $payload['nomor_induk'])->first();
+
+                if ($nomorIndukOwner && (!$existing || $nomorIndukOwner->id_petugas !== $existing->id_petugas)) {
+                    $failed[] = [
+                        'line' => $lineNumber,
+                        'errors' => ['Nomor induk sudah digunakan oleh petugas lain.'],
+                    ];
+                    continue;
+                }
+            }
+
+            $persistPayload = [
+                'nomor_induk' => $payload['nomor_induk'],
+                'nama_lengkap' => $payload['nama_lengkap'],
+                'peran_akun' => $payload['peran_akun'],
+                'pilihan_unit' => $payload['pilihan_unit'],
+                'alamat_email' => $payload['alamat_email'],
+                'nomor_telepon' => $payload['nomor_telepon'],
+                'status' => strtoupper($payload['status'] ?? 'AKTIF'),
+            ];
+
+            if (!empty($payload['password'])) {
+                $persistPayload['password_hash'] = Hash::make($payload['password']);
+            }
+
+            if ($existing) {
+                $existing->update($persistPayload);
+                $updated++;
+                continue;
+            }
+
+            DataPetugas::create($persistPayload);
+            $inserted++;
+        }
+
+        fclose($handle);
+
+        return response()->json([
+            'message' => 'Import data petugas selesai.',
+            'data' => [
+                'inserted' => $inserted,
+                'updated' => $updated,
+                'failed' => count($failed),
+                'error_rows' => $failed,
+            ],
+        ]);
+    }
+
+    /**
+     * Export data petugas ke CSV sesuai filter.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $query = DataPetugas::query()
+            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
+            ->when($request->filled('peran_akun'), fn ($q) => $q->where('peran_akun', $request->peran_akun))
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('nama_lengkap', 'like', "%{$keyword}%")
+                        ->orWhere('nomor_induk', 'like', "%{$keyword}%")
+                        ->orWhere('alamat_email', 'like', "%{$keyword}%");
+                });
+            })
+            ->orderByDesc('id_petugas');
+
+        $headers = [
+            'nomor_induk',
+            'nama_lengkap',
+            'peran_akun',
+            'pilihan_unit',
+            'alamat_email',
+            'nomor_telepon',
+            'status',
+            'last_login',
+        ];
+
+        return response()->streamDownload(function () use ($query, $headers) {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, $headers);
+
+            $query->chunk(500, function ($rows) use ($output) {
+                foreach ($rows as $row) {
+                    fputcsv($output, [
+                        $row->nomor_induk,
+                        $row->nama_lengkap,
+                        $row->peran_akun,
+                        $row->pilihan_unit,
+                        $row->alamat_email,
+                        $row->nomor_telepon,
+                        $row->status,
+                        optional($row->last_login)->format('Y-m-d H:i:s'),
+                    ]);
+                }
+            });
+
+            fclose($output);
+        }, 'data-petugas-' . now()->format('Ymd_His') . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Template CSV import data petugas.
+     */
+    public function importTemplate(): StreamedResponse
+    {
+        $headers = [
+            'nomor_induk',
+            'nama_lengkap',
+            'peran_akun',
+            'pilihan_unit',
+            'alamat_email',
+            'nomor_telepon',
+            'password',
+            'status',
+        ];
+
+        return response()->streamDownload(function () use ($headers) {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, $headers);
+            fclose($output);
+        }, 'template-import-petugas.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function normalizeImportHeader(string $header): string
+    {
+        $normalized = strtolower(trim($header));
+        $normalized = str_replace([' ', '-', '/'], '_', $normalized);
+
+        return preg_replace('/[^a-z0-9_]/', '', $normalized) ?? '';
+    }
+
+    private function combineRowData(array $headers, array $row): array
+    {
+        $data = [];
+
+        foreach ($headers as $index => $header) {
+            $value = $row[$index] ?? null;
+            $value = is_string($value) ? trim($value) : $value;
+            $data[$header] = $value === '' ? null : $value;
+        }
+
+        return $data;
+    }
+
+    private function isEmptyRow(array $rowData): bool
+    {
+        foreach ($rowData as $value) {
+            if ($value !== null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function mapPetugasPayload(array $rowData): array
+    {
+        return [
+            'nomor_induk' => $rowData['nomor_induk'] ?? null,
+            'nama_lengkap' => $rowData['nama_lengkap'] ?? null,
+            'peran_akun' => $rowData['peran_akun'] ?? null,
+            'pilihan_unit' => $rowData['pilihan_unit'] ?? null,
+            'alamat_email' => $rowData['alamat_email'] ?? null,
+            'nomor_telepon' => $rowData['nomor_telepon'] ?? null,
+            'password' => $rowData['password'] ?? null,
+            'status' => $rowData['status'] ?? null,
+        ];
     }
 }
