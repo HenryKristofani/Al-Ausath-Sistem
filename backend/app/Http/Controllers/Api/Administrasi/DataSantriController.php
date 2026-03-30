@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api\Administrasi;
 
 use App\Http\Controllers\Controller;
+use App\Models\DataAkunSantri;
 use App\Models\DataSantri;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -156,6 +158,46 @@ class DataSantriController extends Controller
         return response()->json([
             'message' => 'Data santri berhasil dihapus.',
         ]);
+    }
+
+    /**
+     * Buatkan akun untuk 1 santri dari master data santri.
+     */
+    public function buatAkun(int $id, Request $request): JsonResponse
+    {
+        $santri = DataSantri::with(['kelas', 'akun'])->findOrFail($id);
+
+        if ($santri->akun) {
+            return response()->json([
+                'message' => 'Santri ini sudah memiliki akun.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'nama_akun' => ['nullable', 'string', 'max:100', 'unique:data_akun_santri,nama_akun'],
+            'password' => ['required', 'string', 'min:6'],
+            'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
+        ]);
+
+        $namaAkun = $validated['nama_akun'] ?? $santri->nomor_induk;
+
+        $akun = DataAkunSantri::create([
+            'nomor_induk' => $santri->nomor_induk,
+            'nama_akun' => $namaAkun,
+            'nama_lengkap' => $santri->nama_lengkap_santri,
+            'nama_unit' => $santri->kelas?->kode_unit,
+            'nama_kelas' => $santri->kelas?->nama_kelas,
+            'tahun_ajaran' => $santri->kelas?->tahun_ajaran,
+            'alamat_email' => $santri->alamat_email,
+            'nomor_telepon' => $santri->nomor_telepon,
+            'password_hash' => Hash::make($validated['password']),
+            'status' => strtoupper($validated['status'] ?? 'AKTIF'),
+        ]);
+
+        return response()->json([
+            'message' => 'Akun santri berhasil dibuat.',
+            'data' => $akun,
+        ], 201);
     }
 
     /**

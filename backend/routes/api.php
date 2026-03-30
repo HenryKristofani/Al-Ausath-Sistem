@@ -9,8 +9,12 @@ use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
+use App\Http\Controllers\Api\Administrasi\DataAkunSantriController;
+use App\Http\Controllers\Api\Administrasi\DataKelasController;
 use App\Http\Controllers\Api\Administrasi\DataSantriController;
 use App\Http\Controllers\Api\Administrasi\DataPetugasController;
+use App\Http\Controllers\Api\Administrasi\DataTahunAjaranController;
+use App\Http\Controllers\Api\Administrasi\DataUnitController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
@@ -71,12 +75,25 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/', [DataSantriController::class, 'index']);
         Route::post('/', [DataSantriController::class, 'store']);
         Route::post('/pindah-kelas', [DataSantriController::class, 'pindahKelas']);
+        Route::post('/{id}/buat-akun', [DataSantriController::class, 'buatAkun']);
         Route::post('/import', [DataSantriController::class, 'import']);
         Route::get('/export', [DataSantriController::class, 'export']);
         Route::get('/import-template', [DataSantriController::class, 'importTemplate']);
         Route::get('/{id}', [DataSantriController::class, 'show']);
         Route::put('/{id}', [DataSantriController::class, 'update']);
         Route::delete('/{id}', [DataSantriController::class, 'destroy']);
+    });
+
+    Route::prefix('akun-santri')->group(function () {
+        Route::get('/kelas-tanpa-akun', [DataAkunSantriController::class, 'kelasTanpaAkun']);
+        Route::get('/santri-tanpa-akun', [DataAkunSantriController::class, 'santriTanpaAkunByKelas']);
+        Route::post('/sinkron', [DataAkunSantriController::class, 'sinkron']);
+        Route::get('/', [DataAkunSantriController::class, 'index']);
+        Route::post('/', [DataAkunSantriController::class, 'store']);
+        Route::get('/export', [DataAkunSantriController::class, 'export']);
+        Route::get('/{id}', [DataAkunSantriController::class, 'show']);
+        Route::put('/{id}', [DataAkunSantriController::class, 'update']);
+        Route::delete('/{id}', [DataAkunSantriController::class, 'destroy']);
     });
 
     Route::prefix('petugas')->group(function () {
@@ -89,6 +106,38 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/{id}', [DataPetugasController::class, 'show']);
         Route::put('/{id}', [DataPetugasController::class, 'update']);
         Route::delete('/{id}', [DataPetugasController::class, 'destroy']);
+    });
+
+    Route::prefix('unit')->group(function () {
+        Route::get('/', [DataUnitController::class, 'index']);
+        Route::post('/', [DataUnitController::class, 'store']);
+        Route::post('/import', [DataUnitController::class, 'import']);
+        Route::get('/export', [DataUnitController::class, 'export']);
+        Route::get('/{id}', [DataUnitController::class, 'show']);
+        Route::put('/{id}', [DataUnitController::class, 'update']);
+        Route::delete('/{id}', [DataUnitController::class, 'destroy']);
+    });
+
+    Route::prefix('kelas')->group(function () {
+        Route::get('/', [DataKelasController::class, 'index']);
+        Route::post('/', [DataKelasController::class, 'store']);
+        Route::post('/import', [DataKelasController::class, 'import']);
+        Route::get('/export', [DataKelasController::class, 'export']);
+        Route::get('/import-template', [DataKelasController::class, 'importTemplate']);
+        Route::get('/{id}', [DataKelasController::class, 'show']);
+        Route::put('/{id}', [DataKelasController::class, 'update']);
+        Route::delete('/{id}', [DataKelasController::class, 'destroy']);
+    });
+
+    Route::prefix('tahun-ajaran')->group(function () {
+        Route::get('/', [DataTahunAjaranController::class, 'index']);
+        Route::post('/', [DataTahunAjaranController::class, 'store']);
+        Route::post('/import', [DataTahunAjaranController::class, 'import']);
+        Route::get('/export', [DataTahunAjaranController::class, 'export']);
+        Route::get('/import-template', [DataTahunAjaranController::class, 'importTemplate']);
+        Route::get('/{id}', [DataTahunAjaranController::class, 'show']);
+        Route::put('/{id}', [DataTahunAjaranController::class, 'update']);
+        Route::delete('/{id}', [DataTahunAjaranController::class, 'destroy']);
     });
 
     Route::prefix('spp')->group(function () {

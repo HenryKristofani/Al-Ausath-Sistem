@@ -30,6 +30,12 @@ class DataKelas extends Model
     {
         return $this->hasMany(DataSantri::class, 'kode_kelas', 'kode_kelas');
     }
+
+    // Relasi ke DataTahunAjaran
+    public function tahunAjaranRelasi()
+    {
+        return $this->belongsTo(DataTahunAjaran::class, 'tahun_ajaran', 'kode_tahun');
+    }
 }
 
 

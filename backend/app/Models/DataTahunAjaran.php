@@ -15,6 +15,12 @@ class DataTahunAjaran extends Model
         'keterangan',
         'status',
         'is_deleted',
+        'deleted_at',
+    ];
+
+    protected $casts = [
+        'is_deleted' => 'boolean',
+        'deleted_at' => 'datetime',
     ];
 }
 
