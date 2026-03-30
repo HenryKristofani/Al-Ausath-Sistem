@@ -46,10 +46,16 @@
 - [x] Setter utama KKM adalah guru mapel (petugas mapel), admin hanya untuk override terkontrol jika dibutuhkan.
 - [x] Filter utama: `kode_mapel`, `tahun_ajaran`, `semester`.
 - [x] Hilangkan ketergantungan logika beda jenjang pada proses hitung status.
+- [x] Dukungan fallback global pada list KKM: jika `kode_unit` dikirim, ambil data spesifik unit lalu fallback ke `kode_unit = null`.
+- [x] Prioritas hasil list KKM: data spesifik unit ditampilkan lebih dulu daripada data global.
+- [x] Perbaikan constraint unik KKM agar mendukung kombinasi data global + data spesifik unit tanpa bentrok.
+- [x] Tangani duplicate key KKM sebagai validasi `422` (bukan `500`) dengan pesan yang jelas.
 
 ### 2.3 API Konversi Nilai
 
 - [x] `KonversiNilaiController` CRUD untuk konversi angka ke huruf/predikat.
+- [x] Dukungan fallback global pada list konversi: jika `kode_unit` dikirim, ambil data spesifik unit lalu fallback ke `kode_unit = null`.
+- [x] Prioritas hasil list konversi: data spesifik unit ditampilkan lebih dulu daripada data global.
 
 ### 2.4 Routing dan Security
 
