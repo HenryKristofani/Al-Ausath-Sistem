@@ -16,12 +16,19 @@ class NilaiAkhlakController extends Controller
     {
         $perPage = (int) $request->query('per_page', 10);
 
+        $validated = $request->validate([
+            'nomor_induk' => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'tahun_ajaran' => ['nullable', 'string', 'max:20'],
+            'semester' => ['nullable', 'integer', 'in:1,2'],
+            'aspek' => ['nullable', 'string', 'max:80'],
+        ]);
+
         $query = NilaiAkhlak::query()
             ->with(['santri', 'petugas'])
-            ->when($request->filled('nomor_induk'), fn($q) => $q->where('nomor_induk', $request->nomor_induk))
-            ->when($request->filled('tahun_ajaran'), fn($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
-            ->when($request->filled('semester'), fn($q) => $q->where('semester', $request->semester))
-            ->when($request->filled('aspek'), fn($q) => $q->where('aspek', $request->aspek))
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->when(array_key_exists('tahun_ajaran', $validated), fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
+            ->when(array_key_exists('semester', $validated), fn($q) => $q->where('semester', $validated['semester']))
+            ->when(array_key_exists('aspek', $validated), fn($q) => $q->where('aspek', $validated['aspek']))
             ->orderByDesc('id_akhlak');
 
         return response()->json($query->paginate($perPage));

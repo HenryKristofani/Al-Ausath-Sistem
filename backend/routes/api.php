@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\Akademik\BobotNilaiController;
 use App\Http\Controllers\Api\Akademik\KkmMapelController;
 use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
+use App\Http\Controllers\Api\Akademik\NilaiMapelController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
@@ -45,6 +46,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/konversi-nilai/{id}', [KonversiNilaiController::class, 'show']);
         Route::put('/konversi-nilai/{id}', [KonversiNilaiController::class, 'update']);
         Route::delete('/konversi-nilai/{id}', [KonversiNilaiController::class, 'destroy']);
+
+        Route::get('/nilai-mapel', [NilaiMapelController::class, 'index']);
+        Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
+        Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
 
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);

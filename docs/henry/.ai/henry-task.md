@@ -66,49 +66,59 @@
 
 ## Fase 3 — API Input Nilai (Sesuai Mekanisme Client)
 
+Status fase: **DONE 100%** ✅
+
 ### 3.1 Input Komponen Nilai Mapel
 
-- [ ] Endpoint input nilai komponen:
+- [x] Endpoint input nilai komponen:
   - nilai tugas (minimal 3 data)
   - nilai ulangan (minimal 3 data)
   - nilai ujian akhir
-- [ ] Validasi kriteria tugas yang diakui client:
+- [x] Validasi kriteria tugas yang diakui client:
   - PR
   - tugas pengganti saat pengajar tidak hadir
   - pengerjaan soal kompetensi/modul
-- [ ] Validasi kriteria ulangan yang diakui client:
+- [x] Validasi kriteria ulangan yang diakui client:
   - soal disusun pengajar mapel
   - pengerjaan diawasi pengajar (tidak diwakilkan)
-- [ ] Simpan data per santri-mapel-semester.
+- [x] Simpan data per santri-mapel-semester.
 
 ### 3.2 Hitung Nilai Akhir Mapel
 
-- [ ] Hitung dari bobot global client:
+- [x] Hitung dari bobot global client:
   - tugas 20%
   - ulangan 30%
   - ujian akhir 50%
-- [ ] Terapkan pembulatan nilai mapel:
+- [x] Terapkan pembulatan nilai mapel:
   - desimal 1-4 turun
   - desimal 5-9 naik
 
 ### 3.3 Normalisasi Nilai Tampil Rapor
 
-- [ ] Jika nilai akhir mapel = 100, tampilkan 98.
-- [ ] Jika nilai akhir mapel < 50, tampilkan 50 dengan flag merah.
-- [ ] Jika nilai akhir mapel = 50 asli, tampilkan 50 hitam.
+- [x] Jika nilai akhir mapel = 100, tampilkan 98.
+- [x] Jika nilai akhir mapel < 50, tampilkan 50 dengan flag merah.
+- [x] Jika nilai akhir mapel = 50 asli, tampilkan 50 hitam.
 
 ### 3.4 Cek Status KKM
 
-- [ ] Setelah nilai final mapel didapat, bandingkan dengan KKM mapel.
-- [ ] Simpan/return status tuntas atau belum.
-- [ ] Pastikan KKM hanya checker, bukan penghitung nilai.
+- [x] Setelah nilai final mapel didapat, bandingkan dengan KKM mapel.
+- [x] Simpan/return status tuntas atau belum.
+- [x] Pastikan KKM hanya checker, bukan penghitung nilai.
 
 ### 3.5 Input Nilai Akhlak dan Keseharian
 
-- [ ] Endpoint input nilai akhlak (angka).
-- [ ] Endpoint input keseharian anak (A/B/C/D: kebersihan, kerapian, keterampilan).
-- [ ] Endpoint catatan pengembangan diri oleh wali kelas.
-- [ ] Semua endpoint akademik wajib menolak request tanpa `nomor_induk` valid.
+- [x] Endpoint input nilai akhlak (angka).
+- [x] Endpoint input keseharian anak (A/B/C/D: kebersihan, kerapian, keterampilan).
+- [x] Endpoint catatan pengembangan diri oleh wali kelas.
+- [x] Semua endpoint akademik wajib menolak request tanpa `nomor_induk` valid.
+
+### 3.6 Penyempurnaan Implementasi Teknis (Sudah Selesai)
+
+- [x] Endpoint detail nilai mapel menggunakan `kode_mapel` + `nomor_induk` (bukan `id_nilai`) agar sesuai alur user.
+- [x] Item ulangan difilter terlebih dahulu: hanya `soal_disusun_pengajar=true` dan `diawasi_pengajar=true` yang ikut dihitung.
+- [x] Validasi minimum 3 nilai ulangan **valid setelah filtering**.
+- [x] Simpan hasil perhitungan akhir ke kolom terpisah: `nilai_akhir_mapel`, `nilai_rapor_tampil`, `flag_warna_rapor`.
+- [x] Hapus kolom legacy `nilai_akhir` untuk mencegah mismatch hasil lama vs hasil baru.
 
 ---
 
