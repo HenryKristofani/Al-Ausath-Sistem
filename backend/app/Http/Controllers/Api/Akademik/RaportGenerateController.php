@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\Akademik;
 
 use App\Http\Controllers\Controller;
+use App\Models\DataKelas;
+use App\Models\DataKonversiNilai;
 use App\Models\DataRaport;
 use App\Models\DataSantri;
 use App\Models\NilaiAkhlak;
@@ -22,6 +24,7 @@ class RaportGenerateController extends Controller
             'kode_kelas' => ['nullable', 'string', 'max:10'],
             'tahun_ajaran' => ['nullable', 'string', 'max:20'],
             'semester' => ['nullable', 'integer', 'in:1,2'],
+            'include_nilai_mapel' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -53,7 +56,67 @@ class RaportGenerateController extends Controller
             ->orderByDesc('data_raport.semester')
             ->orderBy('santri.nama_lengkap_santri');
 
-        return response()->json($query->paginate($perPage));
+        $result = $query->paginate($perPage);
+
+        if (($validated['include_nilai_mapel'] ?? false) === true) {
+            $result->setCollection(
+                $result->getCollection()->map(function ($row) {
+                    $row->nilai_mapel = $this->buildNilaiMapelWithKonversi(
+                        nomorInduk: (string) $row->nomor_induk,
+                        tahunAjaran: (string) $row->tahun_ajaran,
+                        semester: (int) $row->semester,
+                        kodeKelas: (string) $row->kode_kelas
+                    );
+
+                    return $row;
+                })
+            );
+        }
+
+        return response()->json($result);
+    }
+
+    public function show(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'nomor_induk' => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+        ]);
+
+        $raport = DataRaport::query()
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->where('tahun_ajaran', $validated['tahun_ajaran'])
+            ->where('semester', (int) $validated['semester'])
+            ->firstOrFail();
+
+        $santri = DataSantri::query()
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->firstOrFail();
+
+        $nilaiAkhlak = NilaiAkhlak::query()
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->where('tahun_ajaran', $validated['tahun_ajaran'])
+            ->where('semester', (int) $validated['semester'])
+            ->orderBy('aspek')
+            ->get(['aspek', 'nilai_angka', 'deskripsi']);
+
+        $nilaiMapel = $this->buildNilaiMapelWithKonversi(
+            nomorInduk: $validated['nomor_induk'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester'],
+            kodeKelas: (string) $raport->kode_kelas
+        );
+
+        return response()->json([
+            'message' => 'Detail rapor berhasil diambil.',
+            'data' => [
+                'raport' => $raport,
+                'santri' => $santri,
+                'nilai_mapel' => $nilaiMapel,
+                'nilai_akhlak' => $nilaiAkhlak,
+            ],
+        ]);
     }
 
     public function generate(Request $request): JsonResponse
@@ -331,6 +394,87 @@ class RaportGenerateController extends Controller
         }
 
         return 'umum';
+    }
+
+    private function buildNilaiMapelWithKonversi(string $nomorInduk, string $tahunAjaran, int $semester, string $kodeKelas)
+    {
+        $nilaiMapel = DB::table('data_nilai_siswa as ns')
+            ->leftJoin('data_mata_pelajaran as mp', 'mp.kode_mapel', '=', 'ns.kode_mapel')
+            ->where('ns.nomor_induk', $nomorInduk)
+            ->where('ns.tahun_ajaran', $tahunAjaran)
+            ->where('ns.semester', $semester)
+            ->select([
+                'ns.kode_mapel',
+                'mp.nama_mapel',
+                'mp.kelompok_mapel',
+                'ns.nilai_harian',
+                'ns.nilai_uts',
+                'ns.nilai_uas',
+                'ns.nilai_akhir_mapel',
+                'ns.nilai_rapor_tampil',
+                'ns.flag_warna_rapor',
+            ])
+            ->orderBy('mp.urutan')
+            ->orderBy('mp.nama_mapel')
+            ->get();
+
+        $konversiRows = $this->resolveKonversiRowsForKelas(
+            kodeKelas: $kodeKelas,
+            tahunAjaran: $tahunAjaran
+        );
+
+        return $nilaiMapel->map(function ($row) use ($konversiRows) {
+            $konversi = $this->matchKonversiNilai((float) ($row->nilai_rapor_tampil ?? 0), $konversiRows);
+
+            $row->nilai_huruf = $konversi['nilai_huruf'];
+            $row->predikat = $konversi['predikat'];
+
+            return $row;
+        });
+    }
+
+    private function resolveKonversiRowsForKelas(string $kodeKelas, string $tahunAjaran)
+    {
+        $kodeUnit = DataKelas::query()
+            ->where('kode_kelas', $kodeKelas)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->orderByDesc('id_kelas')
+            ->value('kode_unit');
+
+        $query = DataKonversiNilai::query()
+            ->where('status', 'AKTIF');
+
+        if ($kodeUnit !== null) {
+            $query->where(function ($q) use ($kodeUnit) {
+                $q->where('kode_unit', $kodeUnit)
+                    ->orWhereNull('kode_unit');
+            });
+        } else {
+            $query->whereNull('kode_unit');
+        }
+
+        return $query
+            ->orderByRaw('CASE WHEN kode_unit IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('nilai_min')
+            ->orderByDesc('id_konversi')
+            ->get(['kode_unit', 'nilai_min', 'nilai_max', 'nilai_huruf', 'predikat']);
+    }
+
+    private function matchKonversiNilai(float $nilai, $konversiRows): array
+    {
+        foreach ($konversiRows as $row) {
+            if ($nilai >= (float) $row->nilai_min && $nilai <= (float) $row->nilai_max) {
+                return [
+                    'nilai_huruf' => $row->nilai_huruf,
+                    'predikat' => $row->predikat,
+                ];
+            }
+        }
+
+        return [
+            'nilai_huruf' => null,
+            'predikat' => null,
+        ];
     }
 
     /**

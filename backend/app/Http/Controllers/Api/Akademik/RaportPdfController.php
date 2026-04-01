@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\Akademik;
 
 use App\Http\Controllers\Controller;
 use App\Models\DataAkunSantri;
+use App\Models\DataKelas;
+use App\Models\DataKonversiNilai;
 use App\Models\DataPetugas;
 use App\Models\DataRaport;
 use App\Models\DataSantri;
@@ -158,6 +160,13 @@ class RaportPdfController extends Controller
             ->orderBy('mp.nama_mapel')
             ->get();
 
+        $konversiRows = $this->resolveKonversiRowsForKelas(
+            kodeKelas: (string) $raport->kode_kelas,
+            tahunAjaran: $tahunAjaran
+        );
+
+        $nilaiMapel = $this->appendKonversiToNilaiMapel($nilaiMapel, $konversiRows);
+
         $nilaiAkhlak = NilaiAkhlak::query()
             ->where('nomor_induk', $nomorInduk)
             ->where('tahun_ajaran', $tahunAjaran)
@@ -170,6 +179,62 @@ class RaportPdfController extends Controller
             'santri' => $santri,
             'nilaiMapel' => $nilaiMapel,
             'nilaiAkhlak' => $nilaiAkhlak,
+        ];
+    }
+
+    private function resolveKonversiRowsForKelas(string $kodeKelas, string $tahunAjaran)
+    {
+        $kodeUnit = DataKelas::query()
+            ->where('kode_kelas', $kodeKelas)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->orderByDesc('id_kelas')
+            ->value('kode_unit');
+
+        $query = DataKonversiNilai::query()
+            ->where('status', 'AKTIF');
+
+        if ($kodeUnit !== null) {
+            $query->where(function ($q) use ($kodeUnit) {
+                $q->where('kode_unit', $kodeUnit)
+                    ->orWhereNull('kode_unit');
+            });
+        } else {
+            $query->whereNull('kode_unit');
+        }
+
+        return $query
+            ->orderByRaw('CASE WHEN kode_unit IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('nilai_min')
+            ->orderByDesc('id_konversi')
+            ->get(['kode_unit', 'nilai_min', 'nilai_max', 'nilai_huruf', 'predikat']);
+    }
+
+    private function appendKonversiToNilaiMapel($nilaiMapel, $konversiRows)
+    {
+        return $nilaiMapel->map(function ($row) use ($konversiRows) {
+            $konversi = $this->matchKonversiNilai((float) ($row->nilai_rapor_tampil ?? 0), $konversiRows);
+
+            $row->nilai_huruf = $konversi['nilai_huruf'];
+            $row->predikat = $konversi['predikat'];
+
+            return $row;
+        });
+    }
+
+    private function matchKonversiNilai(float $nilai, $konversiRows): array
+    {
+        foreach ($konversiRows as $row) {
+            if ($nilai >= (float) $row->nilai_min && $nilai <= (float) $row->nilai_max) {
+                return [
+                    'nilai_huruf' => $row->nilai_huruf,
+                    'predikat' => $row->predikat,
+                ];
+            }
+        }
+
+        return [
+            'nilai_huruf' => null,
+            'predikat' => null,
         ];
     }
 

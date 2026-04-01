@@ -184,3 +184,20 @@ Status fase: **DONE 100%** ✅
 - Bobot global aktif adalah 20/30/50 dan sama untuk semua mapel.
 - Nomor induk santri/wati wajib lengkap sebelum input nilai, generate rapor, maupun publish rapor.
 - Catatan operasional non-API (SOP): lembar penilaian dibawa pengajar, direkap wali kelas, lalu diarsipkan sekretariat.
+
+---
+
+## Backlog BE Lanjutan (Pasca Fase 5)
+
+### B1. Konversi Nilai Huruf per Mapel di Payload Rapor
+
+- [x] Ambil rule konversi dari `data_konversi_nilai` (prioritas spesifik unit, fallback global).
+- [x] Turunkan nilai huruf/predikat dari `nilai_rapor_tampil` tiap mapel.
+- [x] Sertakan hasil konversi di payload API rapor (`show/list/self`) agar siap dipakai template PDF/klien.
+- [x] Tambahkan field output konsisten per mapel, misal: `nilai_huruf` dan/atau `predikat`.
+
+### B2. Konsistensi Flag Warna Nilai Rapor
+
+- [x] Pastikan semua endpoint akademik yang menampilkan nilai mapel memakai sumber yang sama: `flag_warna_rapor` dari aturan nilai asli `< 50`.
+- [x] Tambahkan uji kasus backend untuk skenario batas: `49.x -> 50 MERAH`, `50 asli -> 50 HITAM`, dan `100 -> 98 HITAM`.
+- [x] Pastikan data lama/backfill (jika ada) tidak menimbulkan inkonsistensi antara `nilai_akhir_mapel`, `nilai_rapor_tampil`, dan `flag_warna_rapor` (tersedia command `php artisan raport:backfill-nilai-mapel`, aman dengan opsi `--dry-run`).

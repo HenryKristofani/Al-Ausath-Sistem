@@ -63,6 +63,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/raport/catatan-wali', [RaportCatatanWaliController::class, 'upsert']);
 
         Route::get('/raport', [RaportGenerateController::class, 'index']);
+        Route::get('/raport/show', [RaportGenerateController::class, 'show']);
         Route::post('/raport/generate', [RaportGenerateController::class, 'generate']);
         Route::post('/raport/rank', [RaportGenerateController::class, 'rank']);
         Route::post('/raport/publish', [RaportGenerateController::class, 'publish']);
