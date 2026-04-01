@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Akademik\NilaiMapelController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportGenerateController;
+use App\Http\Controllers\Api\Akademik\RaportPdfController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
 use App\Http\Controllers\Api\Administrasi\DataAkunSantriController;
 use App\Http\Controllers\Api\Administrasi\DataKelasController;
@@ -65,6 +66,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/raport/generate', [RaportGenerateController::class, 'generate']);
         Route::post('/raport/rank', [RaportGenerateController::class, 'rank']);
         Route::post('/raport/publish', [RaportGenerateController::class, 'publish']);
+        Route::get('/raport/pdf', [RaportPdfController::class, 'download']);
+        Route::get('/raport/self', [RaportPdfController::class, 'selfShow']);
+        Route::get('/raport/self/pdf', [RaportPdfController::class, 'selfDownload']);
     });
 });
 

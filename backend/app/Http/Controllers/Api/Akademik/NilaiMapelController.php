@@ -126,6 +126,7 @@ class NilaiMapelController extends Controller
         $nilaiRaporBulat = $this->roundRaporInteger($nilaiAkhirMentah);
 
         [$nilaiRaporTampil, $flagWarnaRapor] = $this->normalizeNilaiRapor(
+            nilaiAkhirMentah: $nilaiAkhirMentah,
             nilaiRaporBulat: $nilaiRaporBulat
         );
 
@@ -231,13 +232,14 @@ class NilaiMapelController extends Controller
     /**
      * @return array{0:int,1:string}
      */
-    private function normalizeNilaiRapor(int $nilaiRaporBulat): array
+    private function normalizeNilaiRapor(float $nilaiAkhirMentah, int $nilaiRaporBulat): array
     {
         if ($nilaiRaporBulat > 98) {
             $nilaiRaporBulat = 98;
         }
 
-        if ($nilaiRaporBulat < 50) {
+        // Warna tinta mengikuti nilai asli/mentah: nilai asli < 50 wajib merah.
+        if ($nilaiAkhirMentah < 50 || $nilaiRaporBulat < 50) {
             return [50, 'MERAH'];
         }
 

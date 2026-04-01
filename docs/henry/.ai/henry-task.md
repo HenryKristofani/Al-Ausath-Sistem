@@ -159,15 +159,20 @@ Status fase: **DONE 100%** ✅
 
 ### 5.1 Generate PDF
 
-- [ ] Endpoint PDF rapor per santri.
-- [ ] Template universal semua jenjang dengan jumlah mapel dinamis.
-- [ ] Catat log download rapor.
+- [x] Endpoint PDF rapor per santri.
+- [x] Template universal semua jenjang dengan jumlah mapel dinamis.
+- [x] Catat log download rapor.
+
+### 5.1.1 Status Cetak DRAFT vs TERBIT
+
+- [x] Cetak PDF status DRAFT diberi watermark `DRAFT`.
+- [x] Cetak PDF status TERBIT tanpa watermark.
 
 ### 5.2 Self-Service Santri
 
-- [ ] Endpoint lihat rapor milik sendiri.
-- [ ] Endpoint download PDF milik sendiri.
-- [ ] Validasi ownership berdasarkan nomor induk.
+- [x] Endpoint lihat rapor milik sendiri.
+- [x] Endpoint download PDF milik sendiri.
+- [x] Validasi ownership berdasarkan nomor induk.
 
 ---
 
