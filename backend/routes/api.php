@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
 use App\Http\Controllers\Api\Akademik\NilaiMapelController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
+use App\Http\Controllers\Api\Akademik\RaportGenerateController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
 use App\Http\Controllers\Api\Administrasi\DataAkunSantriController;
 use App\Http\Controllers\Api\Administrasi\DataKelasController;
@@ -59,6 +60,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         Route::get('/raport/catatan-wali', [RaportCatatanWaliController::class, 'show']);
         Route::post('/raport/catatan-wali', [RaportCatatanWaliController::class, 'upsert']);
+
+        Route::get('/raport', [RaportGenerateController::class, 'index']);
+        Route::post('/raport/generate', [RaportGenerateController::class, 'generate']);
+        Route::post('/raport/rank', [RaportGenerateController::class, 'rank']);
+        Route::post('/raport/publish', [RaportGenerateController::class, 'publish']);
     });
 });
 

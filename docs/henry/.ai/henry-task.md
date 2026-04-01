@@ -126,25 +126,32 @@ Status fase: **DONE 100%** ✅
 
 ### 4.1 Rekap Rapor Semester
 
-- [ ] Agregasi nilai final mapel per santri.
-- [ ] Hitung rata-rata rapor (2 desimal, aturan pembulatan client).
-- [ ] Gabungkan absensi (sakit/izin/tanpa keterangan).
-- [ ] Gabungkan nilai akhlak, keseharian, catatan wali kelas.
-- [ ] Simpan ke `data_raport` status DRAFT.
+- [x] Agregasi nilai final mapel per santri.
+- [x] Hitung rata-rata rapor (2 desimal, aturan pembulatan client).
+- [x] Gabungkan absensi (sakit/izin/tanpa keterangan).
+- [x] Gabungkan nilai akhlak, keseharian, catatan wali kelas.
+- [x] Simpan ke `data_raport` status DRAFT.
 
 ### 4.2 Peringkat Kelas (Rumus Client)
 
-- [ ] Terapkan rumus:
+- [x] Terapkan rumus:
   - [(nilai hifzh x 2) + (rata-rata diniyyah x 2) + (rata-rata umum x 1)] / 5
-- [ ] Simpan ranking per kelas.
-- [ ] Atur tampilan ranking:
+- [x] Simpan ranking per kelas.
+- [x] Atur tampilan ranking:
   - top 10 untuk kelas besar
   - top 5 untuk kelas kecil
 
 ### 4.3 Terbitkan Rapor
 
-- [ ] Endpoint ubah status DRAFT ke TERBIT.
-- [ ] Set tanggal terbit.
+- [x] Endpoint ubah status DRAFT ke TERBIT.
+- [x] Set tanggal terbit.
+
+### 4.4 Monitoring dan Listing Rapor
+
+- [x] Endpoint GET untuk melihat daftar rapor yang sudah tergenerate.
+- [x] Filter daftar rapor berdasarkan nama santri.
+- [x] Filter daftar rapor berdasarkan status rapor (DRAFT/TERBIT).
+- [x] Dukungan filter tambahan: `q`, `nomor_induk`, `kode_kelas`, `tahun_ajaran`, `semester`, `per_page`.
 
 ---
 
