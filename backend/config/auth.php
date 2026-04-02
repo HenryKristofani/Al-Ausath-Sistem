@@ -48,6 +48,10 @@ return [
             'driver' => 'session',
             'provider' => 'data_santri', 
         ],
+        'ppdb' => [
+            'driver' => 'session',
+            'provider' => 'akun_pendaftar',
+        ],
     ],
 
     /*
@@ -79,6 +83,10 @@ return [
         'data_santri' => [
             'driver' => 'eloquent',
             'model' => App\Models\DataAkunSantri::class, // Model Santri
+        ],
+        'akun_pendaftar' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\AkunPendaftar::class,
         ],
 
         // 'users' => [

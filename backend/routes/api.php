@@ -28,6 +28,8 @@ use App\Http\Controllers\Api\Administrasi\SppSettingController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
+Route::post('/ppdb/login', [AuthController::class, 'loginPpdb']);
+Route::post('/ppdb/register', [AuthController::class, 'registerPpdb']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

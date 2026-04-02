@@ -3,19 +3,41 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\AkunPendaftar;
 use App\Models\DataPetugas;
 use App\Models\DataAkunSantri;
+use App\Models\PpdbPendaftar;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class AuthController extends Controller
 {
+    public function loginPpdb(Request $request)
+    {
+        if (!$request->filled('username') && $request->filled('no_pendaftaran')) {
+            $request->merge(['username' => $request->no_pendaftaran]);
+        }
+
+        $request->merge(['role' => 'ppdb']);
+
+        return $this->login($request);
+    }
+
+    public function registerPpdb(Request $request)
+    {
+        $request->merge(['role' => 'ppdb']);
+
+        return $this->register($request);
+    }
+
     public function login(Request $request)
     {
         $request->validate([
-            'role' => 'required|in:petugas,santri',
+            'role' => 'required|in:petugas,santri,ppdb',
             'username' => 'required',
             'password' => 'required',
         ]);
@@ -23,9 +45,17 @@ class AuthController extends Controller
         if ($request->role === 'petugas') {
             $user = DataPetugas::where('alamat_email', $request->username)->first();
             $guard = 'petugas';
-        } else {
+        } elseif ($request->role === 'santri') {
             $user = DataAkunSantri::where('nama_akun', $request->username)->first();
             $guard = 'santri';
+        } else {
+            $pendaftar = PpdbPendaftar::with('akun')
+                ->where('no_pendaftaran', $request->username)
+                ->orWhere('no_pendaftaran_final', $request->username)
+                ->first();
+
+            $user = $pendaftar?->akun;
+            $guard = 'ppdb';
         }
 
         if (!$user || !Hash::check($request->password, $user->password_hash)) {
@@ -34,7 +64,7 @@ class AuthController extends Controller
             ]);
         }
 
-        if (strtolower($user->status) !== 'aktif') {
+        if (in_array($guard, ['petugas', 'santri'], true) && strtolower((string) $user->status) !== 'aktif') {
             return response()->json([
                 'message' => 'Akun Anda tidak aktif. Hubungi administrator.'
             ], 403);
@@ -44,19 +74,33 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        $user->update(['last_login' => now()]);
+        if (in_array($guard, ['petugas', 'santri'], true)) {
+            $user->update(['last_login' => now()]);
+        }
+
+        $userPayload = [
+            'id' => $user->getKey(),
+            'nama_lengkap' => $user->nama_lengkap ?? $user->nama,
+            'email' => $user->alamat_email ?? $user->email,
+            'nomor_induk' => $user->nomor_induk ?? null,
+            'peran_akun' => $user->peran_akun ?? null,
+            'pilihan_unit' => $user->pilihan_unit ?? null,
+        ];
+
+        if ($guard === 'ppdb') {
+            $userPayload['phone'] = $user->phone;
+            $userPayload['pendaftaran'] = [
+                'id_pendaftaran' => $pendaftar?->id_pendaftaran,
+                'no_pendaftaran' => $pendaftar?->no_pendaftaran,
+                'no_pendaftaran_final' => $pendaftar?->no_pendaftaran_final,
+                'status_verifikasi' => $pendaftar?->status_verifikasi,
+            ];
+        }
 
         return response()->json([
             'message' => 'Login Berhasil!',
             'role' => $guard,
-            'user' => [
-                'id'          => $user->getKey(),
-                'nama_lengkap'=> $user->nama_lengkap,
-                'email'       => $user->alamat_email,
-                'nomor_induk' => $user->nomor_induk ?? null,
-                'peran_akun'  => $user->peran_akun ?? null,   
-                'pilihan_unit'=> $user->pilihan_unit ?? null, 
-            ]
+            'user' => $userPayload,
         ]);
     }
 
@@ -66,6 +110,8 @@ class AuthController extends Controller
             Auth::guard('petugas')->logout();
         } elseif (Auth::guard('santri')->check()) {
             Auth::guard('santri')->logout();
+        } elseif (Auth::guard('ppdb')->check()) {
+            Auth::guard('ppdb')->logout();
         }
 
         $request->session()->invalidate();
@@ -79,8 +125,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->validate([
-            'role' => 'required|in:petugas,santri',
-            'nama_lengkap' => 'required|string|max:255',
+            'role' => 'required|in:petugas,santri,ppdb',
+            'nama_lengkap' => 'required_unless:role,ppdb|string|max:255',
             'password' => 'required|string|min:6|confirmed',
             
             // Validasi petugas
@@ -97,6 +143,19 @@ class AuthController extends Controller
             'nama_kelas' => 'nullable|string',
             'tahun_ajaran' => 'nullable|string',
             'nomor_telepon' => 'nullable|string',
+
+            // Validasi PPDB
+            'no_pendaftaran' => 'required_if:role,ppdb|string|max:50|unique:ppdb_pendaftar,no_pendaftaran',
+            'no_pendaftaran_final' => 'nullable|string|max:50',
+            'nama_calon' => 'required_if:role,ppdb|string|max:200',
+            'jenjang' => 'nullable|string|max:20',
+            'nomor_umi' => 'nullable|string|max:50',
+            'asal_kota' => 'nullable|string|max:100',
+            'is_luar_kota' => 'nullable|boolean',
+            'status_verifikasi' => 'nullable|string|max:30',
+            'tanggal_daftar' => 'nullable|date',
+            'email_ppdb' => 'nullable|email|unique:akun_pendaftar,email',
+            'phone_ppdb' => 'nullable|string|max:30',
         ]);
 
         $hashedPassword = Hash::make($request->password);
@@ -113,7 +172,7 @@ class AuthController extends Controller
                 'status' => 'aktif',
             ]);
             $guard = 'petugas';
-        } else {
+        } elseif ($request->role === 'santri') {
             $user = DataAkunSantri::create([
                 'nomor_induk' => $request->nomor_induk_santri,
                 'nama_akun' => $request->nama_akun,
@@ -127,17 +186,62 @@ class AuthController extends Controller
                 'status' => 'aktif',
             ]);
             $guard = 'santri';
+        } else {
+            $pendaftar = DB::transaction(function () use ($request, $hashedPassword) {
+                $akun = AkunPendaftar::create([
+                    'nama' => $request->nama_calon,
+                    'email' => $request->email_ppdb,
+                    'phone' => $request->phone_ppdb,
+                    'password_hash' => $hashedPassword,
+                ]);
+
+                return PpdbPendaftar::create([
+                    'id_akun' => $akun->id_akun,
+                    'no_pendaftaran' => $request->no_pendaftaran,
+                    'no_pendaftaran_final' => $request->no_pendaftaran_final ?: $request->no_pendaftaran,
+                    'nama_calon' => $request->nama_calon,
+                    'jenjang' => $request->jenjang,
+                    'nomor_umi' => $request->nomor_umi,
+                    'asal_kota' => $request->asal_kota,
+                    'is_luar_kota' => (bool) $request->is_luar_kota,
+                    'status_verifikasi' => $request->status_verifikasi ?: 'pending',
+                    'tanggal_daftar' => $request->filled('tanggal_daftar')
+                        ? Carbon::parse($request->tanggal_daftar)->toDateString()
+                        : now()->toDateString(),
+                ]);
+            });
+
+            $user = $pendaftar->akun;
+            $guard = 'ppdb';
         }
 
+
+        $userPayload = [
+            'id' => $user->getKey(),
+            'nama_lengkap' => $user->nama_lengkap ?? $user->nama,
+            'email' => $user->alamat_email ?? $user->email,
+        ];
+
+        if ($guard === 'ppdb') {
+            $userPayload['pendaftaran'] = [
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'id_akun' => $pendaftar->id_akun,
+                'no_pendaftaran' => $pendaftar->no_pendaftaran,
+                'no_pendaftaran_final' => $pendaftar->no_pendaftaran_final,
+                'nama_calon' => $pendaftar->nama_calon,
+                'jenjang' => $pendaftar->jenjang,
+                'nomor_umi' => $pendaftar->nomor_umi,
+                'asal_kota' => $pendaftar->asal_kota,
+                'is_luar_kota' => $pendaftar->is_luar_kota,
+                'status_verifikasi' => $pendaftar->status_verifikasi,
+                'tanggal_daftar' => $pendaftar->tanggal_daftar,
+            ];
+        }
 
         return response()->json([
             'message' => 'Registrasi berhasil!',
             'role' => $guard,
-            'user' => [
-                'id' => $user->getKey(),
-                'nama_lengkap' => $user->nama_lengkap,
-                'email' => $user->alamat_email,
-            ]
+            'user' => $userPayload,
         ], 201);
     }
 
@@ -152,6 +256,9 @@ class AuthController extends Controller
         } elseif (Auth::guard('santri')->check()) {
             $guard = 'santri';
             $user = Auth::guard('santri')->user();
+        } elseif (Auth::guard('ppdb')->check()) {
+            $guard = 'ppdb';
+            $user = Auth::guard('ppdb')->user();
         }
 
         if (!$user) {
