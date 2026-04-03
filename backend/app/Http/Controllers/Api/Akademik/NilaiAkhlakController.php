@@ -35,6 +35,29 @@ class NilaiAkhlakController extends Controller
     }
 
     /**
+     * List semua nilai akhlak tanpa filter nomor induk (untuk dashboard/laporan).
+     */
+    public function bar(Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+
+        $validated = $request->validate([
+            'tahun_ajaran' => ['nullable', 'string', 'max:20'],
+            'semester' => ['nullable', 'integer', 'in:1,2'],
+            'aspek' => ['nullable', 'string', 'max:80'],
+        ]);
+
+        $query = NilaiAkhlak::query()
+            ->with(['santri', 'petugas'])
+            ->when(array_key_exists('tahun_ajaran', $validated), fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
+            ->when(array_key_exists('semester', $validated), fn($q) => $q->where('semester', $validated['semester']))
+            ->when(array_key_exists('aspek', $validated), fn($q) => $q->where('aspek', $validated['aspek']))
+            ->orderByDesc('id_akhlak');
+
+        return response()->json($query->paginate($perPage));
+    }
+
+    /**
      * Simpan atau update nilai akhlak berbasis angka.
      */
     public function upsert(Request $request): JsonResponse
