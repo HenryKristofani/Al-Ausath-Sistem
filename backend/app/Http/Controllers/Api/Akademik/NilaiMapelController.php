@@ -187,6 +187,19 @@ class NilaiMapelController extends Controller
     }
 
     /**
+     * Hapus nilai mapel berdasarkan id_nilai.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $nilai = DataNilaiSiswa::findOrFail($id);
+        $nilai->delete();
+
+        return response()->json([
+            'message' => 'Nilai mapel berhasil dihapus.',
+        ]);
+    }
+
+    /**
      * @param array<int, array{nilai: mixed}> $rows
      */
     private function averageComponent(array $rows): float

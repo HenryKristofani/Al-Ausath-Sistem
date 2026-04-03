@@ -27,6 +27,7 @@ Daftar file:
 - nilai-mapel-get.md
 - nilai-mapel-post.md
 - nilai-mapel-show.md
+- nilai-mapel-delete.md
 - raport-get.md
 - raport-show.md
 - raport-generate.md

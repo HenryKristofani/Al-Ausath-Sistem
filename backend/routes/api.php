@@ -52,6 +52,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/nilai-mapel', [NilaiMapelController::class, 'index']);
         Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
         Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
+        Route::delete('/nilai-mapel/{id}', [NilaiMapelController::class, 'destroy']);
 
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);
