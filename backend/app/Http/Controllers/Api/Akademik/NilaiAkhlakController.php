@@ -95,4 +95,17 @@ class NilaiAkhlakController extends Controller
             'data' => $nilai->fresh(['santri', 'petugas']),
         ]);
     }
+
+    /**
+     * Hapus nilai akhlak.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $nilai = NilaiAkhlak::findOrFail($id);
+        $nilai->delete();
+
+        return response()->json([
+            'message' => 'Nilai akhlak berhasil dihapus.',
+        ]);
+    }
 }

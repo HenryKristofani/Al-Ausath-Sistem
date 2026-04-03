@@ -22,6 +22,8 @@ Daftar file:
 - konversi-nilai-delete.md
 - nilai-akhlak-get.md
 - nilai-akhlak-post.md
+- nilai-akhlak-bar.md
+- nilai-akhlak-delete.md
 - nilai-mapel-get.md
 - nilai-mapel-post.md
 - nilai-mapel-show.md
