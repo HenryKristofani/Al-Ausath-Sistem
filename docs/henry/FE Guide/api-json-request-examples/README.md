@@ -29,6 +29,8 @@ Daftar file:
 - nilai-mapel-show.md
 - nilai-mapel-delete.md
 - raport-get.md
+- raport-catatan-wali-get.md
+- raport-catatan-wali-post.md
 - raport-show.md
 - raport-generate.md
 - raport-rank.md
