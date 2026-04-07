@@ -10,6 +10,7 @@ use App\Models\DataSantri;
 use App\Models\JadwalPembelajaran;
 use App\Models\SesiAbsensi;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,9 +19,6 @@ use Illuminate\Validation\ValidationException;
 
 class SesiAbsensiController extends Controller
 {
-    /**
-     * List sesi absensi.
-     */
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);
@@ -62,27 +60,11 @@ class SesiAbsensiController extends Controller
         return response()->json($query->paginate($perPage));
     }
 
-    /**
-     * Detail sesi absensi.
-     */
     public function show(int $id): JsonResponse
     {
-        $sesi = SesiAbsensi::with([
-            'jadwal.kelasMapel.kelas',
-            'jadwal.kelasMapel.mataPelajaran',
-            'jadwal.kelasMapel.petugas',
-            'petugasHadir',
-            'petugasPengganti',
-            'absensiPengajar.petugas',
-            'absensiSantri.santri',
-        ])->findOrFail($id);
-
-        return response()->json(['data' => $sesi]);
+        return response()->json(['data' => $this->loadSesi($id)]);
     }
 
-    /**
-     * Cari sesi aktif berdasarkan jadwal dan tanggal.
-     */
     public function aktif(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -115,9 +97,6 @@ class SesiAbsensiController extends Controller
         return response()->json(['data' => $sesi]);
     }
 
-    /**
-     * Pengajar absen diri dan mulai sesi.
-     */
     public function mulai(Request $request): JsonResponse
     {
         $petugas = $this->resolveCurrentPetugas($request);
@@ -144,7 +123,8 @@ class SesiAbsensiController extends Controller
             ], 422);
         }
 
-        if (!$this->isWaktuDalamRentangJadwal($tanggal, $waktuMulaiRealtime, $jadwal->jam_mulai, $jadwal->jam_selesai)) {
+        $wajibIkutiJamJadwal = $statusKehadiran === 'HADIR';
+        if ($wajibIkutiJamJadwal && !$this->isWaktuDalamRentangJadwal($tanggal, $waktuMulaiRealtime, $jadwal->jam_mulai, $jadwal->jam_selesai)) {
             return response()->json([
                 'message' => 'Sesi hanya dapat dimulai pada rentang jam jadwal pembelajaran.',
                 'data' => [
@@ -155,6 +135,11 @@ class SesiAbsensiController extends Controller
             ], 422);
         }
 
+        $existingSesi = SesiAbsensi::query()
+            ->where('id_jadwal', $jadwal->id_jadwal)
+            ->whereDate('tanggal', $tanggal)
+            ->first();
+
         $idPetugasJadwal = (int) ($jadwal->kelasMapel?->id_petugas ?? 0);
         if ($idPetugasJadwal <= 0) {
             return response()->json([
@@ -162,68 +147,132 @@ class SesiAbsensiController extends Controller
             ], 422);
         }
 
-        if ((int) $petugas->id_petugas !== $idPetugasJadwal) {
+        $idPetugasPengganti = (int) ($existingSesi?->id_petugas_pengganti ?? 0);
+        $petugasSekarang = (int) $petugas->id_petugas;
+        $bolehMulaiSesi = $petugasSekarang === $idPetugasJadwal
+            || ($existingSesi !== null
+                && $existingSesi->status_sesi === 'MENUNGGU_PENGGANTI'
+                && $idPetugasPengganti > 0
+                && $petugasSekarang === $idPetugasPengganti);
+
+        if (!$bolehMulaiSesi) {
             return response()->json([
-                'message' => 'Hanya pengajar yang terdaftar pada jadwal ini yang dapat memulai sesi absensi.',
+                'message' => 'Hanya pengajar utama atau pengajar pengganti yang ditetapkan yang dapat memulai sesi absensi.',
             ], 403);
         }
 
-        $existingSesi = SesiAbsensi::query()
-            ->where('id_jadwal', $jadwal->id_jadwal)
-            ->whereDate('tanggal', $tanggal)
-            ->first();
-
         if ($existingSesi) {
+            if ($existingSesi->status_sesi !== 'MENUNGGU_PENGGANTI' || $petugasSekarang !== $idPetugasPengganti) {
+                return response()->json([
+                    'message' => 'Sesi untuk jadwal dan tanggal ini sudah ada. Gunakan sesi yang sudah berjalan atau pilih tanggal lain.',
+                    'data' => $this->loadSesi((int) $existingSesi->id_sesi),
+                ], 409);
+            }
+
+            if (!$this->isWaktuDalamRentangJadwal($tanggal, $waktuMulaiRealtime, $jadwal->jam_mulai, $jadwal->jam_selesai)) {
+                return response()->json([
+                    'message' => 'Sesi hanya dapat dimulai pada rentang jam jadwal pembelajaran.',
+                    'data' => [
+                        'jam_mulai_jadwal' => $jadwal->jam_mulai,
+                        'jam_selesai_jadwal' => $jadwal->jam_selesai,
+                        'waktu_mulai_realtime' => $waktuMulaiRealtime,
+                    ],
+                ], 422);
+            }
+
+            $sesi = DB::transaction(function () use ($existingSesi, $petugas, $validated, $statusKehadiran, $waktuMulaiRealtime, $jadwal, $tanggal) {
+                $existingSesi->id_petugas_hadir = (int) $petugas->id_petugas;
+                $existingSesi->waktu_mulai = $waktuMulaiRealtime;
+                $existingSesi->status_sesi = 'BERLANGSUNG';
+                $existingSesi->keterangan = $validated['keterangan'] ?? $existingSesi->keterangan;
+                $existingSesi->save();
+
+                $menitTerlambat = $this->hitungMenitTerlambat(
+                    $tanggal,
+                    $jadwal->jam_mulai,
+                    $existingSesi->waktu_mulai,
+                    'HADIR'
+                );
+
+                AbsensiPengajar::query()->updateOrCreate(
+                    [
+                        'id_sesi' => $existingSesi->id_sesi,
+                        'id_petugas' => (int) $petugas->id_petugas,
+                        'tanggal' => $tanggal,
+                    ],
+                    [
+                        'status_kehadiran' => 'HADIR',
+                        'menit_terlambat' => $menitTerlambat,
+                        'keterangan' => $validated['keterangan'] ?? null,
+                        'input_oleh' => (int) $petugas->id_petugas,
+                    ]
+                );
+
+                return $existingSesi;
+            });
+
             return response()->json([
-                'message' => 'Sesi untuk jadwal dan tanggal ini sudah ada. Gunakan sesi yang sudah berjalan atau pilih tanggal lain.',
-                'data' => $this->loadSesi((int) $existingSesi->id_sesi),
-            ], 409);
+                'message' => 'Sesi absensi berhasil dimulai oleh pengajar pengganti.',
+                'data' => $this->loadSesi((int) $sesi->id_sesi),
+            ], 200);
         }
 
-        $sesi = DB::transaction(function () use ($jadwal, $tanggal, $petugas, $validated, $statusKehadiran, $waktuMulaiRealtime) {
-            $sesi = new SesiAbsensi();
-            $sesi->id_jadwal = $jadwal->id_jadwal;
-            $sesi->tanggal = $tanggal;
+        try {
+            $sesi = DB::transaction(function () use ($jadwal, $tanggal, $petugas, $validated, $statusKehadiran, $waktuMulaiRealtime) {
+                $sesi = new SesiAbsensi();
+                $sesi->id_jadwal = $jadwal->id_jadwal;
+                $sesi->tanggal = $tanggal;
+                $sesi->id_petugas_hadir = (int) $petugas->id_petugas;
+                $sesi->waktu_mulai = $statusKehadiran === 'HADIR' ? $waktuMulaiRealtime : null;
+                $sesi->status_sesi = $statusKehadiran === 'HADIR' ? 'BERLANGSUNG' : 'MENUNGGU_PENGGANTI';
+                $sesi->keterangan = $validated['keterangan'] ?? $sesi->keterangan;
+                $sesi->save();
 
-            $sesi->id_petugas_hadir = (int) $petugas->id_petugas;
-            $sesi->waktu_mulai = $waktuMulaiRealtime;
-            $sesi->status_sesi = 'BERLANGSUNG';
-            $sesi->keterangan = $validated['keterangan'] ?? $sesi->keterangan;
-            $sesi->save();
+                $menitTerlambat = $this->hitungMenitTerlambat(
+                    $tanggal,
+                    $jadwal->jam_mulai,
+                    $sesi->waktu_mulai,
+                    $statusKehadiran
+                );
 
-            $menitTerlambat = $this->hitungMenitTerlambat(
-                $tanggal,
-                $jadwal->jam_mulai,
-                $sesi->waktu_mulai,
-                $statusKehadiran
-            );
+                AbsensiPengajar::query()->updateOrCreate(
+                    [
+                        'id_sesi' => $sesi->id_sesi,
+                        'id_petugas' => (int) $petugas->id_petugas,
+                        'tanggal' => $tanggal,
+                    ],
+                    [
+                        'status_kehadiran' => $statusKehadiran,
+                        'menit_terlambat' => $menitTerlambat,
+                        'keterangan' => $validated['keterangan'] ?? null,
+                        'input_oleh' => (int) $petugas->id_petugas,
+                    ]
+                );
 
-            AbsensiPengajar::query()->updateOrCreate(
-                [
-                    'id_sesi' => $sesi->id_sesi,
-                    'id_petugas' => (int) $petugas->id_petugas,
-                    'tanggal' => $tanggal,
-                ],
-                [
-                    'status_kehadiran' => $statusKehadiran,
-                    'menit_terlambat' => $menitTerlambat,
-                    'keterangan' => $validated['keterangan'] ?? null,
-                    'input_oleh' => (int) $petugas->id_petugas,
-                ]
-            );
+                return $sesi;
+            });
+        } catch (QueryException $exception) {
+            if ($this->isUniqueViolation($exception)) {
+                $existing = SesiAbsensi::query()
+                    ->where('id_jadwal', $jadwal->id_jadwal)
+                    ->whereDate('tanggal', $tanggal)
+                    ->first();
 
-            return $sesi;
-        });
+                return response()->json([
+                    'message' => 'Sesi sudah ada (duplicate detected).',
+                    'data' => $existing ? $this->loadSesi((int) $existing->id_sesi) : null,
+                ], 409);
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'message' => 'Sesi absensi berhasil dimulai dan absensi pengajar tercatat.',
-            'data' => $this->loadSesi($sesi->id_sesi),
+            'data' => $this->loadSesi((int) $sesi->id_sesi),
         ], 201);
     }
 
-    /**
-     * Set atau ubah pengajar pengganti pada sesi yang berjalan.
-     */
     public function setPengganti(Request $request, int $id): JsonResponse
     {
         $petugas = $this->resolveCurrentPetugas($request);
@@ -250,6 +299,7 @@ class SesiAbsensiController extends Controller
 
         DB::transaction(function () use ($sesi, $petugas, $validated) {
             $sesi->id_petugas_pengganti = (int) $validated['id_petugas_pengganti'];
+            $sesi->status_sesi = 'MENUNGGU_PENGGANTI';
             $sesi->keterangan = $validated['keterangan'] ?? $sesi->keterangan;
             $sesi->save();
 
@@ -275,9 +325,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Daftar santri untuk absensi pada sesi tertentu.
-     */
     public function daftarSantri(int $id): JsonResponse
     {
         $sesi = $this->loadSesi($id);
@@ -322,9 +369,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Input absensi santri untuk sesi tertentu.
-     */
     public function inputAbsensiSantri(Request $request, int $id): JsonResponse
     {
         $petugas = $this->resolveCurrentPetugas($request);
@@ -360,42 +404,44 @@ class SesiAbsensiController extends Controller
         $updated = 0;
         $rejected = [];
 
-        foreach ($validated['absensi'] as $row) {
-            $nomorInduk = trim((string) $row['nomor_induk']);
+        DB::transaction(function () use ($validated, $nomorIndukValid, $petugas, $sesi, &$inserted, &$updated, &$rejected) {
+            foreach ($validated['absensi'] as $row) {
+                $nomorInduk = trim((string) $row['nomor_induk']);
 
-            if (!$nomorIndukValid->has($nomorInduk)) {
-                $rejected[] = [
-                    'nomor_induk' => $nomorInduk,
-                    'message' => 'Santri tidak terdaftar di kelas sesi ini.',
+                if (!$nomorIndukValid->has($nomorInduk)) {
+                    $rejected[] = [
+                        'nomor_induk' => $nomorInduk,
+                        'message' => 'Santri tidak terdaftar di kelas sesi ini.',
+                    ];
+                    continue;
+                }
+
+                $payload = [
+                    'status_kehadiran' => strtoupper(trim((string) $row['status_kehadiran'])),
+                    'keterangan' => $row['keterangan'] ?? null,
+                    'timestamp_input' => now(),
+                    'input_oleh' => (int) $petugas->id_petugas,
                 ];
-                continue;
+
+                $existing = AbsensiSantri::query()
+                    ->where('id_sesi', $sesi->id_sesi)
+                    ->where('nomor_induk', $nomorInduk)
+                    ->first();
+
+                if ($existing) {
+                    $existing->update($payload);
+                    $updated++;
+                    continue;
+                }
+
+                AbsensiSantri::create([
+                    'id_sesi' => $sesi->id_sesi,
+                    'nomor_induk' => $nomorInduk,
+                    ...$payload,
+                ]);
+                $inserted++;
             }
-
-            $payload = [
-                'status_kehadiran' => strtoupper(trim((string) $row['status_kehadiran'])),
-                'keterangan' => $row['keterangan'] ?? null,
-                'timestamp_input' => now(),
-                'input_oleh' => (int) $petugas->id_petugas,
-            ];
-
-            $existing = AbsensiSantri::query()
-                ->where('id_sesi', $sesi->id_sesi)
-                ->where('nomor_induk', $nomorInduk)
-                ->first();
-
-            if ($existing) {
-                $existing->update($payload);
-                $updated++;
-                continue;
-            }
-
-            AbsensiSantri::create([
-                'id_sesi' => $sesi->id_sesi,
-                'nomor_induk' => $nomorInduk,
-                ...$payload,
-            ]);
-            $inserted++;
-        }
+        });
 
         return response()->json([
             'message' => 'Input absensi santri selesai diproses.',
@@ -408,9 +454,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Tutup sesi absensi.
-     */
     public function selesai(Request $request, int $id): JsonResponse
     {
         $petugas = $this->resolveCurrentPetugas($request);
@@ -441,9 +484,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Rekap absensi per santri.
-     */
     public function rekapSantri(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -462,7 +502,6 @@ class SesiAbsensiController extends Controller
             ->join('sesi_absensi as s', 's.id_sesi', '=', 'a.id_sesi')
             ->join('data_santri as ds', 'ds.nomor_induk', '=', 'a.nomor_induk')
             ->leftJoin('jadwal_pembelajaran as j', 'j.id_jadwal', '=', 's.id_jadwal')
-            ->leftJoin('data_kelas_mapel as km', 'km.id_kelas_mapel', '=', 'j.id_kelas_mapel')
             ->leftJoin('data_kelas as k', 'k.kode_kelas', '=', 'ds.kode_kelas')
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereDate('s.tanggal', '>=', $validated['tanggal_mulai']))
             ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereDate('s.tanggal', '<=', $validated['tanggal_selesai']))
@@ -502,9 +541,6 @@ class SesiAbsensiController extends Controller
         return response()->json($rows);
     }
 
-    /**
-     * Rekap absensi per kelas.
-     */
     public function rekapKelas(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -557,9 +593,6 @@ class SesiAbsensiController extends Controller
         return response()->json($rows);
     }
 
-    /**
-     * Rekap kehadiran petugas.
-     */
     public function rekapPetugas(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -618,9 +651,6 @@ class SesiAbsensiController extends Controller
         return response()->json($rows);
     }
 
-    /**
-     * Admin buka atau ambil sesi berdasarkan jadwal dan tanggal.
-     */
     public function adminBukaSesi(Request $request): JsonResponse
     {
         $admin = $this->resolveCurrentPetugas($request);
@@ -637,15 +667,15 @@ class SesiAbsensiController extends Controller
         ]);
 
         $jadwal = JadwalPembelajaran::with('kelasMapel')->findOrFail((int) $validated['id_jadwal']);
-        $tanggalAcuan = $this->resolveTanggalSesi($validated['tanggal'] ?? null);
-        $tanggal = $this->sesuaikanTanggalKeHariJadwal($tanggalAcuan, (string) ($jadwal->hari ?? ''));
-        $catatAbsensiPengajar = array_key_exists('catat_absensi_pengajar', $validated)
-            ? (bool) $validated['catat_absensi_pengajar']
-            : true;
-        $statusKehadiran = strtoupper(trim((string) ($validated['status_kehadiran'] ?? 'HADIR')));
-        $menitTerlambatInput = max(0, (int) ($validated['menit_terlambat'] ?? 0));
-        $waktuMulai = $this->hitungWaktuMulaiDariTerlambat($tanggal, $jadwal->jam_mulai, $menitTerlambatInput);
-        $waktuSelesai = $jadwal->jam_selesai ?: now(config('app.timezone'))->format('H:i:s');
+        $tanggal = $this->resolveTanggalSesi($validated['tanggal'] ?? null);
+        $hariJadwal = strtoupper(trim((string) ($jadwal->hari ?? '')));
+        $hariTanggal = $this->resolveHariIndonesia($tanggal);
+
+        if ($hariJadwal !== '' && $hariTanggal !== $hariJadwal) {
+            return response()->json([
+                'message' => "Tanggal sesi harus mengikuti hari jadwal {$hariJadwal}. Tanggal yang dipilih adalah {$hariTanggal}.",
+            ], 422);
+        }
 
         $existingSesi = SesiAbsensi::query()
             ->where('id_jadwal', (int) $validated['id_jadwal'])
@@ -653,42 +683,10 @@ class SesiAbsensiController extends Controller
             ->first();
 
         if ($existingSesi) {
-            $existingSesi->waktu_mulai = $waktuMulai;
-            $existingSesi->waktu_selesai = $waktuSelesai;
-            $existingSesi->status_sesi = 'SELESAI';
-            if (array_key_exists('keterangan', $validated)) {
-                $existingSesi->keterangan = $validated['keterangan'];
-            }
-            $existingSesi->save();
-
-            if ($catatAbsensiPengajar && (int) ($existingSesi->id_petugas_hadir ?? 0) > 0) {
-                $menitTerlambat = $validated['menit_terlambat']
-                    ?? $this->hitungMenitTerlambat(
-                        (string) $existingSesi->tanggal,
-                        $jadwal->jam_mulai,
-                        (string) ($existingSesi->waktu_mulai ?? $jadwal->jam_mulai),
-                        $statusKehadiran
-                    );
-
-                AbsensiPengajar::query()->updateOrCreate(
-                    [
-                        'id_sesi' => (int) $existingSesi->id_sesi,
-                        'id_petugas' => (int) $existingSesi->id_petugas_hadir,
-                        'tanggal' => (string) $existingSesi->tanggal,
-                    ],
-                    [
-                        'status_kehadiran' => $statusKehadiran,
-                        'menit_terlambat' => (int) $menitTerlambat,
-                        'keterangan' => $validated['keterangan'] ?? null,
-                        'input_oleh' => (int) $admin->id_petugas,
-                    ]
-                );
-            }
-
             return response()->json([
                 'message' => 'Sesi untuk jadwal dan tanggal ini sudah ada.',
                 'data' => $this->loadSesi((int) $existingSesi->id_sesi),
-            ]);
+            ], 409);
         }
 
         $idPetugasHadir = isset($validated['id_petugas_hadir'])
@@ -701,43 +699,66 @@ class SesiAbsensiController extends Controller
             ]);
         }
 
-        $sesi = DB::transaction(function () use ($jadwal, $tanggal, $validated, $idPetugasHadir, $waktuMulai, $catatAbsensiPengajar, $statusKehadiran, $admin) {
-            $sesi = SesiAbsensi::create([
-                'id_jadwal' => (int) $jadwal->id_jadwal,
-                'id_petugas_hadir' => $idPetugasHadir,
-                'tanggal' => $tanggal,
-                'waktu_mulai' => $waktuMulai,
-                'waktu_selesai' => $jadwal->jam_selesai ?: now(config('app.timezone'))->format('H:i:s'),
-                'status_sesi' => 'SELESAI',
-                'keterangan' => $validated['keterangan'] ?? null,
-            ]);
+        $waktuMulai = $jadwal->jam_mulai ?: now(config('app.timezone'))->format('H:i:s');
+        $waktuSelesai = $jadwal->jam_selesai ?: now(config('app.timezone'))->format('H:i:s');
+        $catatAbsensiPengajar = array_key_exists('catat_absensi_pengajar', $validated)
+            ? (bool) $validated['catat_absensi_pengajar']
+            : true;
+        $statusKehadiran = strtoupper(trim((string) ($validated['status_kehadiran'] ?? 'HADIR')));
 
-            if ($catatAbsensiPengajar) {
-                $menitTerlambat = $validated['menit_terlambat']
-                    ?? $this->hitungMenitTerlambat(
-                        $tanggal,
-                        $jadwal->jam_mulai,
-                        (string) $waktuMulai,
-                        $statusKehadiran
+        try {
+            $sesi = DB::transaction(function () use ($jadwal, $tanggal, $validated, $idPetugasHadir, $waktuMulai, $waktuSelesai, $catatAbsensiPengajar, $statusKehadiran, $admin) {
+                $sesi = SesiAbsensi::create([
+                    'id_jadwal' => (int) $jadwal->id_jadwal,
+                    'id_petugas_hadir' => $idPetugasHadir,
+                    'tanggal' => $tanggal,
+                    'waktu_mulai' => $waktuMulai,
+                    'waktu_selesai' => $waktuSelesai,
+                    'status_sesi' => 'SELESAI',
+                    'keterangan' => $validated['keterangan'] ?? null,
+                ]);
+
+                if ($catatAbsensiPengajar) {
+                    $menitTerlambat = $validated['menit_terlambat']
+                        ?? $this->hitungMenitTerlambat(
+                            $tanggal,
+                            $jadwal->jam_mulai,
+                            (string) $waktuMulai,
+                            $statusKehadiran
+                        );
+
+                    AbsensiPengajar::query()->updateOrCreate(
+                        [
+                            'id_sesi' => (int) $sesi->id_sesi,
+                            'id_petugas' => (int) $idPetugasHadir,
+                            'tanggal' => $tanggal,
+                        ],
+                        [
+                            'status_kehadiran' => $statusKehadiran,
+                            'menit_terlambat' => (int) $menitTerlambat,
+                            'keterangan' => $validated['keterangan'] ?? null,
+                            'input_oleh' => (int) $admin->id_petugas,
+                        ]
                     );
+                }
 
-                AbsensiPengajar::query()->updateOrCreate(
-                    [
-                        'id_sesi' => (int) $sesi->id_sesi,
-                        'id_petugas' => (int) $idPetugasHadir,
-                        'tanggal' => $tanggal,
-                    ],
-                    [
-                        'status_kehadiran' => $statusKehadiran,
-                        'menit_terlambat' => (int) $menitTerlambat,
-                        'keterangan' => $validated['keterangan'] ?? null,
-                        'input_oleh' => (int) $admin->id_petugas,
-                    ]
-                );
+                return $sesi;
+            });
+        } catch (QueryException $exception) {
+            if ($this->isUniqueViolation($exception)) {
+                $existing = SesiAbsensi::query()
+                    ->where('id_jadwal', (int) $validated['id_jadwal'])
+                    ->whereDate('tanggal', $tanggal)
+                    ->first();
+
+                return response()->json([
+                    'message' => 'Sesi sudah ada (duplicate detected).',
+                    'data' => $existing ? $this->loadSesi((int) $existing->id_sesi) : null,
+                ], 409);
             }
 
-            return $sesi;
-        });
+            throw $exception;
+        }
 
         return response()->json([
             'message' => 'Sesi absensi berhasil dibuka oleh admin.',
@@ -745,9 +766,6 @@ class SesiAbsensiController extends Controller
         ], 201);
     }
 
-    /**
-     * Admin tambah/edit absensi petugas pada sesi tertentu.
-     */
     public function adminUpsertAbsensiPengajar(Request $request, int $id): JsonResponse
     {
         $admin = $this->resolveCurrentPetugas($request);
@@ -791,9 +809,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Admin hapus absensi petugas pada sesi tertentu.
-     */
     public function adminDeleteAbsensiPengajar(Request $request, int $id): JsonResponse
     {
         $admin = $this->resolveCurrentPetugas($request);
@@ -819,9 +834,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Admin tambah/edit absensi santri pada sesi tertentu.
-     */
     public function adminUpsertAbsensiSantri(Request $request, int $id): JsonResponse
     {
         $admin = $this->resolveCurrentPetugas($request);
@@ -852,42 +864,44 @@ class SesiAbsensiController extends Controller
         $updated = 0;
         $rejected = [];
 
-        foreach ($validated['absensi'] as $row) {
-            $nomorInduk = trim((string) $row['nomor_induk']);
+        DB::transaction(function () use ($validated, $nomorIndukValid, $admin, $sesi, &$inserted, &$updated, &$rejected) {
+            foreach ($validated['absensi'] as $row) {
+                $nomorInduk = trim((string) $row['nomor_induk']);
 
-            if (!$nomorIndukValid->has($nomorInduk)) {
-                $rejected[] = [
-                    'nomor_induk' => $nomorInduk,
-                    'message' => 'Santri tidak terdaftar di kelas sesi ini.',
+                if (!$nomorIndukValid->has($nomorInduk)) {
+                    $rejected[] = [
+                        'nomor_induk' => $nomorInduk,
+                        'message' => 'Santri tidak terdaftar di kelas sesi ini.',
+                    ];
+                    continue;
+                }
+
+                $payload = [
+                    'status_kehadiran' => strtoupper(trim((string) $row['status_kehadiran'])),
+                    'keterangan' => $row['keterangan'] ?? null,
+                    'timestamp_input' => now(),
+                    'input_oleh' => (int) $admin->id_petugas,
                 ];
-                continue;
+
+                $existing = AbsensiSantri::query()
+                    ->where('id_sesi', $sesi->id_sesi)
+                    ->where('nomor_induk', $nomorInduk)
+                    ->first();
+
+                if ($existing) {
+                    $existing->update($payload);
+                    $updated++;
+                    continue;
+                }
+
+                AbsensiSantri::create([
+                    'id_sesi' => $sesi->id_sesi,
+                    'nomor_induk' => $nomorInduk,
+                    ...$payload,
+                ]);
+                $inserted++;
             }
-
-            $payload = [
-                'status_kehadiran' => strtoupper(trim((string) $row['status_kehadiran'])),
-                'keterangan' => $row['keterangan'] ?? null,
-                'timestamp_input' => now(),
-                'input_oleh' => (int) $admin->id_petugas,
-            ];
-
-            $existing = AbsensiSantri::query()
-                ->where('id_sesi', $sesi->id_sesi)
-                ->where('nomor_induk', $nomorInduk)
-                ->first();
-
-            if ($existing) {
-                $existing->update($payload);
-                $updated++;
-                continue;
-            }
-
-            AbsensiSantri::create([
-                'id_sesi' => $sesi->id_sesi,
-                'nomor_induk' => $nomorInduk,
-                ...$payload,
-            ]);
-            $inserted++;
-        }
+        });
 
         return response()->json([
             'message' => 'Absensi santri berhasil disimpan oleh admin.',
@@ -900,9 +914,6 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
-    /**
-     * Admin hapus absensi santri pada sesi tertentu.
-     */
     public function adminDeleteAbsensiSantri(Request $request, int $id): JsonResponse
     {
         $admin = $this->resolveCurrentPetugas($request);
@@ -988,27 +999,6 @@ class SesiAbsensiController extends Controller
         return $jadwalTs->diffInMinutes($mulaiTs);
     }
 
-    private function hitungWaktuMulaiDariTerlambat(string $tanggal, ?string $jamMulaiJadwal, int $menitTerlambat): string
-    {
-        $timezone = config('app.timezone', 'Asia/Jakarta');
-
-        if (empty($jamMulaiJadwal)) {
-            return now($timezone)->format('H:i:s');
-        }
-
-        try {
-            $jadwalTs = Carbon::parse($tanggal . ' ' . $jamMulaiJadwal, $timezone);
-        } catch (\Throwable $exception) {
-            return now($timezone)->format('H:i:s');
-        }
-
-        if ($menitTerlambat > 0) {
-            $jadwalTs->addMinutes($menitTerlambat);
-        }
-
-        return $jadwalTs->format('H:i:s');
-    }
-
     private function resolveTanggalSesi(?string $tanggalInput): string
     {
         $timezone = config('app.timezone', 'Asia/Jakarta');
@@ -1030,45 +1020,6 @@ class SesiAbsensiController extends Controller
                 'tanggal' => ['Format tanggal tidak valid. Gunakan format Y-m-d atau ISO datetime.'],
             ]);
         }
-    }
-
-    private function sesuaikanTanggalKeHariJadwal(string $tanggal, string $hariJadwal): string
-    {
-        $hariJadwal = strtoupper(trim($hariJadwal));
-
-        if ($hariJadwal === '') {
-            return $tanggal;
-        }
-
-        $hariTarget = match ($hariJadwal) {
-            'SENIN' => 1,
-            'SELASA' => 2,
-            'RABU' => 3,
-            'KAMIS' => 4,
-            'JUMAT' => 5,
-            'SABTU' => 6,
-            'MINGGU' => 7,
-            default => 0,
-        };
-
-        if ($hariTarget <= 0) {
-            return $tanggal;
-        }
-
-        $timezone = config('app.timezone', 'Asia/Jakarta');
-
-        try {
-            $carbon = Carbon::parse($tanggal, $timezone);
-        } catch (
-            \Throwable $exception
-        ) {
-            return $tanggal;
-        }
-
-        $hariSaatIni = (int) $carbon->dayOfWeekIso;
-        $selisih = $hariTarget - $hariSaatIni;
-
-        return $carbon->addDays($selisih)->toDateString();
     }
 
     private function resolveHariIndonesia(string $tanggal): string
@@ -1114,5 +1065,12 @@ class SesiAbsensiController extends Controller
         }
 
         return $mulaiTs->betweenIncluded($jadwalMulaiTs, $jadwalSelesaiTs);
+    }
+
+    private function isUniqueViolation(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? (string) $exception->getCode();
+
+        return in_array((string) $sqlState, ['23505', '23000'], true);
     }
 }
