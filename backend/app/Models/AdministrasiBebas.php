@@ -18,6 +18,21 @@ class AdministrasiBebas extends Model
         'sisa',
         'status',
     ];
+
+        protected $casts = [
+        'total_tagihan' => 'decimal:2',
+        'sisa' => 'decimal:2',
+    ];
+
+    public function santri()
+    {
+        return $this->belongsTo(DataSantri::class, 'id_santri', 'id_santri');
+    }
+
+    public function pembayaran()
+    {
+        return $this->hasMany(AdministrasiBebasPembayaran::class, 'id_admin_bebas', 'id_admin_bebas');
+    }
 }
 
 

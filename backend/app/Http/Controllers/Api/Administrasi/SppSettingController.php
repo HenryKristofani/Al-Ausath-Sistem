@@ -23,9 +23,10 @@ class SppSettingController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = SppSetting::query()
-            ->with(['unit', 'kategoriTagihan'])
+            ->with(['unit', 'santri', 'kategoriTagihan'])
             ->when($request->filled('jenjang'), fn ($q) => $q->where('jenjang', $request->jenjang))
             ->when($request->filled('id_unit'), fn ($q) => $q->where('id_unit', $request->id_unit))
+            ->when($request->filled('id_santri'), fn ($q) => $q->where('id_santri', $request->id_santri))
             ->orderByDesc('id_setting');
 
         return response()->json($query->paginate($perPage));
@@ -38,7 +39,8 @@ class SppSettingController extends Controller
     {
         $validated = $request->validate([
             'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
-            'jenjang' => ['nullable', 'string', 'max:20'],
+            'id_santri' => ['nullable', 'integer', 'exists:data_santri,id_santri'],
+            'jenjang' => ['required_without:id_santri', 'nullable', 'string', 'max:20'],
             'kategori_tagihan_id' => ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
             'jumlah' => ['nullable', 'numeric'],
             'periode' => ['nullable', 'string', 'max:20'],
@@ -58,7 +60,7 @@ class SppSettingController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = SppSetting::with(['unit', 'kategoriTagihan', 'pembayaran'])->findOrFail($id);
+        $data = SppSetting::with(['unit', 'santri', 'kategoriTagihan', 'pembayaran'])->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -72,7 +74,8 @@ class SppSettingController extends Controller
 
         $validated = $request->validate([
             'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
-            'jenjang' => ['nullable', 'string', 'max:20'],
+            'id_santri' => ['nullable', 'integer', 'exists:data_santri,id_santri'],
+            'jenjang' => ['required_without:id_santri', 'nullable', 'string', 'max:20'],
             'kategori_tagihan_id' => ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
             'jumlah' => ['nullable', 'numeric'],
             'periode' => ['nullable', 'string', 'max:20'],

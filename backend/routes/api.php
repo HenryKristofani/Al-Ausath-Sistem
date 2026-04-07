@@ -21,6 +21,12 @@ use App\Http\Controllers\Api\DataMaster\DataSantriController;
 use App\Http\Controllers\Api\DataMaster\DataPetugasController;
 use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
 use App\Http\Controllers\Api\DataMaster\DataUnitController;
+use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
+use App\Http\Controllers\Api\Administrasi\DataKelasController;
+use App\Http\Controllers\Api\Administrasi\DataSantriController;
+use App\Http\Controllers\Api\Administrasi\DataPetugasController;
+use App\Http\Controllers\Api\Administrasi\DataTahunAjaranController;
+use App\Http\Controllers\Api\Administrasi\DataUnitController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
 use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
@@ -30,10 +36,15 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/ppdb/login', [AuthController::class, 'loginPpdb']);
 Route::post('/ppdb/register', [AuthController::class, 'registerPpdb']);
+Route::post('/ppdb/pendaftaran/create-identitas', [AuthController::class, 'createIdentitasPendaftaranPpdb']);
+Route::get('/ppdb/nomor/preview', [AuthController::class, 'previewNoPendaftaran']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::get('/ppdb/dashboard', [AuthController::class, 'dashboardPpdb']);
+    Route::put('/ppdb/form', [AuthController::class, 'updateFormPpdb']);
+    Route::post('/ppdb/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
 
     Route::prefix('akademik')->group(function () {
         Route::get('/bobot', [BobotNilaiController::class, 'index']);
@@ -224,10 +235,20 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/setting/{id}', [SppSettingController::class, 'update']);
         Route::delete('/setting/{id}', [SppSettingController::class, 'destroy']);
 
+        Route::get('/tunggakan', [PembayaranSppController::class, 'tunggakanRingkasan']);
         Route::get('/pembayaran', [PembayaranSppController::class, 'index']);
         Route::post('/pembayaran', [PembayaranSppController::class, 'store']);
         Route::get('/pembayaran/{id}', [PembayaranSppController::class, 'show']);
         Route::put('/pembayaran/{id}', [PembayaranSppController::class, 'update']);
         Route::delete('/pembayaran/{id}', [PembayaranSppController::class, 'destroy']);
+    });
+
+    Route::prefix('administrasi-bebas')->group(function () {
+        Route::get('/', [AdministrasiBebasController::class, 'index']);
+        Route::post('/', [AdministrasiBebasController::class, 'store']);
+        Route::get('/{id}', [AdministrasiBebasController::class, 'show']);
+        Route::put('/{id}', [AdministrasiBebasController::class, 'update']);
+        Route::delete('/{id}', [AdministrasiBebasController::class, 'destroy']);
+        Route::post('/{id}/bayar', [AdministrasiBebasController::class, 'bayarCicilan']);
     });
 });

@@ -13,6 +13,7 @@ class SppSetting extends Model
 
         protected $fillable = [
         'id_unit',
+        'id_santri',
         'jenjang',
         'kategori_tagihan_id',
         'jumlah',
@@ -27,6 +28,11 @@ class SppSetting extends Model
     public function unit()
     {
         return $this->belongsTo(DataUnit::class, 'id_unit', 'id_unit');
+    }
+
+    public function santri()
+    {
+        return $this->belongsTo(DataSantri::class, 'id_santri', 'id_santri');
     }
 
     public function kategoriTagihan()

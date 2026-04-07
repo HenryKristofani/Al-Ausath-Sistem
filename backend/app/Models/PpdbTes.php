@@ -15,6 +15,8 @@ class PpdbTes extends Model
         'id_pendaftaran',
         'nilai',
         'status_tes',
+        'metode_tes',
+        'soal_tes',
         'catatan',
     ];
 

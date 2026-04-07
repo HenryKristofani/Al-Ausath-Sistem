@@ -50,6 +50,21 @@ class DataSantri extends Model
     {
         return $this->hasOne(DataAkunSantri::class, 'nomor_induk', 'nomor_induk');
     }
+
+    public function pembayaranSpp()
+    {
+        return $this->hasMany(PembayaranSpp::class, 'id_santri', 'id_santri');
+    }
+
+    public function administrasiBebas()
+    {
+        return $this->hasMany(AdministrasiBebas::class, 'id_santri', 'id_santri');
+    }
+
+    public function sppSettingKhusus()
+    {
+        return $this->hasMany(SppSetting::class, 'id_santri', 'id_santri');
+    }
 }
 
 
