@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\Administrasi;
+namespace App\Http\Controllers\Api\Akademik;
 
 use App\Http\Controllers\Controller;
 use App\Models\AbsensiPengajar;

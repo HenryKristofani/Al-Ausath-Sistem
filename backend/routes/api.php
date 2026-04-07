@@ -23,7 +23,7 @@ use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
 use App\Http\Controllers\Api\DataMaster\DataUnitController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
-use App\Http\Controllers\Api\Administrasi\SesiAbsensiController;
+use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
 
 Route::post('/login', [AuthController::class, 'login']);
