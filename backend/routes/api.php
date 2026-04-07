@@ -6,8 +6,11 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\Akademik\BobotNilaiController;
 use App\Http\Controllers\Api\Akademik\KkmMapelController;
 use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
+use App\Http\Controllers\Api\Akademik\NilaiMapelController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
+use App\Http\Controllers\Api\Akademik\RaportGenerateController;
+use App\Http\Controllers\Api\Akademik\RaportPdfController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
 use App\Http\Controllers\Api\DataMaster\DataAkunSantriController;
 use App\Http\Controllers\Api\DataMaster\DataKelasController;
@@ -50,14 +53,30 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/konversi-nilai/{id}', [KonversiNilaiController::class, 'update']);
         Route::delete('/konversi-nilai/{id}', [KonversiNilaiController::class, 'destroy']);
 
+        Route::get('/nilai-mapel', [NilaiMapelController::class, 'index']);
+        Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
+        Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
+        Route::delete('/nilai-mapel/{id}', [NilaiMapelController::class, 'destroy']);
+
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
+        Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
+        Route::delete('/nilai-akhlak/{id}', [NilaiAkhlakController::class, 'destroy']);
 
         Route::get('/raport/keseharian', [RaportKeseharianController::class, 'index']);
         Route::post('/raport/keseharian', [RaportKeseharianController::class, 'upsert']);
 
         Route::get('/raport/catatan-wali', [RaportCatatanWaliController::class, 'show']);
         Route::post('/raport/catatan-wali', [RaportCatatanWaliController::class, 'upsert']);
+
+        Route::get('/raport', [RaportGenerateController::class, 'index']);
+        Route::get('/raport/show', [RaportGenerateController::class, 'show']);
+        Route::post('/raport/generate', [RaportGenerateController::class, 'generate']);
+        Route::post('/raport/rank', [RaportGenerateController::class, 'rank']);
+        Route::post('/raport/publish', [RaportGenerateController::class, 'publish']);
+        Route::get('/raport/pdf', [RaportPdfController::class, 'download']);
+        Route::get('/raport/self', [RaportPdfController::class, 'selfShow']);
+        Route::get('/raport/self/pdf', [RaportPdfController::class, 'selfDownload']);
     });
 });
 

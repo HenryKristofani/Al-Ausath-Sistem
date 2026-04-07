@@ -15,7 +15,7 @@ class RaportCatatanWaliController extends Controller
     public function show(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'nomor_induk' => ['required', 'string', 'max:20'],
+            'nomor_induk' => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
             'tahun_ajaran' => ['required', 'string', 'max:20'],
             'semester' => ['required', 'integer', 'in:1,2'],
         ]);

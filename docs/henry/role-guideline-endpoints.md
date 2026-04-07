@@ -38,7 +38,18 @@ Catatan: kode saat ini juga menerima variasi berikut untuk kompatibilitas:
 - mapel
 - administrator
 
-## 3. Matriks Akses Endpoint
+## 3. Matriks Akses Endpoint (Scope Khusus)
+
+Dokumen ini hanya memuat endpoint berikut:
+
+- bobot nilai
+- kkm mapel
+- konversi nilai
+- nilai akhlak
+- nilai mapel
+- raport catatan wali
+- raport generate
+- raport pdf
 
 Keterangan kolom:
 
@@ -47,61 +58,42 @@ Keterangan kolom:
 - Santri: apakah akun santri boleh akses
 - Role Detail: pembatasan tambahan berdasarkan peran_akun
 
-| Endpoint                                         | Method | Auth  | Petugas | Santri               | Role Detail                                                      |
-| ------------------------------------------------ | ------ | ----- | ------- | -------------------- | ---------------------------------------------------------------- |
-| /api/login                                       | POST   | Tidak | Ya      | Ya                   | Role dikirim di payload login (petugas atau santri)              |
-| /api/register                                    | POST   | Tidak | Ya      | Ya                   | Role dikirim di payload register (petugas atau santri)           |
-| /api/logout                                      | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/me                                          | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/bobot                              | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/bobot                              | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/bobot/set-default                  | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/bobot/{id}                         | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/bobot/{id}                         | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/bobot/{id}                         | DELETE | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/kkm-mapel                          | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/kkm-mapel                          | POST   | Ya    | Ya      | Tidak dibatasi route | Hanya petugas role guru_mapel/guru mapel/mapel                   |
-| /api/akademik/kkm-mapel/{id}                     | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/kkm-mapel/{id}                     | PUT    | Ya    | Ya      | Tidak dibatasi route | Petugas role guru_mapel/guru mapel/mapel dan admin/administrator |
-| /api/akademik/kkm-mapel/{id}                     | DELETE | Ya    | Ya      | Tidak dibatasi route | Hanya petugas role admin/administrator (override)                |
-| /api/akademik/konversi-nilai                     | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/konversi-nilai                     | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/konversi-nilai/{id}                | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/konversi-nilai/{id}                | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/konversi-nilai/{id}                | DELETE | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/nilai-akhlak                       | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/nilai-akhlak                       | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/raport/keseharian                  | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/raport/keseharian                  | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/raport/catatan-wali                | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/akademik/raport/catatan-wali                | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar                 | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar                 | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}            | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}            | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}            | DELETE | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}/berkas     | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}/tes        | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}/verifikasi | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/ppdb/pendaftar/{id}/notifikasi | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/santri                         | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/santri                         | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/santri/{id}                    | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/santri/{id}                    | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/santri/{id}                    | DELETE | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/setting                    | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/setting                    | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/setting/{id}               | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/setting/{id}               | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/setting/{id}               | DELETE | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/pembayaran                 | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/pembayaran                 | POST   | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/pembayaran/{id}            | GET    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/pembayaran/{id}            | PUT    | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
-| /api/administrasi/spp/pembayaran/{id}            | DELETE | Ya    | Ya      | Ya                   | Tidak ada cek peran_akun tambahan                                |
+| Endpoint                               | Method | Auth | Petugas | Santri | Role Detail                                                      |
+| -------------------------------------- | ------ | ---- | ------- | ------ | ---------------------------------------------------------------- |
+| /api/akademik/bobot                    | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/bobot                    | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/bobot/set-default        | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/bobot/{id}               | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/bobot/{id}               | PUT    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/bobot/{id}               | DELETE | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/kkm-mapel                | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/kkm-mapel                | POST   | Ya   | Ya      | Tidak  | Hanya petugas role guru_mapel/guru mapel/mapel                   |
+| /api/akademik/kkm-mapel/{id}           | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/kkm-mapel/{id}           | PUT    | Ya   | Ya      | Tidak  | Petugas role guru_mapel/guru mapel/mapel dan admin/administrator |
+| /api/akademik/kkm-mapel/{id}           | DELETE | Ya   | Ya      | Tidak  | Hanya petugas role admin/administrator (override)                |
+| /api/akademik/konversi-nilai           | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/konversi-nilai           | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/konversi-nilai/{id}      | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/konversi-nilai/{id}      | PUT    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/konversi-nilai/{id}      | DELETE | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/nilai-akhlak             | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/nilai-akhlak             | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/nilai-mapel              | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/nilai-mapel              | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/nilai-mapel/{kode_mapel} | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/catatan-wali      | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/catatan-wali      | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport                   | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/show              | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/generate          | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/rank              | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/publish           | POST   | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/pdf               | GET    | Ya   | Ya      | Ya     | Tidak ada cek peran_akun tambahan                                |
+| /api/akademik/raport/self/pdf          | GET    | Ya   | Tidak   | Ya     | Hanya akun santri (self-service)                                 |
 
 ## 4. Catatan Implementasi Penting
 
 1. Pembatasan role level endpoint yang benar-benar aktif saat ini baru diterapkan pada mutasi KKM mapel (POST, PUT, DELETE).
-2. Endpoint lain masih menggunakan pembatasan level autentikasi (auth:sanctum) tanpa validasi peran_akun per endpoint.
-3. Jika dibutuhkan kebijakan role yang lebih ketat untuk endpoint lain, perlu penambahan policy/middleware/guard logic pada controller terkait.
+2. Endpoint PDF self-service rapor (`/api/akademik/raport/self/pdf`) dibatasi untuk akun santri.
+3. Endpoint lain pada scope dokumen ini masih menggunakan pembatasan level autentikasi (auth:sanctum) tanpa validasi peran_akun per endpoint.
+4. Jika dibutuhkan kebijakan role yang lebih ketat untuk endpoint lain, perlu penambahan policy/middleware/guard logic pada controller terkait.

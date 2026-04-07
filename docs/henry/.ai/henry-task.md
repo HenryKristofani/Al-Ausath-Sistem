@@ -66,49 +66,59 @@
 
 ## Fase 3 — API Input Nilai (Sesuai Mekanisme Client)
 
+Status fase: **DONE 100%** ✅
+
 ### 3.1 Input Komponen Nilai Mapel
 
-- [ ] Endpoint input nilai komponen:
+- [x] Endpoint input nilai komponen:
   - nilai tugas (minimal 3 data)
   - nilai ulangan (minimal 3 data)
   - nilai ujian akhir
-- [ ] Validasi kriteria tugas yang diakui client:
+- [x] Validasi kriteria tugas yang diakui client:
   - PR
   - tugas pengganti saat pengajar tidak hadir
   - pengerjaan soal kompetensi/modul
-- [ ] Validasi kriteria ulangan yang diakui client:
+- [x] Validasi kriteria ulangan yang diakui client:
   - soal disusun pengajar mapel
   - pengerjaan diawasi pengajar (tidak diwakilkan)
-- [ ] Simpan data per santri-mapel-semester.
+- [x] Simpan data per santri-mapel-semester.
 
 ### 3.2 Hitung Nilai Akhir Mapel
 
-- [ ] Hitung dari bobot global client:
+- [x] Hitung dari bobot global client:
   - tugas 20%
   - ulangan 30%
   - ujian akhir 50%
-- [ ] Terapkan pembulatan nilai mapel:
+- [x] Terapkan pembulatan nilai mapel:
   - desimal 1-4 turun
   - desimal 5-9 naik
 
 ### 3.3 Normalisasi Nilai Tampil Rapor
 
-- [ ] Jika nilai akhir mapel = 100, tampilkan 98.
-- [ ] Jika nilai akhir mapel < 50, tampilkan 50 dengan flag merah.
-- [ ] Jika nilai akhir mapel = 50 asli, tampilkan 50 hitam.
+- [x] Jika nilai akhir mapel = 100, tampilkan 98.
+- [x] Jika nilai akhir mapel < 50, tampilkan 50 dengan flag merah.
+- [x] Jika nilai akhir mapel = 50 asli, tampilkan 50 hitam.
 
 ### 3.4 Cek Status KKM
 
-- [ ] Setelah nilai final mapel didapat, bandingkan dengan KKM mapel.
-- [ ] Simpan/return status tuntas atau belum.
-- [ ] Pastikan KKM hanya checker, bukan penghitung nilai.
+- [x] Setelah nilai final mapel didapat, bandingkan dengan KKM mapel.
+- [x] Simpan/return status tuntas atau belum.
+- [x] Pastikan KKM hanya checker, bukan penghitung nilai.
 
 ### 3.5 Input Nilai Akhlak dan Keseharian
 
-- [ ] Endpoint input nilai akhlak (angka).
-- [ ] Endpoint input keseharian anak (A/B/C/D: kebersihan, kerapian, keterampilan).
-- [ ] Endpoint catatan pengembangan diri oleh wali kelas.
-- [ ] Semua endpoint akademik wajib menolak request tanpa `nomor_induk` valid.
+- [x] Endpoint input nilai akhlak (angka).
+- [x] Endpoint input keseharian anak (A/B/C/D: kebersihan, kerapian, keterampilan).
+- [x] Endpoint catatan pengembangan diri oleh wali kelas.
+- [x] Semua endpoint akademik wajib menolak request tanpa `nomor_induk` valid.
+
+### 3.6 Penyempurnaan Implementasi Teknis (Sudah Selesai)
+
+- [x] Endpoint detail nilai mapel menggunakan `kode_mapel` + `nomor_induk` (bukan `id_nilai`) agar sesuai alur user.
+- [x] Item ulangan difilter terlebih dahulu: hanya `soal_disusun_pengajar=true` dan `diawasi_pengajar=true` yang ikut dihitung.
+- [x] Validasi minimum 3 nilai ulangan **valid setelah filtering**.
+- [x] Simpan hasil perhitungan akhir ke kolom terpisah: `nilai_akhir_mapel`, `nilai_rapor_tampil`, `flag_warna_rapor`.
+- [x] Hapus kolom legacy `nilai_akhir` untuk mencegah mismatch hasil lama vs hasil baru.
 
 ---
 
@@ -116,25 +126,32 @@
 
 ### 4.1 Rekap Rapor Semester
 
-- [ ] Agregasi nilai final mapel per santri.
-- [ ] Hitung rata-rata rapor (2 desimal, aturan pembulatan client).
-- [ ] Gabungkan absensi (sakit/izin/tanpa keterangan).
-- [ ] Gabungkan nilai akhlak, keseharian, catatan wali kelas.
-- [ ] Simpan ke `data_raport` status DRAFT.
+- [x] Agregasi nilai final mapel per santri.
+- [x] Hitung rata-rata rapor (2 desimal, aturan pembulatan client).
+- [x] Gabungkan absensi (sakit/izin/tanpa keterangan).
+- [x] Gabungkan nilai akhlak, keseharian, catatan wali kelas.
+- [x] Simpan ke `data_raport` status DRAFT.
 
 ### 4.2 Peringkat Kelas (Rumus Client)
 
-- [ ] Terapkan rumus:
+- [x] Terapkan rumus:
   - [(nilai hifzh x 2) + (rata-rata diniyyah x 2) + (rata-rata umum x 1)] / 5
-- [ ] Simpan ranking per kelas.
-- [ ] Atur tampilan ranking:
+- [x] Simpan ranking per kelas.
+- [x] Atur tampilan ranking:
   - top 10 untuk kelas besar
   - top 5 untuk kelas kecil
 
 ### 4.3 Terbitkan Rapor
 
-- [ ] Endpoint ubah status DRAFT ke TERBIT.
-- [ ] Set tanggal terbit.
+- [x] Endpoint ubah status DRAFT ke TERBIT.
+- [x] Set tanggal terbit.
+
+### 4.4 Monitoring dan Listing Rapor
+
+- [x] Endpoint GET untuk melihat daftar rapor yang sudah tergenerate.
+- [x] Filter daftar rapor berdasarkan nama santri.
+- [x] Filter daftar rapor berdasarkan status rapor (DRAFT/TERBIT).
+- [x] Dukungan filter tambahan: `q`, `nomor_induk`, `kode_kelas`, `tahun_ajaran`, `semester`, `per_page`.
 
 ---
 
@@ -142,15 +159,20 @@
 
 ### 5.1 Generate PDF
 
-- [ ] Endpoint PDF rapor per santri.
-- [ ] Template universal semua jenjang dengan jumlah mapel dinamis.
-- [ ] Catat log download rapor.
+- [x] Endpoint PDF rapor per santri.
+- [x] Template universal semua jenjang dengan jumlah mapel dinamis.
+- [x] Catat log download rapor.
+
+### 5.1.1 Status Cetak DRAFT vs TERBIT
+
+- [x] Cetak PDF status DRAFT diberi watermark `DRAFT`.
+- [x] Cetak PDF status TERBIT tanpa watermark.
 
 ### 5.2 Self-Service Santri
 
-- [ ] Endpoint lihat rapor milik sendiri.
-- [ ] Endpoint download PDF milik sendiri.
-- [ ] Validasi ownership berdasarkan nomor induk.
+- [x] Endpoint lihat rapor milik sendiri.
+- [x] Endpoint download PDF milik sendiri.
+- [x] Validasi ownership berdasarkan nomor induk.
 
 ---
 
@@ -162,3 +184,20 @@
 - Bobot global aktif adalah 20/30/50 dan sama untuk semua mapel.
 - Nomor induk santri/wati wajib lengkap sebelum input nilai, generate rapor, maupun publish rapor.
 - Catatan operasional non-API (SOP): lembar penilaian dibawa pengajar, direkap wali kelas, lalu diarsipkan sekretariat.
+
+---
+
+## Backlog BE Lanjutan (Pasca Fase 5)
+
+### B1. Konversi Nilai Huruf per Mapel di Payload Rapor
+
+- [x] Ambil rule konversi dari `data_konversi_nilai` (prioritas spesifik unit, fallback global).
+- [x] Turunkan nilai huruf/predikat dari `nilai_rapor_tampil` tiap mapel.
+- [x] Sertakan hasil konversi di payload API rapor (`show/list/self`) agar siap dipakai template PDF/klien.
+- [x] Tambahkan field output konsisten per mapel, misal: `nilai_huruf` dan/atau `predikat`.
+
+### B2. Konsistensi Flag Warna Nilai Rapor
+
+- [x] Pastikan semua endpoint akademik yang menampilkan nilai mapel memakai sumber yang sama: `flag_warna_rapor` dari aturan nilai asli `< 50`.
+- [x] Tambahkan uji kasus backend untuk skenario batas: `49.x -> 50 MERAH`, `50 asli -> 50 HITAM`, dan `100 -> 98 HITAM`.
+- [x] Pastikan data lama/backfill (jika ada) tidak menimbulkan inkonsistensi antara `nilai_akhir_mapel`, `nilai_rapor_tampil`, dan `flag_warna_rapor` (tersedia command `php artisan raport:backfill-nilai-mapel`, aman dengan opsi `--dry-run`).
