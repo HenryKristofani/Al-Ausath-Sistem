@@ -26,7 +26,12 @@ class DataKelasMapel extends Model
 
     public function mataPelajaran()
     {
-        return $this->belongsTo(DataMataPelajaran::class, 'id_mapel', 'id_mapel');
+        return $this->belongsTo(DataMataPelajaran::class, 'kode_mapel', 'kode_mapel');
+    }
+
+    public function petugas()
+    {
+        return $this->belongsTo(DataPetugas::class, 'id_petugas', 'id_petugas');
     }
 }
 

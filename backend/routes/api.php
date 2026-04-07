@@ -9,14 +9,18 @@ use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportKeseharianController;
-use App\Http\Controllers\Api\Administrasi\DataAkunSantriController;
-use App\Http\Controllers\Api\Administrasi\DataKelasController;
-use App\Http\Controllers\Api\Administrasi\DataSantriController;
-use App\Http\Controllers\Api\Administrasi\DataPetugasController;
-use App\Http\Controllers\Api\Administrasi\DataTahunAjaranController;
-use App\Http\Controllers\Api\Administrasi\DataUnitController;
+use App\Http\Controllers\Api\DataMaster\DataAkunSantriController;
+use App\Http\Controllers\Api\DataMaster\DataKelasController;
+use App\Http\Controllers\Api\DataMaster\DataKelasMapelController;
+use App\Http\Controllers\Api\DataMaster\DataJadwalPembelajaranController;
+use App\Http\Controllers\Api\DataMaster\DataMataPelajaranController;
+use App\Http\Controllers\Api\DataMaster\DataSantriController;
+use App\Http\Controllers\Api\DataMaster\DataPetugasController;
+use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
+use App\Http\Controllers\Api\DataMaster\DataUnitController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
+use App\Http\Controllers\Api\Administrasi\SesiAbsensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -127,6 +131,58 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/{id}', [DataKelasController::class, 'show']);
         Route::put('/{id}', [DataKelasController::class, 'update']);
         Route::delete('/{id}', [DataKelasController::class, 'destroy']);
+    });
+
+    Route::prefix('mata-pelajaran')->group(function () {
+        Route::get('/', [DataMataPelajaranController::class, 'index']);
+        Route::post('/', [DataMataPelajaranController::class, 'store']);
+        Route::post('/import', [DataMataPelajaranController::class, 'import']);
+        Route::get('/export', [DataMataPelajaranController::class, 'export']);
+        Route::get('/import-template', [DataMataPelajaranController::class, 'importTemplate']);
+        Route::get('/{id}', [DataMataPelajaranController::class, 'show']);
+        Route::put('/{id}', [DataMataPelajaranController::class, 'update']);
+        Route::delete('/{id}', [DataMataPelajaranController::class, 'destroy']);
+    });
+
+    Route::prefix('kelas-mapel')->group(function () {
+        Route::get('/', [DataKelasMapelController::class, 'index']);
+        Route::post('/', [DataKelasMapelController::class, 'store']);
+        Route::post('/import', [DataKelasMapelController::class, 'import']);
+        Route::get('/export', [DataKelasMapelController::class, 'export']);
+        Route::get('/import-template', [DataKelasMapelController::class, 'importTemplate']);
+        Route::get('/{id}', [DataKelasMapelController::class, 'show']);
+        Route::put('/{id}', [DataKelasMapelController::class, 'update']);
+        Route::delete('/{id}', [DataKelasMapelController::class, 'destroy']);
+    });
+
+    Route::prefix('jadwal-pembelajaran')->group(function () {
+        Route::get('/', [DataJadwalPembelajaranController::class, 'index']);
+        Route::post('/', [DataJadwalPembelajaranController::class, 'store']);
+        Route::post('/import', [DataJadwalPembelajaranController::class, 'import']);
+        Route::get('/export', [DataJadwalPembelajaranController::class, 'export']);
+        Route::get('/import-template', [DataJadwalPembelajaranController::class, 'importTemplate']);
+        Route::get('/{id}', [DataJadwalPembelajaranController::class, 'show']);
+        Route::put('/{id}', [DataJadwalPembelajaranController::class, 'update']);
+        Route::delete('/{id}', [DataJadwalPembelajaranController::class, 'destroy']);
+    });
+
+    Route::prefix('sesi-absensi')->group(function () {
+        Route::get('/', [SesiAbsensiController::class, 'index']);
+        Route::get('/aktif', [SesiAbsensiController::class, 'aktif']);
+        Route::post('/admin/buka-sesi', [SesiAbsensiController::class, 'adminBukaSesi']);
+        Route::get('/rekap/santri', [SesiAbsensiController::class, 'rekapSantri']);
+        Route::get('/rekap/kelas', [SesiAbsensiController::class, 'rekapKelas']);
+        Route::get('/rekap/petugas', [SesiAbsensiController::class, 'rekapPetugas']);
+        Route::post('/mulai', [SesiAbsensiController::class, 'mulai']);
+        Route::post('/{id}/set-pengganti', [SesiAbsensiController::class, 'setPengganti']);
+        Route::get('/{id}/santri', [SesiAbsensiController::class, 'daftarSantri']);
+        Route::post('/{id}/absensi-santri', [SesiAbsensiController::class, 'inputAbsensiSantri']);
+        Route::put('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminUpsertAbsensiPengajar']);
+        Route::delete('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminDeleteAbsensiPengajar']);
+        Route::put('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminUpsertAbsensiSantri']);
+        Route::delete('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminDeleteAbsensiSantri']);
+        Route::post('/{id}/selesai', [SesiAbsensiController::class, 'selesai']);
+        Route::get('/{id}', [SesiAbsensiController::class, 'show']);
     });
 
     Route::prefix('tahun-ajaran')->group(function () {

@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Http\Controllers\Api\Administrasi;
+namespace App\Http\Controllers\Api\DataMaster;
 
 use App\Http\Controllers\Controller;
-use App\Models\DataKelas;
+use App\Models\DataUnit;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,58 +11,47 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class DataKelasController extends Controller
+class DataUnitController extends Controller
 {
     /**
-     * List data kelas.
+     * List data unit.
      */
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);
 
-        $query = DataKelas::query()
-            ->with(['unit', 'tahunAjaranRelasi'])
-            ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper($request->kode_unit)))
-            ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
+        $query = DataUnit::query()
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('kode_kelas', 'like', "%{$keyword}%")
-                        ->orWhere('nama_kelas', 'like', "%{$keyword}%")
-                        ->orWhere('nama_jurusan', 'like', "%{$keyword}%");
+                        ->where('kode_unit', 'like', "%{$keyword}%")
+                        ->orWhere('nama_unit', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('kode_unit')
-            ->orderBy('nama_kelas');
+            ->orderBy('nomor_urut')
+            ->orderBy('nama_unit');
 
         return response()->json($query->paginate($perPage));
     }
 
     /**
-     * Simpan data kelas baru.
+     * Simpan data unit baru.
      */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'kode_unit' => ['required', 'string', 'max:10', 'exists:data_unit,kode_unit'],
-            'kode_kelas' => ['required', 'string', 'max:10', 'unique:data_kelas,kode_kelas'],
-            'nama_kelas' => ['required', 'string', 'max:100'],
-            'nama_jurusan' => ['nullable', 'string', 'max:100'],
-            'tahun_ajaran' => [
-                'required',
-                'string',
-                'max:20',
-                Rule::exists('data_tahun_ajaran', 'kode_tahun')->where(fn ($q) => $q->where('is_deleted', false)),
-            ],
+            'kode_unit' => ['required', 'string', 'max:10', 'unique:data_unit,kode_unit'],
+            'nama_unit' => ['required', 'string', 'max:100'],
+            'nomor_urut' => ['nullable', 'integer'],
+            'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
         $validated['kode_unit'] = strtoupper($validated['kode_unit']);
-        $validated['kode_kelas'] = strtoupper($validated['kode_kelas']);
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
@@ -72,47 +61,41 @@ class DataKelasController extends Controller
             $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
         }
 
-        $data = DataKelas::create($validated);
+        $data = DataUnit::create($validated);
 
         return response()->json([
-            'message' => 'Data kelas berhasil dibuat.',
+            'message' => 'Data unit berhasil dibuat.',
             'data' => $data,
         ], 201);
     }
 
     /**
-     * Tampilkan detail data kelas.
+     * Tampilkan detail data unit.
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataKelas::with(['unit', 'tahunAjaranRelasi'])->findOrFail($id);
+        $data = DataUnit::findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
 
     /**
-     * Perbarui data kelas.
+     * Perbarui data unit.
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $kelas = DataKelas::findOrFail($id);
+        $unit = DataUnit::findOrFail($id);
 
         $validated = $request->validate([
-            'kode_unit' => ['sometimes', 'string', 'max:10', 'exists:data_unit,kode_unit'],
-            'kode_kelas' => [
+            'kode_unit' => [
                 'sometimes',
                 'string',
                 'max:10',
-                Rule::unique('data_kelas', 'kode_kelas')->ignore($kelas->id_kelas, 'id_kelas'),
+                Rule::unique('data_unit', 'kode_unit')->ignore($unit->id_unit, 'id_unit'),
             ],
-            'nama_kelas' => ['sometimes', 'string', 'max:100'],
-            'nama_jurusan' => ['nullable', 'string', 'max:100'],
-            'tahun_ajaran' => [
-                'sometimes',
-                'string',
-                'max:20',
-                Rule::exists('data_tahun_ajaran', 'kode_tahun')->where(fn ($q) => $q->where('is_deleted', false)),
-            ],
+            'nama_unit' => ['sometimes', 'string', 'max:100'],
+            'nomor_urut' => ['nullable', 'integer'],
+            'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
@@ -121,10 +104,6 @@ class DataKelasController extends Controller
             $validated['kode_unit'] = strtoupper($validated['kode_unit']);
         }
 
-        if (array_key_exists('kode_kelas', $validated) && $validated['kode_kelas'] !== null) {
-            $validated['kode_kelas'] = strtoupper($validated['kode_kelas']);
-        }
-
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
         }
@@ -133,36 +112,36 @@ class DataKelasController extends Controller
             $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
         }
 
-        $kelas->update($validated);
+        $unit->update($validated);
 
         return response()->json([
-            'message' => 'Data kelas berhasil diperbarui.',
-            'data' => $kelas->fresh(['unit', 'tahunAjaranRelasi']),
+            'message' => 'Data unit berhasil diperbarui.',
+            'data' => $unit->fresh(),
         ]);
     }
 
     /**
-     * Hapus data kelas.
+     * Hapus data unit.
      */
     public function destroy(int $id): JsonResponse
     {
-        $kelas = DataKelas::findOrFail($id);
+        $unit = DataUnit::findOrFail($id);
 
         try {
-            $kelas->delete();
+            $unit->delete();
         } catch (QueryException $exception) {
             return response()->json([
-                'message' => 'Data kelas tidak dapat dihapus karena masih dipakai pada data santri/mapel atau data terkait lainnya.',
+                'message' => 'Data unit tidak dapat dihapus karena masih dipakai pada data kelas/mapel/rekening atau data terkait lainnya.',
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Data kelas berhasil dihapus.',
+            'message' => 'Data unit berhasil dihapus.',
         ]);
     }
 
     /**
-     * Import data kelas dari CSV (upsert berdasarkan kode_kelas).
+     * Import data unit dari CSV (upsert berdasarkan kode_unit).
      */
     public function import(Request $request): JsonResponse
     {
@@ -203,19 +182,13 @@ class DataKelasController extends Controller
                 continue;
             }
 
-            $payload = $this->mapKelasPayload($rowData);
+            $payload = $this->mapUnitPayload($rowData);
 
             $validator = Validator::make($payload, [
-                'kode_unit' => ['required', 'string', 'max:10', 'exists:data_unit,kode_unit'],
-                'kode_kelas' => ['required', 'string', 'max:10'],
-                'nama_kelas' => ['required', 'string', 'max:100'],
-                'nama_jurusan' => ['nullable', 'string', 'max:100'],
-                'tahun_ajaran' => [
-                    'required',
-                    'string',
-                    'max:20',
-                    Rule::exists('data_tahun_ajaran', 'kode_tahun')->where(fn ($q) => $q->where('is_deleted', false)),
-                ],
+                'kode_unit' => ['required', 'string', 'max:10'],
+                'nama_unit' => ['required', 'string', 'max:100'],
+                'nomor_urut' => ['nullable', 'integer'],
+                'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
                 'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);
@@ -229,7 +202,6 @@ class DataKelasController extends Controller
             }
 
             $payload['kode_unit'] = strtoupper($payload['kode_unit']);
-            $payload['kode_kelas'] = strtoupper($payload['kode_kelas']);
 
             if (!empty($payload['status'])) {
                 $payload['status'] = strtoupper($payload['status']);
@@ -239,7 +211,7 @@ class DataKelasController extends Controller
                 $payload['status_ppdb'] = strtoupper($payload['status_ppdb']);
             }
 
-            $existing = DataKelas::where('kode_kelas', $payload['kode_kelas'])->first();
+            $existing = DataUnit::where('kode_unit', $payload['kode_unit'])->first();
 
             if ($existing) {
                 $existing->update($payload);
@@ -247,14 +219,14 @@ class DataKelasController extends Controller
                 continue;
             }
 
-            DataKelas::create($payload);
+            DataUnit::create($payload);
             $inserted++;
         }
 
         fclose($handle);
 
         return response()->json([
-            'message' => 'Import data kelas selesai.',
+            'message' => 'Import data unit selesai.',
             'data' => [
                 'inserted' => $inserted,
                 'updated' => $updated,
@@ -265,33 +237,29 @@ class DataKelasController extends Controller
     }
 
     /**
-     * Export data kelas ke CSV sesuai filter.
+     * Export data unit ke CSV sesuai filter.
      */
     public function export(Request $request): StreamedResponse
     {
-        $query = DataKelas::query()
-            ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper($request->kode_unit)))
-            ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
+        $query = DataUnit::query()
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('kode_kelas', 'like', "%{$keyword}%")
-                        ->orWhere('nama_kelas', 'like', "%{$keyword}%")
-                        ->orWhere('nama_jurusan', 'like', "%{$keyword}%");
+                        ->where('kode_unit', 'like', "%{$keyword}%")
+                        ->orWhere('nama_unit', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('kode_unit')
-            ->orderBy('nama_kelas');
+            ->orderBy('nomor_urut')
+            ->orderBy('nama_unit');
 
         $headers = [
             'kode_unit',
-            'kode_kelas',
-            'nama_kelas',
-            'nama_jurusan',
-            'tahun_ajaran',
+            'nama_unit',
+            'nomor_urut',
+            'keterangan',
             'status',
             'status_ppdb',
         ];
@@ -304,10 +272,9 @@ class DataKelasController extends Controller
                 foreach ($rows as $row) {
                     fputcsv($output, [
                         $row->kode_unit,
-                        $row->kode_kelas,
-                        $row->nama_kelas,
-                        $row->nama_jurusan,
-                        $row->tahun_ajaran,
+                        $row->nama_unit,
+                        $row->nomor_urut,
+                        $row->keterangan,
                         $row->status,
                         $row->status_ppdb,
                     ]);
@@ -315,31 +282,7 @@ class DataKelasController extends Controller
             });
 
             fclose($output);
-        }, 'data-kelas-' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
-    }
-
-    /**
-     * Template CSV import data kelas.
-     */
-    public function importTemplate(): StreamedResponse
-    {
-        $headers = [
-            'kode_unit',
-            'kode_kelas',
-            'nama_kelas',
-            'nama_jurusan',
-            'tahun_ajaran',
-            'status',
-            'status_ppdb',
-        ];
-
-        return response()->streamDownload(function () use ($headers) {
-            $output = fopen('php://output', 'w');
-            fputcsv($output, $headers);
-            fclose($output);
-        }, 'template-import-kelas.csv', [
+        }, 'data-unit-' . now()->format('Ymd_His') . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -376,14 +319,13 @@ class DataKelasController extends Controller
         return true;
     }
 
-    private function mapKelasPayload(array $rowData): array
+    private function mapUnitPayload(array $rowData): array
     {
         return [
             'kode_unit' => $rowData['kode_unit'] ?? null,
-            'kode_kelas' => $rowData['kode_kelas'] ?? null,
-            'nama_kelas' => $rowData['nama_kelas'] ?? null,
-            'nama_jurusan' => $rowData['nama_jurusan'] ?? null,
-            'tahun_ajaran' => $rowData['tahun_ajaran'] ?? null,
+            'nama_unit' => $rowData['nama_unit'] ?? null,
+            'nomor_urut' => $rowData['nomor_urut'] ?? null,
+            'keterangan' => $rowData['keterangan'] ?? null,
             'status' => $rowData['status'] ?? null,
             'status_ppdb' => $rowData['status_ppdb'] ?? null,
         ];

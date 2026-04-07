@@ -1,147 +1,132 @@
 <?php
 
-namespace App\Http\Controllers\Api\Administrasi;
+namespace App\Http\Controllers\Api\DataMaster;
 
 use App\Http\Controllers\Controller;
-use App\Models\DataUnit;
-use Illuminate\Database\QueryException;
+use App\Models\DataTahunAjaran;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class DataUnitController extends Controller
+class DataTahunAjaranController extends Controller
 {
     /**
-     * List data unit.
+     * List data tahun ajaran (exclude soft delete via flag is_deleted).
      */
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);
 
-        $query = DataUnit::query()
+        $query = DataTahunAjaran::query()
+            ->where('is_deleted', false)
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('kode_unit', 'like', "%{$keyword}%")
-                        ->orWhere('nama_unit', 'like', "%{$keyword}%");
+                        ->where('kode_tahun', 'like', "%{$keyword}%")
+                        ->orWhere('nama_tahun', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('nomor_urut')
-            ->orderBy('nama_unit');
+            ->orderByDesc('id_tahun_ajaran');
 
         return response()->json($query->paginate($perPage));
     }
 
     /**
-     * Simpan data unit baru.
+     * Simpan data tahun ajaran baru.
      */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'kode_unit' => ['required', 'string', 'max:10', 'unique:data_unit,kode_unit'],
-            'nama_unit' => ['required', 'string', 'max:100'],
-            'nomor_urut' => ['nullable', 'integer'],
+            'kode_tahun' => ['required', 'string', 'max:20', 'unique:data_tahun_ajaran,kode_tahun'],
+            'nama_tahun' => ['required', 'string', 'max:50'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-            'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
-        $validated['kode_unit'] = strtoupper($validated['kode_unit']);
+        $validated['kode_tahun'] = strtoupper($validated['kode_tahun']);
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
         }
 
-        if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
-            $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
-        }
+        $validated['is_deleted'] = false;
 
-        $data = DataUnit::create($validated);
+        $data = DataTahunAjaran::create($validated);
 
         return response()->json([
-            'message' => 'Data unit berhasil dibuat.',
+            'message' => 'Data tahun ajaran berhasil dibuat.',
             'data' => $data,
         ], 201);
     }
 
     /**
-     * Tampilkan detail data unit.
+     * Tampilkan detail data tahun ajaran.
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataUnit::findOrFail($id);
+        $data = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
 
     /**
-     * Perbarui data unit.
+     * Perbarui data tahun ajaran.
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $unit = DataUnit::findOrFail($id);
+        $tahun = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
 
         $validated = $request->validate([
-            'kode_unit' => [
+            'kode_tahun' => [
                 'sometimes',
                 'string',
-                'max:10',
-                Rule::unique('data_unit', 'kode_unit')->ignore($unit->id_unit, 'id_unit'),
+                'max:20',
+                Rule::unique('data_tahun_ajaran', 'kode_tahun')->ignore($tahun->id_tahun_ajaran, 'id_tahun_ajaran'),
             ],
-            'nama_unit' => ['sometimes', 'string', 'max:100'],
-            'nomor_urut' => ['nullable', 'integer'],
+            'nama_tahun' => ['sometimes', 'string', 'max:50'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-            'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
-        if (array_key_exists('kode_unit', $validated) && $validated['kode_unit'] !== null) {
-            $validated['kode_unit'] = strtoupper($validated['kode_unit']);
+        if (array_key_exists('kode_tahun', $validated) && $validated['kode_tahun'] !== null) {
+            $validated['kode_tahun'] = strtoupper($validated['kode_tahun']);
         }
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
         }
 
-        if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
-            $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
-        }
-
-        $unit->update($validated);
+        $tahun->update($validated);
 
         return response()->json([
-            'message' => 'Data unit berhasil diperbarui.',
-            'data' => $unit->fresh(),
+            'message' => 'Data tahun ajaran berhasil diperbarui.',
+            'data' => $tahun->fresh(),
         ]);
     }
 
     /**
-     * Hapus data unit.
+     * Soft delete data tahun ajaran via flag is_deleted.
      */
     public function destroy(int $id): JsonResponse
     {
-        $unit = DataUnit::findOrFail($id);
+        $tahun = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
 
-        try {
-            $unit->delete();
-        } catch (QueryException $exception) {
-            return response()->json([
-                'message' => 'Data unit tidak dapat dihapus karena masih dipakai pada data kelas/mapel/rekening atau data terkait lainnya.',
-            ], 422);
-        }
+        $tahun->update([
+            'is_deleted' => true,
+            'deleted_at' => now(),
+        ]);
 
         return response()->json([
-            'message' => 'Data unit berhasil dihapus.',
+            'message' => 'Data tahun ajaran berhasil dihapus.',
         ]);
     }
 
     /**
-     * Import data unit dari CSV (upsert berdasarkan kode_unit).
+     * Import data tahun ajaran dari CSV (upsert berdasarkan kode_tahun).
      */
     public function import(Request $request): JsonResponse
     {
@@ -182,15 +167,13 @@ class DataUnitController extends Controller
                 continue;
             }
 
-            $payload = $this->mapUnitPayload($rowData);
+            $payload = $this->mapPayload($rowData);
 
             $validator = Validator::make($payload, [
-                'kode_unit' => ['required', 'string', 'max:10'],
-                'nama_unit' => ['required', 'string', 'max:100'],
-                'nomor_urut' => ['nullable', 'integer'],
+                'kode_tahun' => ['required', 'string', 'max:20'],
+                'nama_tahun' => ['required', 'string', 'max:50'],
                 'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-                'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);
 
             if ($validator->fails()) {
@@ -201,17 +184,12 @@ class DataUnitController extends Controller
                 continue;
             }
 
-            $payload['kode_unit'] = strtoupper($payload['kode_unit']);
+            $payload['kode_tahun'] = strtoupper($payload['kode_tahun']);
+            $payload['status'] = strtoupper($payload['status'] ?? 'AKTIF');
+            $payload['is_deleted'] = false;
+            $payload['deleted_at'] = null;
 
-            if (!empty($payload['status'])) {
-                $payload['status'] = strtoupper($payload['status']);
-            }
-
-            if (!empty($payload['status_ppdb'])) {
-                $payload['status_ppdb'] = strtoupper($payload['status_ppdb']);
-            }
-
-            $existing = DataUnit::where('kode_unit', $payload['kode_unit'])->first();
+            $existing = DataTahunAjaran::where('kode_tahun', $payload['kode_tahun'])->first();
 
             if ($existing) {
                 $existing->update($payload);
@@ -219,14 +197,14 @@ class DataUnitController extends Controller
                 continue;
             }
 
-            DataUnit::create($payload);
+            DataTahunAjaran::create($payload);
             $inserted++;
         }
 
         fclose($handle);
 
         return response()->json([
-            'message' => 'Import data unit selesai.',
+            'message' => 'Import data tahun ajaran selesai.',
             'data' => [
                 'inserted' => $inserted,
                 'updated' => $updated,
@@ -237,32 +215,24 @@ class DataUnitController extends Controller
     }
 
     /**
-     * Export data unit ke CSV sesuai filter.
+     * Export data tahun ajaran ke CSV.
      */
     public function export(Request $request): StreamedResponse
     {
-        $query = DataUnit::query()
+        $query = DataTahunAjaran::query()
+            ->where('is_deleted', false)
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('kode_unit', 'like', "%{$keyword}%")
-                        ->orWhere('nama_unit', 'like', "%{$keyword}%");
+                        ->where('kode_tahun', 'like', "%{$keyword}%")
+                        ->orWhere('nama_tahun', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('nomor_urut')
-            ->orderBy('nama_unit');
+            ->orderByDesc('id_tahun_ajaran');
 
-        $headers = [
-            'kode_unit',
-            'nama_unit',
-            'nomor_urut',
-            'keterangan',
-            'status',
-            'status_ppdb',
-        ];
+        $headers = ['kode_tahun', 'nama_tahun', 'keterangan', 'status'];
 
         return response()->streamDownload(function () use ($query, $headers) {
             $output = fopen('php://output', 'w');
@@ -271,18 +241,37 @@ class DataUnitController extends Controller
             $query->chunk(500, function ($rows) use ($output) {
                 foreach ($rows as $row) {
                     fputcsv($output, [
-                        $row->kode_unit,
-                        $row->nama_unit,
-                        $row->nomor_urut,
+                        $row->kode_tahun,
+                        $row->nama_tahun,
                         $row->keterangan,
                         $row->status,
-                        $row->status_ppdb,
                     ]);
                 }
             });
 
             fclose($output);
-        }, 'data-unit-' . now()->format('Ymd_His') . '.csv', [
+        }, 'data-tahun-ajaran-' . now()->format('Ymd_His') . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Template CSV import data tahun ajaran.
+     */
+    public function importTemplate(): StreamedResponse
+    {
+        $headers = [
+            'kode_tahun',
+            'nama_tahun',
+            'keterangan',
+            'status',
+        ];
+
+        return response()->streamDownload(function () use ($headers) {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, $headers);
+            fclose($output);
+        }, 'template-import-tahun-ajaran.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -319,15 +308,13 @@ class DataUnitController extends Controller
         return true;
     }
 
-    private function mapUnitPayload(array $rowData): array
+    private function mapPayload(array $rowData): array
     {
         return [
-            'kode_unit' => $rowData['kode_unit'] ?? null,
-            'nama_unit' => $rowData['nama_unit'] ?? null,
-            'nomor_urut' => $rowData['nomor_urut'] ?? null,
+            'kode_tahun' => $rowData['kode_tahun'] ?? null,
+            'nama_tahun' => $rowData['nama_tahun'] ?? null,
             'keterangan' => $rowData['keterangan'] ?? null,
             'status' => $rowData['status'] ?? null,
-            'status_ppdb' => $rowData['status_ppdb'] ?? null,
         ];
     }
 }

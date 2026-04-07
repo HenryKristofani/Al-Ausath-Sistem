@@ -19,6 +19,21 @@ class AbsensiPengajar extends Model
         'keterangan',
         'input_oleh',
     ];
+
+    public function petugas()
+    {
+        return $this->belongsTo(DataPetugas::class, 'id_petugas', 'id_petugas');
+    }
+
+    public function inputOlehPetugas()
+    {
+        return $this->belongsTo(DataPetugas::class, 'input_oleh', 'id_petugas');
+    }
+
+    public function sesi()
+    {
+        return $this->belongsTo(SesiAbsensi::class, 'id_sesi', 'id_sesi');
+    }
 }
 
 

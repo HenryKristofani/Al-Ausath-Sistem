@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\Administrasi;
+namespace App\Http\Controllers\Api\DataMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\DataPetugas;

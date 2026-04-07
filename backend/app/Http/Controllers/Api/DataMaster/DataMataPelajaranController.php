@@ -1,132 +1,137 @@
 <?php
 
-namespace App\Http\Controllers\Api\Administrasi;
+namespace App\Http\Controllers\Api\DataMaster;
 
 use App\Http\Controllers\Controller;
-use App\Models\DataTahunAjaran;
+use App\Models\DataMataPelajaran;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class DataTahunAjaranController extends Controller
+class DataMataPelajaranController extends Controller
 {
     /**
-     * List data tahun ajaran (exclude soft delete via flag is_deleted).
+     * List data mata pelajaran.
      */
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);
 
-        $query = DataTahunAjaran::query()
-            ->where('is_deleted', false)
+        $query = DataMataPelajaran::query()
+            ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper($request->kode_unit)))
+            ->when($request->filled('kelompok_mapel'), fn ($q) => $q->where('kelompok_mapel', $request->kelompok_mapel))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('kode_tahun', 'like', "%{$keyword}%")
-                        ->orWhere('nama_tahun', 'like', "%{$keyword}%");
+                        ->where('kode_mapel', 'like', "%{$keyword}%")
+                        ->orWhere('nama_mapel', 'like', "%{$keyword}%")
+                        ->orWhere('kelompok_mapel', 'like', "%{$keyword}%");
                 });
             })
-            ->orderByDesc('id_tahun_ajaran');
+            ->orderBy('urutan')
+            ->orderBy('nama_mapel');
 
         return response()->json($query->paginate($perPage));
     }
 
     /**
-     * Simpan data tahun ajaran baru.
+     * Simpan data mata pelajaran baru.
      */
     public function store(Request $request): JsonResponse
     {
+        $request->merge($this->normalizeMapelInput($request->all()));
+
         $validated = $request->validate([
-            'kode_tahun' => ['required', 'string', 'max:20', 'unique:data_tahun_ajaran,kode_tahun'],
-            'nama_tahun' => ['required', 'string', 'max:50'],
+            'kode_mapel' => ['required', 'string', 'max:20', 'unique:data_mata_pelajaran,kode_mapel'],
+            'nama_mapel' => ['required', 'string', 'max:200'],
+            'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
+            'kelompok_mapel' => ['nullable', 'string', 'max:50'],
+            'urutan' => ['nullable', 'integer'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
-        $validated['kode_tahun'] = strtoupper($validated['kode_tahun']);
+        $validated = $this->normalizeMapelInput($validated);
 
-        if (array_key_exists('status', $validated) && $validated['status'] !== null) {
-            $validated['status'] = strtoupper($validated['status']);
-        }
-
-        $validated['is_deleted'] = false;
-
-        $data = DataTahunAjaran::create($validated);
+        $data = DataMataPelajaran::create($validated);
 
         return response()->json([
-            'message' => 'Data tahun ajaran berhasil dibuat.',
+            'message' => 'Data mata pelajaran berhasil dibuat.',
             'data' => $data,
         ], 201);
     }
 
     /**
-     * Tampilkan detail data tahun ajaran.
+     * Tampilkan detail data mata pelajaran.
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
+        $data = DataMataPelajaran::findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
 
     /**
-     * Perbarui data tahun ajaran.
+     * Perbarui data mata pelajaran.
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $tahun = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
+        $mapel = DataMataPelajaran::findOrFail($id);
+
+        $request->merge($this->normalizeMapelInput($request->all()));
 
         $validated = $request->validate([
-            'kode_tahun' => [
+            'kode_mapel' => [
                 'sometimes',
                 'string',
                 'max:20',
-                Rule::unique('data_tahun_ajaran', 'kode_tahun')->ignore($tahun->id_tahun_ajaran, 'id_tahun_ajaran'),
+                Rule::unique('data_mata_pelajaran', 'kode_mapel')->ignore($mapel->id_mapel, 'id_mapel'),
             ],
-            'nama_tahun' => ['sometimes', 'string', 'max:50'],
+            'nama_mapel' => ['sometimes', 'string', 'max:200'],
+            'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
+            'kelompok_mapel' => ['nullable', 'string', 'max:50'],
+            'urutan' => ['nullable', 'integer'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
-        if (array_key_exists('kode_tahun', $validated) && $validated['kode_tahun'] !== null) {
-            $validated['kode_tahun'] = strtoupper($validated['kode_tahun']);
-        }
+        $validated = $this->normalizeMapelInput($validated);
 
-        if (array_key_exists('status', $validated) && $validated['status'] !== null) {
-            $validated['status'] = strtoupper($validated['status']);
-        }
-
-        $tahun->update($validated);
+        $mapel->update($validated);
 
         return response()->json([
-            'message' => 'Data tahun ajaran berhasil diperbarui.',
-            'data' => $tahun->fresh(),
+            'message' => 'Data mata pelajaran berhasil diperbarui.',
+            'data' => $mapel->fresh(),
         ]);
     }
 
     /**
-     * Soft delete data tahun ajaran via flag is_deleted.
+     * Hapus data mata pelajaran.
      */
     public function destroy(int $id): JsonResponse
     {
-        $tahun = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
+        $mapel = DataMataPelajaran::findOrFail($id);
 
-        $tahun->update([
-            'is_deleted' => true,
-            'deleted_at' => now(),
-        ]);
+        try {
+            $mapel->delete();
+        } catch (QueryException $exception) {
+            return response()->json([
+                'message' => 'Data mata pelajaran tidak dapat dihapus karena masih dipakai pada data kelas mapel/KKM atau data terkait lainnya.',
+            ], 422);
+        }
 
         return response()->json([
-            'message' => 'Data tahun ajaran berhasil dihapus.',
+            'message' => 'Data mata pelajaran berhasil dihapus.',
         ]);
     }
 
     /**
-     * Import data tahun ajaran dari CSV (upsert berdasarkan kode_tahun).
+     * Import data mata pelajaran dari CSV (upsert berdasarkan kode_mapel).
      */
     public function import(Request $request): JsonResponse
     {
@@ -167,11 +172,15 @@ class DataTahunAjaranController extends Controller
                 continue;
             }
 
-            $payload = $this->mapPayload($rowData);
+            $payload = $this->mapMapelPayload($rowData);
+            $payload = $this->normalizeMapelInput($payload);
 
             $validator = Validator::make($payload, [
-                'kode_tahun' => ['required', 'string', 'max:20'],
-                'nama_tahun' => ['required', 'string', 'max:50'],
+                'kode_mapel' => ['required', 'string', 'max:20'],
+                'nama_mapel' => ['required', 'string', 'max:200'],
+                'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
+                'kelompok_mapel' => ['nullable', 'string', 'max:50'],
+                'urutan' => ['nullable', 'integer'],
                 'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);
@@ -184,12 +193,7 @@ class DataTahunAjaranController extends Controller
                 continue;
             }
 
-            $payload['kode_tahun'] = strtoupper($payload['kode_tahun']);
-            $payload['status'] = strtoupper($payload['status'] ?? 'AKTIF');
-            $payload['is_deleted'] = false;
-            $payload['deleted_at'] = null;
-
-            $existing = DataTahunAjaran::where('kode_tahun', $payload['kode_tahun'])->first();
+            $existing = DataMataPelajaran::where('kode_mapel', $payload['kode_mapel'])->first();
 
             if ($existing) {
                 $existing->update($payload);
@@ -197,14 +201,14 @@ class DataTahunAjaranController extends Controller
                 continue;
             }
 
-            DataTahunAjaran::create($payload);
+            DataMataPelajaran::create($payload);
             $inserted++;
         }
 
         fclose($handle);
 
         return response()->json([
-            'message' => 'Import data tahun ajaran selesai.',
+            'message' => 'Import data mata pelajaran selesai.',
             'data' => [
                 'inserted' => $inserted,
                 'updated' => $updated,
@@ -215,24 +219,35 @@ class DataTahunAjaranController extends Controller
     }
 
     /**
-     * Export data tahun ajaran ke CSV.
+     * Export data mata pelajaran ke CSV sesuai filter.
      */
     public function export(Request $request): StreamedResponse
     {
-        $query = DataTahunAjaran::query()
-            ->where('is_deleted', false)
+        $query = DataMataPelajaran::query()
+            ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper($request->kode_unit)))
+            ->when($request->filled('kelompok_mapel'), fn ($q) => $q->where('kelompok_mapel', $request->kelompok_mapel))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('kode_tahun', 'like', "%{$keyword}%")
-                        ->orWhere('nama_tahun', 'like', "%{$keyword}%");
+                        ->where('kode_mapel', 'like', "%{$keyword}%")
+                        ->orWhere('nama_mapel', 'like', "%{$keyword}%")
+                        ->orWhere('kelompok_mapel', 'like', "%{$keyword}%");
                 });
             })
-            ->orderByDesc('id_tahun_ajaran');
+            ->orderBy('urutan')
+            ->orderBy('nama_mapel');
 
-        $headers = ['kode_tahun', 'nama_tahun', 'keterangan', 'status'];
+        $headers = [
+            'kode_mapel',
+            'nama_mapel',
+            'kode_unit',
+            'kelompok_mapel',
+            'urutan',
+            'keterangan',
+            'status',
+        ];
 
         return response()->streamDownload(function () use ($query, $headers) {
             $output = fopen('php://output', 'w');
@@ -241,8 +256,11 @@ class DataTahunAjaranController extends Controller
             $query->chunk(500, function ($rows) use ($output) {
                 foreach ($rows as $row) {
                     fputcsv($output, [
-                        $row->kode_tahun,
-                        $row->nama_tahun,
+                        $row->kode_mapel,
+                        $row->nama_mapel,
+                        $row->kode_unit,
+                        $row->kelompok_mapel,
+                        $row->urutan,
                         $row->keterangan,
                         $row->status,
                     ]);
@@ -250,19 +268,22 @@ class DataTahunAjaranController extends Controller
             });
 
             fclose($output);
-        }, 'data-tahun-ajaran-' . now()->format('Ymd_His') . '.csv', [
+        }, 'data-mata-pelajaran-' . now()->format('Ymd_His') . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 
     /**
-     * Template CSV import data tahun ajaran.
+     * Template CSV import data mata pelajaran.
      */
     public function importTemplate(): StreamedResponse
     {
         $headers = [
-            'kode_tahun',
-            'nama_tahun',
+            'kode_mapel',
+            'nama_mapel',
+            'kode_unit',
+            'kelompok_mapel',
+            'urutan',
             'keterangan',
             'status',
         ];
@@ -271,7 +292,7 @@ class DataTahunAjaranController extends Controller
             $output = fopen('php://output', 'w');
             fputcsv($output, $headers);
             fclose($output);
-        }, 'template-import-tahun-ajaran.csv', [
+        }, 'template-import-mata-pelajaran.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -308,13 +329,27 @@ class DataTahunAjaranController extends Controller
         return true;
     }
 
-    private function mapPayload(array $rowData): array
+    private function mapMapelPayload(array $rowData): array
     {
         return [
-            'kode_tahun' => $rowData['kode_tahun'] ?? null,
-            'nama_tahun' => $rowData['nama_tahun'] ?? null,
+            'kode_mapel' => $rowData['kode_mapel'] ?? null,
+            'nama_mapel' => $rowData['nama_mapel'] ?? null,
+            'kode_unit' => $rowData['kode_unit'] ?? null,
+            'kelompok_mapel' => $rowData['kelompok_mapel'] ?? null,
+            'urutan' => $rowData['urutan'] ?? null,
             'keterangan' => $rowData['keterangan'] ?? null,
             'status' => $rowData['status'] ?? null,
         ];
+    }
+
+    private function normalizeMapelInput(array $payload): array
+    {
+        foreach (['kode_mapel', 'kode_unit', 'status'] as $field) {
+            if (array_key_exists($field, $payload) && is_string($payload[$field])) {
+                $payload[$field] = strtoupper(trim($payload[$field]));
+            }
+        }
+
+        return $payload;
     }
 }
