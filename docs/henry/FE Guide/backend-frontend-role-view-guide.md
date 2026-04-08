@@ -271,6 +271,7 @@ UX penting:
 
 - FE harus dukung dynamic rows untuk tugas/ulangan.
 - Tampilkan hasil perhitungan dari response (`nilai_rapor_tampil`, `flag_warna_rapor`, status KKM).
+- Simpan dan tampilkan field persist `status_ketuntasan` dari data nilai mapel (`TUNTAS`/`BELUM_TUNTAS`) agar konsisten antara list, detail, dan laporan.
 - Bila backend return 422 soal ulangan valid < 3, tampilkan message persis backend.
 
 ## 3.6 Akademik - Nilai Akhlak

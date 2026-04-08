@@ -130,6 +130,15 @@ class NilaiMapelController extends Controller
             nilaiRaporBulat: $nilaiRaporBulat
         );
 
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+
         $nilai = DataNilaiSiswa::updateOrCreate(
             [
                 'nomor_induk' => $validated['nomor_induk'],
@@ -145,19 +154,11 @@ class NilaiMapelController extends Controller
                 'nilai_akhir_mapel' => $this->roundHalfUp($nilaiAkhirMentah, 2),
                 'nilai_rapor_tampil' => $nilaiRaporTampil,
                 'flag_warna_rapor' => $flagWarnaRapor,
+                'status_ketuntasan' => $statusKetuntasan,
                 'keterangan' => $validated['keterangan'] ?? null,
                 'id_petugas_input' => $validated['id_petugas_input'] ?? null,
             ]
         );
-
-        $kkm = $this->resolveKkm(
-            kodeMapel: $validated['kode_mapel'],
-            kodeKelas: $validated['kode_kelas'],
-            tahunAjaran: $validated['tahun_ajaran'],
-            semester: (int) $validated['semester']
-        );
-
-        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
 
         return response()->json([
             'message' => 'Komponen nilai mapel berhasil disimpan.',
