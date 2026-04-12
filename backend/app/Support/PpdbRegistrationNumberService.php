@@ -110,6 +110,29 @@ class PpdbRegistrationNumberService
         return $candidate;
     }
 
+    public function generateNomorIndukAfterPayment(PpdbPendaftar $pendaftar, ?int $tahunMasuk = null): string
+    {
+        $tahun = $tahunMasuk
+            ?: (int) ($pendaftar->tanggal_daftar ? Carbon::parse($pendaftar->tanggal_daftar)->format('Y') : now()->format('Y'));
+
+        $segmentJenjang = $this->normalizeJenjangSegment($pendaftar->jenjang ?: $pendaftar->program_pendaftaran);
+        $prefix = $segmentJenjang . '/' . $tahun;
+
+        $counter = 1;
+
+        while ($counter <= 9999) {
+            $candidate = $prefix . '/' . str_pad((string) $counter, 3, '0', STR_PAD_LEFT);
+
+            if (!$this->isNomorIndukUsed($candidate, $pendaftar->id_pendaftaran)) {
+                return $candidate;
+            }
+
+            $counter++;
+        }
+
+        throw new \RuntimeException('Nomor induk untuk jenjang dan tahun masuk ini sudah penuh.');
+    }
+
     public function isLuarKota(?string $asalKota, ?bool $override = null): bool
     {
         if ($override !== null) {
@@ -154,6 +177,40 @@ class PpdbRegistrationNumberService
         }
 
         return mb_substr($letters, 0, 3);
+    }
+
+    private function normalizeJenjangSegment(?string $jenjang): string
+    {
+        $raw = mb_strtolower(trim((string) $jenjang));
+
+        if ($raw === '') {
+            return 'UMUM';
+        }
+
+        $map = [
+            'paud' => 'PAUD',
+            'paud1' => 'PAUD1',
+            'paud 1' => 'PAUD1',
+            'paud2' => 'PAUD2',
+            'paud 2' => 'PAUD2',
+            'paud3' => 'PAUD3',
+            'paud 3' => 'PAUD3',
+            'paud4' => 'PAUD4',
+            'paud 4' => 'PAUD4',
+            'paud5' => 'PAUD5',
+            'paud 5' => 'PAUD5',
+            'sd' => 'SD',
+            'smp' => 'SMP',
+            'sma' => 'SMA',
+        ];
+
+        if (isset($map[$raw])) {
+            return $map[$raw];
+        }
+
+        $normalized = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $raw));
+
+        return $normalized !== '' ? $normalized : 'UMUM';
     }
 
     private function isNomorIndukUsed(string $nomorInduk, ?int $idPendaftaran): bool

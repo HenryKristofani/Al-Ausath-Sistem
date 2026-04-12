@@ -12,6 +12,7 @@ class PembayaranSpp extends Model
     public $timestamps = false;
 
         protected $fillable = [
+        'id_pendaftaran',
         'id_santri',
         'id_setting',
         'nominal_bayar',
@@ -19,12 +20,20 @@ class PembayaranSpp extends Model
         'metode_bayar',
         'id_rekening',
         'status',
+        'tanggal_verifikasi',
+        'id_petugas_verifikator',
     ];
 
         protected $casts = [
         'tanggal_bayar' => 'datetime',
+        'tanggal_verifikasi' => 'datetime',
         'nominal_bayar' => 'decimal:2',
     ];
+
+    public function pendaftarPpdb()
+    {
+        return $this->belongsTo(PpdbPendaftar::class, 'id_pendaftaran', 'id_pendaftaran');
+    }
 
     public function santri()
     {
@@ -39,6 +48,11 @@ class PembayaranSpp extends Model
     public function rekening()
     {
         return $this->belongsTo(DataRekeningBank::class, 'id_rekening', 'id_rekening');
+    }
+
+    public function kwitansi()
+    {
+        return $this->hasOne(KwitansiPdf::class, 'id_pembayaran', 'id_pembayaran');
     }
 }
 

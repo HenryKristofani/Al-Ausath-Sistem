@@ -47,9 +47,11 @@ class PpdbController extends Controller
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
                         ->where('nama_calon', 'like', "%{$keyword}%")
+                        ->orWhere('program_pendaftaran', 'like', "%{$keyword}%")
                         ->orWhere('no_pendaftaran', 'like', "%{$keyword}%")
                         ->orWhere('no_pendaftaran_final', 'like', "%{$keyword}%")
                         ->orWhere('nomor_induk_generated', 'like', "%{$keyword}%")
+                        ->orWhere('nik_calon_santri', 'like', "%{$keyword}%")
                         ->orWhere('asal_kota', 'like', "%{$keyword}%")
                         ->orWhere('nomor_umi', 'like', "%{$keyword}%");
                 });
@@ -67,7 +69,25 @@ class PpdbController extends Controller
         $validated = $request->validate([
             'id_akun' => ['nullable', 'integer', 'exists:akun_pendaftar,id_akun'],
             'nama_calon' => ['required', 'string', 'max:200'],
+            'program_pendaftaran' => ['nullable', 'string', 'max:100'],
             'jenjang' => ['nullable', 'string', 'max:20'],
+            'jenis_kelamin' => ['nullable', 'in:L,P'],
+            'tempat_lahir' => ['nullable', 'string', 'max:100'],
+            'tanggal_lahir' => ['nullable', 'date'],
+            'nik_calon_santri' => ['nullable', 'string', 'max:30'],
+            'alamat_lengkap' => ['nullable', 'string'],
+            'riwayat_penyakit' => ['nullable', 'string'],
+            'nama_ayah' => ['nullable', 'string', 'max:200'],
+            'penghasilan_ayah' => ['nullable', 'string', 'max:100'],
+            'no_hp_calon' => ['nullable', 'string', 'max:30'],
+            'nama_ibu' => ['nullable', 'string', 'max:200'],
+            'no_hp_ibu' => ['nullable', 'string', 'max:30'],
+            'soal_jawab' => ['nullable', 'string'],
+            'file_akta_path' => ['nullable', 'string'],
+            'file_kk_path' => ['nullable', 'string'],
+            'file_surat_rekomendasi_path' => ['nullable', 'string'],
+            'surat_pernyataan_setuju' => ['nullable', 'boolean'],
+            'surat_pernyataan_file_path' => ['nullable', 'string'],
             'nomor_umi' => [
                 Rule::requiredIf(fn () => mb_strtolower((string) $request->jenjang) === 'smp'),
                 'nullable',
@@ -95,6 +115,7 @@ class PpdbController extends Controller
 
         $validated['status_verifikasi'] = $validated['status_verifikasi'] ?? 'pending';
         $validated['tanggal_daftar'] = $tanggalDaftar->toDateString();
+        $validated['waktu_pendaftaran'] = $tanggalDaftar;
 
         $data = new PpdbPendaftar($validated);
         $data->id_pendaftaran = $idPendaftaran;
@@ -129,7 +150,25 @@ class PpdbController extends Controller
             'no_pendaftaran' => ['sometimes', 'string', 'max:50', 'unique:ppdb_pendaftar,no_pendaftaran,' . $pendaftar->id_pendaftaran . ',id_pendaftaran'],
             'no_pendaftaran_final' => ['nullable', 'string', 'max:50', 'unique:ppdb_pendaftar,no_pendaftaran_final,' . $pendaftar->id_pendaftaran . ',id_pendaftaran'],
             'nama_calon' => ['sometimes', 'string', 'max:200'],
+            'program_pendaftaran' => ['nullable', 'string', 'max:100'],
             'jenjang' => ['nullable', 'string', 'max:20'],
+            'jenis_kelamin' => ['nullable', 'in:L,P'],
+            'tempat_lahir' => ['nullable', 'string', 'max:100'],
+            'tanggal_lahir' => ['nullable', 'date'],
+            'nik_calon_santri' => ['nullable', 'string', 'max:30'],
+            'alamat_lengkap' => ['nullable', 'string'],
+            'riwayat_penyakit' => ['nullable', 'string'],
+            'nama_ayah' => ['nullable', 'string', 'max:200'],
+            'penghasilan_ayah' => ['nullable', 'string', 'max:100'],
+            'no_hp_calon' => ['nullable', 'string', 'max:30'],
+            'nama_ibu' => ['nullable', 'string', 'max:200'],
+            'no_hp_ibu' => ['nullable', 'string', 'max:30'],
+            'soal_jawab' => ['nullable', 'string'],
+            'file_akta_path' => ['nullable', 'string'],
+            'file_kk_path' => ['nullable', 'string'],
+            'file_surat_rekomendasi_path' => ['nullable', 'string'],
+            'surat_pernyataan_setuju' => ['nullable', 'boolean'],
+            'surat_pernyataan_file_path' => ['nullable', 'string'],
             'nomor_umi' => ['nullable', 'string', 'max:50'],
             'asal_kota' => ['nullable', 'string', 'max:100'],
             'is_luar_kota' => ['nullable', 'boolean'],
@@ -279,6 +318,7 @@ class PpdbController extends Controller
                 'string',
                 'exists:data_kelas,kode_kelas',
             ],
+            'integrasikan_langsung_ke_santri' => ['nullable', 'boolean'],
             'auto_buat_akun_santri' => ['nullable', 'boolean'],
         ]);
 
@@ -286,8 +326,10 @@ class PpdbController extends Controller
             ? Carbon::parse($validated['tanggal_verif'])
             : now();
 
+        $integrasiLangsung = $validated['integrasikan_langsung_ke_santri'] ?? false;
         $autoBuatAkunSantri = $validated['auto_buat_akun_santri'] ?? true;
 
+        unset($validated['integrasikan_langsung_ke_santri']);
         unset($validated['auto_buat_akun_santri']);
 
         $payloadVerifikasi = $validated;
@@ -295,7 +337,7 @@ class PpdbController extends Controller
 
         $integrasiDiterima = null;
 
-        $verifikasi = DB::transaction(function () use ($id, $validated, $payloadVerifikasi, $pendaftar, $autoBuatAkunSantri, &$integrasiDiterima) {
+        $verifikasi = DB::transaction(function () use ($id, $validated, $payloadVerifikasi, $pendaftar, $integrasiLangsung, $autoBuatAkunSantri, &$integrasiDiterima) {
             $verifikasi = PpdbVerifikasi::updateOrCreate(
                 ['id_pendaftaran' => $id],
                 $payloadVerifikasi
@@ -310,7 +352,7 @@ class PpdbController extends Controller
                 ]);
             }
 
-            if ($this->isStatusDiterima($validated['hasil'] ?? null)) {
+            if ($this->isStatusDiterima($validated['hasil'] ?? null) && $integrasiLangsung) {
                 $integrasiDiterima = $this->integrasikanPendaftarDiterima(
                     $pendaftar,
                     (string) ($validated['kode_kelas_diterima'] ?? ''),

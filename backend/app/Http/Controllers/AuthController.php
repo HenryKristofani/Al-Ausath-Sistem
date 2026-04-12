@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\AkunPendaftar;
 use App\Models\DataPetugas;
 use App\Models\DataAkunSantri;
+use App\Models\PpdbNotifikasi;
 use App\Models\PpdbPendaftar;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -18,22 +19,44 @@ class AuthController extends Controller
 {
     public function loginPpdb(Request $request)
     {
-        if (!$request->filled('email') && $request->filled('username')) {
-            $request->merge(['email' => $request->username]);
+        if (!$request->filled('identifier') && $request->filled('email')) {
+            $request->merge(['identifier' => $request->email]);
+        }
+
+        if (!$request->filled('identifier') && $request->filled('username')) {
+            $request->merge(['identifier' => $request->username]);
         }
 
         $validated = $request->validate([
-            'email' => 'required|email|max:150',
+            'identifier' => 'required|string|max:150',
             'password' => 'required|string',
         ]);
 
+        $identifier = trim((string) $validated['identifier']);
+        $identifierIsNumeric = ctype_digit($identifier);
+        $identifierInt = $identifierIsNumeric ? (int) $identifier : null;
+
         $user = AkunPendaftar::with(['pendaftaran' => fn ($q) => $q->orderByDesc('id_pendaftaran')])
-            ->where('email', $validated['email'])
+            ->where(function ($query) use ($identifier, $identifierIsNumeric, $identifierInt) {
+                $query->where('email', $identifier)
+                    ->orWhere('id_akun', $identifierIsNumeric ? $identifierInt : -1)
+                    ->orWhereHas('pendaftaran', function ($pendaftaranQuery) use ($identifier) {
+                        $pendaftaranQuery
+                            ->where('no_pendaftaran', $identifier)
+                            ->orWhere('no_pendaftaran_final', $identifier);
+                    });
+
+                if ($identifierIsNumeric && $identifierInt) {
+                    $query->orWhereHas('pendaftaran', function ($pendaftaranQuery) use ($identifierInt) {
+                        $pendaftaranQuery->where('id_pendaftaran', $identifierInt);
+                    });
+                }
+            })
             ->first();
 
         if (!$user || !Hash::check($validated['password'], $user->password_hash)) {
             throw ValidationException::withMessages([
-                'email' => ['Kredensial yang diberikan tidak sesuai.'],
+                'identifier' => ['Kredensial yang diberikan tidak sesuai.'],
             ]);
         }
 
@@ -45,24 +68,14 @@ class AuthController extends Controller
             ->first();
 
         if (!$pendaftarAktif) {
-            Auth::guard('ppdb')->logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
-
-            return response()->json([
-                'message' => 'Akun sudah terdaftar, tetapi ID pendaftaran belum dibuat.',
-                'next_step' => [
-                    'endpoint' => '/api/ppdb/pendaftaran/create-identitas',
-                    'method' => 'POST',
-                    'payload_hint' => [
-                        'id_akun' => $user->id_akun,
-                        'email_ppdb' => $user->email,
-                    ],
-                ],
-            ], 422);
+            $pendaftarAktif = $this->firstOrCreateDraftPendaftaran($user);
         }
 
         $pendaftarAktif->load(['tes', 'verifikasi']);
+
+        // Gunakan token API agar alur mobile / client non-cookie tetap stabil.
+        $user->tokens()->delete();
+        $accessToken = $user->createToken('ppdb-api')->plainTextToken;
 
         $daftarPendaftaran = $user->pendaftaran()
             ->orderByDesc('id_pendaftaran')
@@ -91,6 +104,8 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Login Berhasil!',
             'role' => 'ppdb',
+            'token_type' => 'Bearer',
+            'access_token' => $accessToken,
             'user' => $userPayload,
         ]);
     }
@@ -124,8 +139,10 @@ class AuthController extends Controller
             'password_hash' => $hashedPassword,
         ]);
 
+        $pendaftar = $this->firstOrCreateDraftPendaftaran($user);
+
         return response()->json([
-            'message' => 'Registrasi akun pendaftar berhasil. Lanjutkan buat ID pendaftaran.',
+            'message' => 'Registrasi akun pendaftar berhasil. ID pendaftaran sudah dibuat.',
             'role' => 'ppdb',
             'user' => [
                 'id' => $user->getKey(),
@@ -134,8 +151,15 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'phone' => $user->phone,
             ],
+            'pendaftaran' => [
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'no_pendaftaran' => $pendaftar->no_pendaftaran,
+                'no_pendaftaran_final' => $pendaftar->no_pendaftaran_final,
+                'status_verifikasi' => $pendaftar->status_verifikasi,
+                'tanggal_daftar' => $pendaftar->tanggal_daftar,
+            ],
             'next_step' => [
-                'endpoint' => '/api/ppdb/pendaftaran/create-identitas',
+                'endpoint' => '/api/ppdb/login',
                 'method' => 'POST',
             ],
         ], 201);
@@ -206,6 +230,54 @@ class AuthController extends Controller
         ]);
     }
 
+    public function rekapPengumumanPpdb(Request $request)
+    {
+        $acceptedStatuses = ['diterima', 'lulus', 'accepted'];
+
+        $dataDiterima = PpdbPendaftar::query()
+            ->whereIn('status_verifikasi', $acceptedStatuses)
+            ->orderBy('nama_calon')
+            ->get([
+                'id_pendaftaran',
+                'no_pendaftaran',
+                'no_pendaftaran_final',
+                'nama_calon',
+                'program_pendaftaran',
+                'jenjang',
+                'status_verifikasi',
+                'tanggal_pengumuman',
+            ]);
+
+        $dokumenPengumuman = PpdbNotifikasi::query()
+            ->whereIn('type', ['pengumuman_file', 'dokumen_pengumuman'])
+            ->orderByDesc('id_notif')
+            ->get([
+                'id_notif',
+                'type',
+                'konten',
+                'sent_at',
+                'status_kirim',
+            ])
+            ->map(fn ($row) => [
+                'id_notif' => $row->id_notif,
+                'jenis' => $row->type,
+                'url_atau_path' => $row->konten,
+                'tanggal' => $row->sent_at,
+                'status' => $row->status_kirim,
+            ])
+            ->values();
+
+        return response()->json([
+            'message' => 'Rekap pengumuman PPDB berhasil dimuat.',
+            'data' => [
+                'status_diterima' => $acceptedStatuses,
+                'jumlah_diterima' => $dataDiterima->count(),
+                'daftar_diterima' => $dataDiterima,
+                'dokumen_pengumuman' => $dokumenPengumuman,
+            ],
+        ]);
+    }
+
     public function dashboardPpdb(Request $request)
     {
         $akun = $this->resolveAuthenticatedPpdbUser();
@@ -247,8 +319,27 @@ class AuthController extends Controller
                     'id_pendaftaran' => $pendaftar->id_pendaftaran,
                     'no_pendaftaran' => $pendaftar->no_pendaftaran,
                     'no_pendaftaran_final' => $pendaftar->no_pendaftaran_final,
+                    'waktu_pendaftaran' => $pendaftar->waktu_pendaftaran ?: $pendaftar->created_at,
                     'nama_calon' => $pendaftar->nama_calon,
+                    'program_pendaftaran' => $pendaftar->program_pendaftaran,
                     'jenjang' => $pendaftar->jenjang,
+                    'jenis_kelamin' => $pendaftar->jenis_kelamin,
+                    'tempat_lahir' => $pendaftar->tempat_lahir,
+                    'tanggal_lahir' => $pendaftar->tanggal_lahir,
+                    'nik_calon_santri' => $pendaftar->nik_calon_santri,
+                    'alamat_lengkap' => $pendaftar->alamat_lengkap,
+                    'riwayat_penyakit' => $pendaftar->riwayat_penyakit,
+                    'nama_ayah' => $pendaftar->nama_ayah,
+                    'penghasilan_ayah' => $pendaftar->penghasilan_ayah,
+                    'no_hp_calon' => $pendaftar->no_hp_calon,
+                    'nama_ibu' => $pendaftar->nama_ibu,
+                    'no_hp_ibu' => $pendaftar->no_hp_ibu,
+                    'soal_jawab' => $pendaftar->soal_jawab,
+                    'file_akta_path' => $pendaftar->file_akta_path,
+                    'file_kk_path' => $pendaftar->file_kk_path,
+                    'file_surat_rekomendasi_path' => $pendaftar->file_surat_rekomendasi_path,
+                    'surat_pernyataan_setuju' => (bool) $pendaftar->surat_pernyataan_setuju,
+                    'surat_pernyataan_file_path' => $pendaftar->surat_pernyataan_file_path,
                     'nomor_umi' => $pendaftar->nomor_umi,
                     'asal_kota' => $pendaftar->asal_kota,
                     'is_luar_kota' => (bool) $pendaftar->is_luar_kota,
@@ -284,7 +375,25 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'nama_calon' => 'required|string|max:200',
+            'program_pendaftaran' => 'required|string|max:100',
             'jenjang' => 'nullable|string|max:20',
+            'jenis_kelamin' => 'required|in:L,P',
+            'tempat_lahir' => 'required|string|max:100',
+            'tanggal_lahir' => 'required|date',
+            'nik_calon_santri' => 'required|string|max:30',
+            'alamat_lengkap' => 'required|string',
+            'riwayat_penyakit' => 'nullable|string',
+            'nama_ayah' => 'required|string|max:200',
+            'penghasilan_ayah' => 'nullable|string|max:100',
+            'no_hp_calon' => 'required|string|max:30',
+            'nama_ibu' => 'required|string|max:200',
+            'no_hp_ibu' => 'required|string|max:30',
+            'soal_jawab' => 'nullable|string',
+            'file_akta_path' => 'required|string',
+            'file_kk_path' => 'required|string',
+            'file_surat_rekomendasi_path' => 'required|string',
+            'surat_pernyataan_setuju' => 'required|boolean',
+            'surat_pernyataan_file_path' => 'nullable|string',
             'nomor_umi' => 'nullable|string|max:50',
             'asal_kota' => 'nullable|string|max:100',
             'phone_ppdb' => 'nullable|string|max:30',
@@ -301,7 +410,25 @@ class AuthController extends Controller
 
         $pendaftar->fill([
             'nama_calon' => $validated['nama_calon'],
+            'program_pendaftaran' => $validated['program_pendaftaran'],
             'jenjang' => $validated['jenjang'] ?? $pendaftar->jenjang,
+            'jenis_kelamin' => $validated['jenis_kelamin'],
+            'tempat_lahir' => $validated['tempat_lahir'],
+            'tanggal_lahir' => $validated['tanggal_lahir'],
+            'nik_calon_santri' => $validated['nik_calon_santri'],
+            'alamat_lengkap' => $validated['alamat_lengkap'],
+            'riwayat_penyakit' => $validated['riwayat_penyakit'] ?? null,
+            'nama_ayah' => $validated['nama_ayah'],
+            'penghasilan_ayah' => $validated['penghasilan_ayah'] ?? null,
+            'no_hp_calon' => $validated['no_hp_calon'],
+            'nama_ibu' => $validated['nama_ibu'],
+            'no_hp_ibu' => $validated['no_hp_ibu'],
+            'soal_jawab' => $validated['soal_jawab'] ?? null,
+            'file_akta_path' => $validated['file_akta_path'],
+            'file_kk_path' => $validated['file_kk_path'],
+            'file_surat_rekomendasi_path' => $validated['file_surat_rekomendasi_path'],
+            'surat_pernyataan_setuju' => $validated['surat_pernyataan_setuju'],
+            'surat_pernyataan_file_path' => $validated['surat_pernyataan_file_path'] ?? null,
             'nomor_umi' => $validated['nomor_umi'] ?? null,
             'asal_kota' => $asalKota,
             'is_luar_kota' => $this->registrationNumberService()->isLuarKota($asalKota),
@@ -416,6 +543,15 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        $apiUser = $request->user();
+
+        if ($apiUser && method_exists($apiUser, 'currentAccessToken')) {
+            $currentAccessToken = $apiUser->currentAccessToken();
+            if ($currentAccessToken) {
+                $currentAccessToken->delete();
+            }
+        }
+
         if (Auth::guard('petugas')->check()) {
             Auth::guard('petugas')->logout();
         } elseif (Auth::guard('santri')->check()) {
@@ -543,6 +679,7 @@ class AuthController extends Controller
             'nama_calon' => $namaDraft,
             'status_verifikasi' => 'pending',
             'tanggal_daftar' => $tanggalDaftar->toDateString(),
+            'waktu_pendaftaran' => $tanggalDaftar,
             'is_luar_kota' => false,
         ]);
 
