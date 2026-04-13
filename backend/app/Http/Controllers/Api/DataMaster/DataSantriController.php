@@ -30,8 +30,8 @@ class DataSantriController extends Controller
 
         $query = DataSantri::query()
             ->with(['kelas', 'akun'])
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -360,8 +360,8 @@ class DataSantriController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $query = DataSantri::query()
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
