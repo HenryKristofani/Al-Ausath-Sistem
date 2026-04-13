@@ -253,3 +253,9 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::post('/{id}/bayar', [AdministrasiBebasController::class, 'bayarCicilan']);
     });
 });
+
+Route::prefix('master')->middleware(['auth:sanctum'])->group(function () {
+    Route::prefix('data-santri')->group(function () {
+        Route::get('/options', [DataSantriController::class, 'options']);
+    });
+});

@@ -46,6 +46,30 @@ class DataSantriController extends Controller
     }
 
     /**
+     * Opsi ringan data santri untuk autocomplete.
+     */
+    public function options(Request $request): JsonResponse
+    {
+        $keyword = trim((string) $request->query('q', ''));
+        $limit = max(1, min((int) $request->query('limit', 20), 50));
+
+        $options = DataSantri::query()
+            ->select(['id_santri', 'nomor_induk', 'nama_lengkap_santri'])
+            ->when($keyword !== '', function ($q) use ($keyword) {
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('nomor_induk', 'like', "%{$keyword}%")
+                        ->orWhere('nama_lengkap_santri', 'like', "%{$keyword}%");
+                });
+            })
+            ->orderBy('nama_lengkap_santri')
+            ->limit($limit)
+            ->get();
+
+        return response()->json($options);
+    }
+
+    /**
      * Simpan data santri baru.
      */
     public function store(Request $request): JsonResponse
