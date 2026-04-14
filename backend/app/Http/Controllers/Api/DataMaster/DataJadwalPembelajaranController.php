@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\DataMaster;
 
+use App\Exports\DataJadwalPembelajaranExport;
 use App\Http\Controllers\Controller;
+use App\Imports\DataJadwalPembelajaranImport;
 use App\Models\JadwalPembelajaran;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataJadwalPembelajaranController extends Controller
@@ -166,8 +170,20 @@ class DataJadwalPembelajaranController extends Controller
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls'],
         ]);
+
+        $extension = strtolower((string) $request->file('file')->getClientOriginalExtension());
+
+        if (in_array($extension, ['xlsx', 'xls'], true)) {
+            $import = new DataJadwalPembelajaranImport();
+            Excel::import($import, $request->file('file'));
+
+            return response()->json([
+                'message' => 'Import data jadwal pembelajaran selesai.',
+                'data' => $import->result(),
+            ]);
+        }
 
         $handle = fopen($request->file('file')->getRealPath(), 'r');
 
@@ -261,60 +277,18 @@ class DataJadwalPembelajaranController extends Controller
     /**
      * Export data jadwal pembelajaran ke CSV sesuai filter.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): BinaryFileResponse
     {
-        $query = JadwalPembelajaran::query()
-            ->when($request->filled('id_kelas_mapel'), fn ($q) => $q->where('id_kelas_mapel', (int) $request->id_kelas_mapel))
-            ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', trim((string) $request->tahun_ajaran)))
-            ->when($request->filled('hari'), fn ($q) => $q->where('hari', strtoupper(trim((string) $request->hari))))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper(trim((string) $request->status))))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $keyword = $request->q;
-                $q->where(function ($subQuery) use ($keyword) {
-                    $subQuery
-                        ->where('tahun_ajaran', 'like', "%{$keyword}%")
-                        ->orWhere('hari', 'like', "%{$keyword}%")
-                        ->orWhere('ruangan', 'like', "%{$keyword}%")
-                        ->orWhere('jam_mulai', 'like', "%{$keyword}%")
-                        ->orWhere('jam_selesai', 'like', "%{$keyword}%");
-                });
-            })
-            ->orderBy('tahun_ajaran')
-            ->orderBy('hari')
-            ->orderBy('jam_mulai');
-
-        $headers = [
-            'id_kelas_mapel',
-            'tahun_ajaran',
-            'hari',
-            'jam_mulai',
-            'jam_selesai',
-            'ruangan',
-            'status',
-        ];
-
-        return response()->streamDownload(function () use ($query, $headers) {
-            $output = fopen('php://output', 'w');
-            fputcsv($output, $headers);
-
-            $query->chunk(500, function ($rows) use ($output) {
-                foreach ($rows as $row) {
-                    fputcsv($output, [
-                        $row->id_kelas_mapel,
-                        $row->tahun_ajaran,
-                        $row->hari,
-                        $row->jam_mulai,
-                        $row->jam_selesai,
-                        $row->ruangan,
-                        $row->status,
-                    ]);
-                }
-            });
-
-            fclose($output);
-        }, 'data-jadwal-pembelajaran-' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        return Excel::download(
+            new DataJadwalPembelajaranExport(
+                idKelasMapel: $request->filled('id_kelas_mapel') ? (int) $request->id_kelas_mapel : null,
+                tahunAjaran: $request->filled('tahun_ajaran') ? (string) $request->tahun_ajaran : null,
+                hari: $request->filled('hari') ? (string) $request->hari : null,
+                status: $request->filled('status') ? (string) $request->status : null,
+                keyword: $request->filled('q') ? (string) $request->q : null,
+            ),
+            'data-jadwal-pembelajaran-' . now()->format('Ymd_His') . '.xlsx'
+        );
     }
 
     /**

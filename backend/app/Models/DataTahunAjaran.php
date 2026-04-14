@@ -22,6 +22,23 @@ class DataTahunAjaran extends Model
         'is_deleted' => 'boolean',
         'deleted_at' => 'datetime',
     ];
+
+    public function kelas()
+    {
+        return $this->hasMany(DataKelas::class, 'tahun_ajaran', 'kode_tahun');
+    }
+
+    public function santri()
+    {
+        return $this->hasManyThrough(
+            DataSantri::class,
+            DataKelas::class,
+            'tahun_ajaran',
+            'kode_kelas',
+            'kode_tahun',
+            'kode_kelas'
+        );
+    }
 }
 
 

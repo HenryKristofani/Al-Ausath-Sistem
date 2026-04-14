@@ -21,7 +21,6 @@ use App\Http\Controllers\Api\DataMaster\DataSantriController;
 use App\Http\Controllers\Api\DataMaster\DataPetugasController;
 use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
 use App\Http\Controllers\Api\DataMaster\DataUnitController;
-use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
 use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
@@ -29,17 +28,10 @@ use App\Http\Controllers\Api\Administrasi\SppSettingController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/ppdb/login', [AuthController::class, 'loginPpdb']);
-Route::post('/ppdb/register', [AuthController::class, 'registerPpdb']);
-Route::post('/ppdb/pendaftaran/create-identitas', [AuthController::class, 'createIdentitasPendaftaranPpdb']);
-Route::get('/ppdb/nomor/preview', [AuthController::class, 'previewNoPendaftaran']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
-    Route::get('/ppdb/dashboard', [AuthController::class, 'dashboardPpdb']);
-    Route::put('/ppdb/form', [AuthController::class, 'updateFormPpdb']);
-    Route::post('/ppdb/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
 
     Route::prefix('akademik')->group(function () {
         Route::get('/bobot', [BobotNilaiController::class, 'index']);
@@ -85,6 +77,131 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/raport/pdf', [RaportPdfController::class, 'download']);
         Route::get('/raport/self', [RaportPdfController::class, 'selfShow']);
         Route::get('/raport/self/pdf', [RaportPdfController::class, 'selfDownload']);
+
+        Route::prefix('santri')->group(function () {
+            Route::get('/', [DataSantriController::class, 'index']);
+            Route::post('/', [DataSantriController::class, 'store']);
+            Route::post('/pindah-kelas', [DataSantriController::class, 'pindahKelas']);
+            Route::post('/{id}/buat-akun', [DataSantriController::class, 'buatAkun']);
+            Route::post('/import', [DataSantriController::class, 'import']);
+            Route::get('/export', [DataSantriController::class, 'export']);
+            Route::get('/import-template', [DataSantriController::class, 'importTemplate']);
+            Route::get('/{id}', [DataSantriController::class, 'show']);
+            Route::put('/{id}', [DataSantriController::class, 'update']);
+            Route::delete('/{id}', [DataSantriController::class, 'destroy']);
+        });
+
+        Route::prefix('akun-santri')->group(function () {
+            Route::get('/kelas-tanpa-akun', [DataAkunSantriController::class, 'kelasTanpaAkun']);
+            Route::get('/santri-tanpa-akun', [DataAkunSantriController::class, 'santriTanpaAkunByKelas']);
+            Route::post('/sinkron', [DataAkunSantriController::class, 'sinkron']);
+            Route::get('/', [DataAkunSantriController::class, 'index']);
+            Route::post('/', [DataAkunSantriController::class, 'store']);
+            Route::get('/export', [DataAkunSantriController::class, 'export']);
+            Route::get('/{id}', [DataAkunSantriController::class, 'show']);
+            Route::put('/{id}', [DataAkunSantriController::class, 'update']);
+            Route::delete('/{id}', [DataAkunSantriController::class, 'destroy']);
+        });
+
+        Route::prefix('petugas')->group(function () {
+            Route::get('/peran-akun-options', [DataPetugasController::class, 'peranAkunOptions']);
+            Route::get('/', [DataPetugasController::class, 'index']);
+            Route::post('/', [DataPetugasController::class, 'store']);
+            Route::post('/import', [DataPetugasController::class, 'import']);
+            Route::get('/export', [DataPetugasController::class, 'export']);
+            Route::get('/import-template', [DataPetugasController::class, 'importTemplate']);
+            Route::get('/{id}', [DataPetugasController::class, 'show']);
+            Route::put('/{id}', [DataPetugasController::class, 'update']);
+            Route::delete('/{id}', [DataPetugasController::class, 'destroy']);
+        });
+
+        Route::prefix('unit')->group(function () {
+            Route::get('/', [DataUnitController::class, 'index']);
+            Route::post('/', [DataUnitController::class, 'store']);
+            Route::post('/import', [DataUnitController::class, 'import']);
+            Route::get('/export', [DataUnitController::class, 'export']);
+            Route::get('/{id}', [DataUnitController::class, 'show']);
+            Route::put('/{id}', [DataUnitController::class, 'update']);
+            Route::delete('/{id}', [DataUnitController::class, 'destroy']);
+        });
+
+        Route::prefix('kelas')->group(function () {
+            Route::get('/', [DataKelasController::class, 'index']);
+            Route::get('/trash', [DataKelasController::class, 'trash']);
+            Route::post('/', [DataKelasController::class, 'store']);
+            Route::post('/import', [DataKelasController::class, 'import']);
+            Route::get('/export', [DataKelasController::class, 'export']);
+            Route::get('/import-template', [DataKelasController::class, 'importTemplate']);
+            Route::get('/{id}/dependency-summary', [DataKelasController::class, 'dependencySummary']);
+            Route::post('/{id}/restore', [DataKelasController::class, 'restore']);
+            Route::delete('/{id}/force', [DataKelasController::class, 'forceDelete']);
+            Route::get('/{id}', [DataKelasController::class, 'show']);
+            Route::put('/{id}', [DataKelasController::class, 'update']);
+            Route::delete('/{id}', [DataKelasController::class, 'destroy']);
+        });
+
+        Route::prefix('mata-pelajaran')->group(function () {
+            Route::get('/', [DataMataPelajaranController::class, 'index']);
+            Route::post('/', [DataMataPelajaranController::class, 'store']);
+            Route::post('/import', [DataMataPelajaranController::class, 'import']);
+            Route::get('/export', [DataMataPelajaranController::class, 'export']);
+            Route::get('/import-template', [DataMataPelajaranController::class, 'importTemplate']);
+            Route::get('/{id}', [DataMataPelajaranController::class, 'show']);
+            Route::put('/{id}', [DataMataPelajaranController::class, 'update']);
+            Route::delete('/{id}', [DataMataPelajaranController::class, 'destroy']);
+        });
+
+        Route::prefix('kelas-mapel')->group(function () {
+            Route::get('/', [DataKelasMapelController::class, 'index']);
+            Route::post('/', [DataKelasMapelController::class, 'store']);
+            Route::post('/import', [DataKelasMapelController::class, 'import']);
+            Route::get('/export', [DataKelasMapelController::class, 'export']);
+            Route::get('/import-template', [DataKelasMapelController::class, 'importTemplate']);
+            Route::get('/{id}', [DataKelasMapelController::class, 'show']);
+            Route::put('/{id}', [DataKelasMapelController::class, 'update']);
+            Route::delete('/{id}', [DataKelasMapelController::class, 'destroy']);
+        });
+
+        Route::prefix('jadwal-pembelajaran')->group(function () {
+            Route::get('/', [DataJadwalPembelajaranController::class, 'index']);
+            Route::post('/', [DataJadwalPembelajaranController::class, 'store']);
+            Route::post('/import', [DataJadwalPembelajaranController::class, 'import']);
+            Route::get('/export', [DataJadwalPembelajaranController::class, 'export']);
+            Route::get('/import-template', [DataJadwalPembelajaranController::class, 'importTemplate']);
+            Route::get('/{id}', [DataJadwalPembelajaranController::class, 'show']);
+            Route::put('/{id}', [DataJadwalPembelajaranController::class, 'update']);
+            Route::delete('/{id}', [DataJadwalPembelajaranController::class, 'destroy']);
+        });
+
+        Route::prefix('sesi-absensi')->group(function () {
+            Route::get('/', [SesiAbsensiController::class, 'index']);
+            Route::get('/aktif', [SesiAbsensiController::class, 'aktif']);
+            Route::post('/admin/buka-sesi', [SesiAbsensiController::class, 'adminBukaSesi']);
+            Route::get('/rekap/santri', [SesiAbsensiController::class, 'rekapSantri']);
+            Route::get('/rekap/kelas', [SesiAbsensiController::class, 'rekapKelas']);
+            Route::get('/rekap/petugas', [SesiAbsensiController::class, 'rekapPetugas']);
+            Route::post('/mulai', [SesiAbsensiController::class, 'mulai']);
+            Route::post('/{id}/set-pengganti', [SesiAbsensiController::class, 'setPengganti']);
+            Route::get('/{id}/santri', [SesiAbsensiController::class, 'daftarSantri']);
+            Route::post('/{id}/absensi-santri', [SesiAbsensiController::class, 'inputAbsensiSantri']);
+            Route::put('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminUpsertAbsensiPengajar']);
+            Route::delete('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminDeleteAbsensiPengajar']);
+            Route::put('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminUpsertAbsensiSantri']);
+            Route::delete('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminDeleteAbsensiSantri']);
+            Route::post('/{id}/selesai', [SesiAbsensiController::class, 'selesai']);
+            Route::get('/{id}', [SesiAbsensiController::class, 'show']);
+        });
+
+        Route::prefix('tahun-ajaran')->group(function () {
+            Route::get('/', [DataTahunAjaranController::class, 'index']);
+            Route::post('/', [DataTahunAjaranController::class, 'store']);
+            Route::post('/import', [DataTahunAjaranController::class, 'import']);
+            Route::get('/export', [DataTahunAjaranController::class, 'export']);
+            Route::get('/import-template', [DataTahunAjaranController::class, 'importTemplate']);
+            Route::get('/{id}', [DataTahunAjaranController::class, 'show']);
+            Route::put('/{id}', [DataTahunAjaranController::class, 'update']);
+            Route::delete('/{id}', [DataTahunAjaranController::class, 'destroy']);
+        });
     });
 });
 
@@ -102,127 +219,6 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::post('/pendaftar/{id}/notifikasi', [PpdbController::class, 'storeNotifikasi']);
     });
 
-    Route::prefix('santri')->group(function () {
-        Route::get('/', [DataSantriController::class, 'index']);
-        Route::post('/', [DataSantriController::class, 'store']);
-        Route::post('/pindah-kelas', [DataSantriController::class, 'pindahKelas']);
-        Route::post('/{id}/buat-akun', [DataSantriController::class, 'buatAkun']);
-        Route::post('/import', [DataSantriController::class, 'import']);
-        Route::get('/export', [DataSantriController::class, 'export']);
-        Route::get('/import-template', [DataSantriController::class, 'importTemplate']);
-        Route::get('/{id}', [DataSantriController::class, 'show']);
-        Route::put('/{id}', [DataSantriController::class, 'update']);
-        Route::delete('/{id}', [DataSantriController::class, 'destroy']);
-    });
-
-    Route::prefix('akun-santri')->group(function () {
-        Route::get('/kelas-tanpa-akun', [DataAkunSantriController::class, 'kelasTanpaAkun']);
-        Route::get('/santri-tanpa-akun', [DataAkunSantriController::class, 'santriTanpaAkunByKelas']);
-        Route::post('/sinkron', [DataAkunSantriController::class, 'sinkron']);
-        Route::get('/', [DataAkunSantriController::class, 'index']);
-        Route::post('/', [DataAkunSantriController::class, 'store']);
-        Route::get('/export', [DataAkunSantriController::class, 'export']);
-        Route::get('/{id}', [DataAkunSantriController::class, 'show']);
-        Route::put('/{id}', [DataAkunSantriController::class, 'update']);
-        Route::delete('/{id}', [DataAkunSantriController::class, 'destroy']);
-    });
-
-    Route::prefix('petugas')->group(function () {
-        Route::get('/peran-akun-options', [DataPetugasController::class, 'peranAkunOptions']);
-        Route::get('/', [DataPetugasController::class, 'index']);
-        Route::post('/', [DataPetugasController::class, 'store']);
-        Route::post('/import', [DataPetugasController::class, 'import']);
-        Route::get('/export', [DataPetugasController::class, 'export']);
-        Route::get('/import-template', [DataPetugasController::class, 'importTemplate']);
-        Route::get('/{id}', [DataPetugasController::class, 'show']);
-        Route::put('/{id}', [DataPetugasController::class, 'update']);
-        Route::delete('/{id}', [DataPetugasController::class, 'destroy']);
-    });
-
-    Route::prefix('unit')->group(function () {
-        Route::get('/', [DataUnitController::class, 'index']);
-        Route::post('/', [DataUnitController::class, 'store']);
-        Route::post('/import', [DataUnitController::class, 'import']);
-        Route::get('/export', [DataUnitController::class, 'export']);
-        Route::get('/{id}', [DataUnitController::class, 'show']);
-        Route::put('/{id}', [DataUnitController::class, 'update']);
-        Route::delete('/{id}', [DataUnitController::class, 'destroy']);
-    });
-
-    Route::prefix('kelas')->group(function () {
-        Route::get('/', [DataKelasController::class, 'index']);
-        Route::post('/', [DataKelasController::class, 'store']);
-        Route::post('/import', [DataKelasController::class, 'import']);
-        Route::get('/export', [DataKelasController::class, 'export']);
-        Route::get('/import-template', [DataKelasController::class, 'importTemplate']);
-        Route::get('/{id}', [DataKelasController::class, 'show']);
-        Route::put('/{id}', [DataKelasController::class, 'update']);
-        Route::delete('/{id}', [DataKelasController::class, 'destroy']);
-    });
-
-    Route::prefix('mata-pelajaran')->group(function () {
-        Route::get('/', [DataMataPelajaranController::class, 'index']);
-        Route::post('/', [DataMataPelajaranController::class, 'store']);
-        Route::post('/import', [DataMataPelajaranController::class, 'import']);
-        Route::get('/export', [DataMataPelajaranController::class, 'export']);
-        Route::get('/import-template', [DataMataPelajaranController::class, 'importTemplate']);
-        Route::get('/{id}', [DataMataPelajaranController::class, 'show']);
-        Route::put('/{id}', [DataMataPelajaranController::class, 'update']);
-        Route::delete('/{id}', [DataMataPelajaranController::class, 'destroy']);
-    });
-
-    Route::prefix('kelas-mapel')->group(function () {
-        Route::get('/', [DataKelasMapelController::class, 'index']);
-        Route::post('/', [DataKelasMapelController::class, 'store']);
-        Route::post('/import', [DataKelasMapelController::class, 'import']);
-        Route::get('/export', [DataKelasMapelController::class, 'export']);
-        Route::get('/import-template', [DataKelasMapelController::class, 'importTemplate']);
-        Route::get('/{id}', [DataKelasMapelController::class, 'show']);
-        Route::put('/{id}', [DataKelasMapelController::class, 'update']);
-        Route::delete('/{id}', [DataKelasMapelController::class, 'destroy']);
-    });
-
-    Route::prefix('jadwal-pembelajaran')->group(function () {
-        Route::get('/', [DataJadwalPembelajaranController::class, 'index']);
-        Route::post('/', [DataJadwalPembelajaranController::class, 'store']);
-        Route::post('/import', [DataJadwalPembelajaranController::class, 'import']);
-        Route::get('/export', [DataJadwalPembelajaranController::class, 'export']);
-        Route::get('/import-template', [DataJadwalPembelajaranController::class, 'importTemplate']);
-        Route::get('/{id}', [DataJadwalPembelajaranController::class, 'show']);
-        Route::put('/{id}', [DataJadwalPembelajaranController::class, 'update']);
-        Route::delete('/{id}', [DataJadwalPembelajaranController::class, 'destroy']);
-    });
-
-    Route::prefix('sesi-absensi')->group(function () {
-        Route::get('/', [SesiAbsensiController::class, 'index']);
-        Route::get('/aktif', [SesiAbsensiController::class, 'aktif']);
-        Route::post('/admin/buka-sesi', [SesiAbsensiController::class, 'adminBukaSesi']);
-        Route::get('/rekap/santri', [SesiAbsensiController::class, 'rekapSantri']);
-        Route::get('/rekap/kelas', [SesiAbsensiController::class, 'rekapKelas']);
-        Route::get('/rekap/petugas', [SesiAbsensiController::class, 'rekapPetugas']);
-        Route::post('/mulai', [SesiAbsensiController::class, 'mulai']);
-        Route::post('/{id}/set-pengganti', [SesiAbsensiController::class, 'setPengganti']);
-        Route::get('/{id}/santri', [SesiAbsensiController::class, 'daftarSantri']);
-        Route::post('/{id}/absensi-santri', [SesiAbsensiController::class, 'inputAbsensiSantri']);
-        Route::put('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminUpsertAbsensiPengajar']);
-        Route::delete('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminDeleteAbsensiPengajar']);
-        Route::put('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminUpsertAbsensiSantri']);
-        Route::delete('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminDeleteAbsensiSantri']);
-        Route::post('/{id}/selesai', [SesiAbsensiController::class, 'selesai']);
-        Route::get('/{id}', [SesiAbsensiController::class, 'show']);
-    });
-
-    Route::prefix('tahun-ajaran')->group(function () {
-        Route::get('/', [DataTahunAjaranController::class, 'index']);
-        Route::post('/', [DataTahunAjaranController::class, 'store']);
-        Route::post('/import', [DataTahunAjaranController::class, 'import']);
-        Route::get('/export', [DataTahunAjaranController::class, 'export']);
-        Route::get('/import-template', [DataTahunAjaranController::class, 'importTemplate']);
-        Route::get('/{id}', [DataTahunAjaranController::class, 'show']);
-        Route::put('/{id}', [DataTahunAjaranController::class, 'update']);
-        Route::delete('/{id}', [DataTahunAjaranController::class, 'destroy']);
-    });
-
     Route::prefix('spp')->group(function () {
         Route::get('/setting', [SppSettingController::class, 'index']);
         Route::post('/setting', [SppSettingController::class, 'store']);
@@ -230,20 +226,10 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/setting/{id}', [SppSettingController::class, 'update']);
         Route::delete('/setting/{id}', [SppSettingController::class, 'destroy']);
 
-        Route::get('/tunggakan', [PembayaranSppController::class, 'tunggakanRingkasan']);
         Route::get('/pembayaran', [PembayaranSppController::class, 'index']);
         Route::post('/pembayaran', [PembayaranSppController::class, 'store']);
         Route::get('/pembayaran/{id}', [PembayaranSppController::class, 'show']);
         Route::put('/pembayaran/{id}', [PembayaranSppController::class, 'update']);
         Route::delete('/pembayaran/{id}', [PembayaranSppController::class, 'destroy']);
-    });
-
-    Route::prefix('administrasi-bebas')->group(function () {
-        Route::get('/', [AdministrasiBebasController::class, 'index']);
-        Route::post('/', [AdministrasiBebasController::class, 'store']);
-        Route::get('/{id}', [AdministrasiBebasController::class, 'show']);
-        Route::put('/{id}', [AdministrasiBebasController::class, 'update']);
-        Route::delete('/{id}', [AdministrasiBebasController::class, 'destroy']);
-        Route::post('/{id}/bayar', [AdministrasiBebasController::class, 'bayarCicilan']);
     });
 });

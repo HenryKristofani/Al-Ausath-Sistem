@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\Api\DataMaster;
 
+use App\Exports\DataUnitExport;
 use App\Http\Controllers\Controller;
+use App\Imports\DataUnitImport;
 use App\Models\DataUnit;
 use Illuminate\Database\QueryException;
+use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class DataUnitController extends Controller
 {
@@ -21,6 +24,10 @@ class DataUnitController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = DataUnit::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -62,6 +69,10 @@ class DataUnitController extends Controller
         }
 
         $data = DataUnit::create($validated);
+        $data->loadCount([
+            'kelas as jumlah_kelas',
+            'santri as jumlah_santri',
+        ]);
 
         return response()->json([
             'message' => 'Data unit berhasil dibuat.',
@@ -74,7 +85,12 @@ class DataUnitController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataUnit::findOrFail($id);
+        $data = DataUnit::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
+            ->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -113,10 +129,14 @@ class DataUnitController extends Controller
         }
 
         $unit->update($validated);
+        $unit->loadCount([
+            'kelas as jumlah_kelas',
+            'santri as jumlah_santri',
+        ]);
 
         return response()->json([
             'message' => 'Data unit berhasil diperbarui.',
-            'data' => $unit->fresh(),
+            'data' => $unit,
         ]);
     }
 
@@ -146,8 +166,33 @@ class DataUnitController extends Controller
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls'],
         ]);
+
+        $extension = strtolower((string) $request->file('file')->getClientOriginalExtension());
+
+        if (in_array($extension, ['xlsx', 'xls'], true)) {
+            $import = new DataUnitImport();
+            Excel::import($import, $request->file('file'));
+
+            $result = $import->result();
+            $affectedUnits = DataUnit::query()
+                ->withCount([
+                    'kelas as jumlah_kelas',
+                    'santri as jumlah_santri',
+                ])
+                ->whereIn('kode_unit', $import->affectedKodeUnit())
+                ->orderBy('nomor_urut')
+                ->orderBy('nama_unit')
+                ->get();
+
+            return response()->json([
+                'message' => 'Import data unit selesai.',
+                'data' => array_merge($result, [
+                    'affected_units' => $affectedUnits,
+                ]),
+            ]);
+        }
 
         $handle = fopen($request->file('file')->getRealPath(), 'r');
 
@@ -173,6 +218,7 @@ class DataUnitController extends Controller
         $updated = 0;
         $failed = [];
         $lineNumber = 1;
+        $affectedKodeUnit = [];
 
         while (($row = fgetcsv($handle)) !== false) {
             $lineNumber++;
@@ -215,15 +261,27 @@ class DataUnitController extends Controller
 
             if ($existing) {
                 $existing->update($payload);
+                $affectedKodeUnit[$payload['kode_unit']] = $payload['kode_unit'];
                 $updated++;
                 continue;
             }
 
             DataUnit::create($payload);
+            $affectedKodeUnit[$payload['kode_unit']] = $payload['kode_unit'];
             $inserted++;
         }
 
         fclose($handle);
+
+        $affectedUnits = DataUnit::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
+            ->whereIn('kode_unit', array_values($affectedKodeUnit))
+            ->orderBy('nomor_urut')
+            ->orderBy('nama_unit')
+            ->get();
 
         return response()->json([
             'message' => 'Import data unit selesai.',
@@ -232,59 +290,24 @@ class DataUnitController extends Controller
                 'updated' => $updated,
                 'failed' => count($failed),
                 'error_rows' => $failed,
+                'affected_units' => $affectedUnits,
             ],
         ]);
     }
 
     /**
-     * Export data unit ke CSV sesuai filter.
+     * Export data unit ke Excel (.xlsx) sesuai filter.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): BinaryFileResponse
     {
-        $query = DataUnit::query()
-            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $keyword = $request->q;
-                $q->where(function ($subQuery) use ($keyword) {
-                    $subQuery
-                        ->where('kode_unit', 'like', "%{$keyword}%")
-                        ->orWhere('nama_unit', 'like', "%{$keyword}%");
-                });
-            })
-            ->orderBy('nomor_urut')
-            ->orderBy('nama_unit');
-
-        $headers = [
-            'kode_unit',
-            'nama_unit',
-            'nomor_urut',
-            'keterangan',
-            'status',
-            'status_ppdb',
-        ];
-
-        return response()->streamDownload(function () use ($query, $headers) {
-            $output = fopen('php://output', 'w');
-            fputcsv($output, $headers);
-
-            $query->chunk(500, function ($rows) use ($output) {
-                foreach ($rows as $row) {
-                    fputcsv($output, [
-                        $row->kode_unit,
-                        $row->nama_unit,
-                        $row->nomor_urut,
-                        $row->keterangan,
-                        $row->status,
-                        $row->status_ppdb,
-                    ]);
-                }
-            });
-
-            fclose($output);
-        }, 'data-unit-' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        return Excel::download(
+            new DataUnitExport(
+                status: $request->filled('status') ? (string) $request->status : null,
+                statusPpdb: $request->filled('status_ppdb') ? (string) $request->status_ppdb : null,
+                keyword: $request->filled('q') ? (string) $request->q : null,
+            ),
+            'data-unit-' . now()->format('Ymd_His') . '.xlsx'
+        );
     }
 
     private function normalizeImportHeader(string $header): string

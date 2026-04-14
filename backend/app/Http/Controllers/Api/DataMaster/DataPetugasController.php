@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\DataMaster;
 
+use App\Exports\DataPetugasExport;
 use App\Http\Controllers\Controller;
+use App\Imports\DataPetugasImport;
 use App\Models\DataPetugas;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataPetugasController extends Controller
@@ -164,8 +168,20 @@ class DataPetugasController extends Controller
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls'],
         ]);
+
+        $extension = strtolower((string) $request->file('file')->getClientOriginalExtension());
+
+        if (in_array($extension, ['xlsx', 'xls'], true)) {
+            $import = new DataPetugasImport();
+            Excel::import($import, $request->file('file'));
+
+            return response()->json([
+                'message' => 'Import data petugas selesai.',
+                'data' => $import->result(),
+            ]);
+        }
 
         $handle = fopen($request->file('file')->getRealPath(), 'r');
 
@@ -201,6 +217,7 @@ class DataPetugasController extends Controller
             }
 
             $payload = $this->mapPetugasPayload($rowData);
+            $payload = $this->normalizePetugasPayload($payload);
 
             $validator = Validator::make($payload, [
                 'nomor_induk' => ['nullable', 'string', 'max:20'],
@@ -283,56 +300,16 @@ class DataPetugasController extends Controller
     /**
      * Export data petugas ke CSV sesuai filter.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): BinaryFileResponse
     {
-        $query = DataPetugas::query()
-            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('peran_akun'), fn ($q) => $q->where('peran_akun', $request->peran_akun))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $keyword = $request->q;
-                $q->where(function ($subQuery) use ($keyword) {
-                    $subQuery
-                        ->where('nama_lengkap', 'like', "%{$keyword}%")
-                        ->orWhere('nomor_induk', 'like', "%{$keyword}%")
-                        ->orWhere('alamat_email', 'like', "%{$keyword}%");
-                });
-            })
-            ->orderByDesc('id_petugas');
-
-        $headers = [
-            'nomor_induk',
-            'nama_lengkap',
-            'peran_akun',
-            'pilihan_unit',
-            'alamat_email',
-            'nomor_telepon',
-            'status',
-            'last_login',
-        ];
-
-        return response()->streamDownload(function () use ($query, $headers) {
-            $output = fopen('php://output', 'w');
-            fputcsv($output, $headers);
-
-            $query->chunk(500, function ($rows) use ($output) {
-                foreach ($rows as $row) {
-                    fputcsv($output, [
-                        $row->nomor_induk,
-                        $row->nama_lengkap,
-                        $row->peran_akun,
-                        $row->pilihan_unit,
-                        $row->alamat_email,
-                        $row->nomor_telepon,
-                        $row->status,
-                        optional($row->last_login)->format('Y-m-d H:i:s'),
-                    ]);
-                }
-            });
-
-            fclose($output);
-        }, 'data-petugas-' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        return Excel::download(
+            new DataPetugasExport(
+                status: $request->filled('status') ? (string) $request->status : null,
+                peranAkun: $request->filled('peran_akun') ? (string) $request->peran_akun : null,
+                keyword: $request->filled('q') ? (string) $request->q : null,
+            ),
+            'data-petugas-' . now()->format('Ymd_His') . '.xlsx'
+        );
     }
 
     /**
@@ -404,5 +381,23 @@ class DataPetugasController extends Controller
             'password' => $rowData['password'] ?? null,
             'status' => $rowData['status'] ?? null,
         ];
+    }
+
+    private function normalizePetugasPayload(array $payload): array
+    {
+        foreach (['nomor_induk', 'nomor_telepon', 'password'] as $field) {
+            if (array_key_exists($field, $payload) && $payload[$field] !== null) {
+                $payload[$field] = trim((string) $payload[$field]);
+                if ($payload[$field] === '') {
+                    $payload[$field] = null;
+                }
+            }
+        }
+
+        if (!empty($payload['status'])) {
+            $payload['status'] = strtoupper((string) $payload['status']);
+        }
+
+        return $payload;
     }
 }

@@ -17,7 +17,14 @@ class DataKelas extends Model
         'tahun_ajaran',
         'status',
         'status_ppdb',
+            'is_deleted',
+            'deleted_at',
     ];
+
+        protected $casts = [
+            'is_deleted' => 'boolean',
+            'deleted_at' => 'datetime',
+        ];
 
     // Relasi ke DataUnit
     public function unit()
@@ -29,6 +36,21 @@ class DataKelas extends Model
     public function santri()
     {
         return $this->hasMany(DataSantri::class, 'kode_kelas', 'kode_kelas');
+    }
+
+    public function santriAktif()
+    {
+        return $this->santri()->whereRaw('UPPER(status) = ?', ['AKTIF']);
+    }
+
+    public function santriLulus()
+    {
+        return $this->santri()->whereRaw('UPPER(status) = ?', ['LULUS']);
+    }
+
+    public function santriKeluar()
+    {
+        return $this->santri()->whereRaw('UPPER(status) = ?', ['KELUAR']);
     }
 
     // Relasi ke DataTahunAjaran

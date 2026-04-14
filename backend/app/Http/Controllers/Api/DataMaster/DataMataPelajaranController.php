@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Api\DataMaster;
 
+use App\Exports\DataMataPelajaranExport;
 use App\Http\Controllers\Controller;
+use App\Imports\DataMataPelajaranImport;
 use App\Models\DataMataPelajaran;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataMataPelajaranController extends Controller
@@ -136,8 +140,20 @@ class DataMataPelajaranController extends Controller
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls'],
         ]);
+
+        $extension = strtolower((string) $request->file('file')->getClientOriginalExtension());
+
+        if (in_array($extension, ['xlsx', 'xls'], true)) {
+            $import = new DataMataPelajaranImport();
+            Excel::import($import, $request->file('file'));
+
+            return response()->json([
+                'message' => 'Import data mata pelajaran selesai.',
+                'data' => $import->result(),
+            ]);
+        }
 
         $handle = fopen($request->file('file')->getRealPath(), 'r');
 
@@ -221,56 +237,17 @@ class DataMataPelajaranController extends Controller
     /**
      * Export data mata pelajaran ke CSV sesuai filter.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): BinaryFileResponse
     {
-        $query = DataMataPelajaran::query()
-            ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper($request->kode_unit)))
-            ->when($request->filled('kelompok_mapel'), fn ($q) => $q->where('kelompok_mapel', $request->kelompok_mapel))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $keyword = $request->q;
-                $q->where(function ($subQuery) use ($keyword) {
-                    $subQuery
-                        ->where('kode_mapel', 'like', "%{$keyword}%")
-                        ->orWhere('nama_mapel', 'like', "%{$keyword}%")
-                        ->orWhere('kelompok_mapel', 'like', "%{$keyword}%");
-                });
-            })
-            ->orderBy('urutan')
-            ->orderBy('nama_mapel');
-
-        $headers = [
-            'kode_mapel',
-            'nama_mapel',
-            'kode_unit',
-            'kelompok_mapel',
-            'urutan',
-            'keterangan',
-            'status',
-        ];
-
-        return response()->streamDownload(function () use ($query, $headers) {
-            $output = fopen('php://output', 'w');
-            fputcsv($output, $headers);
-
-            $query->chunk(500, function ($rows) use ($output) {
-                foreach ($rows as $row) {
-                    fputcsv($output, [
-                        $row->kode_mapel,
-                        $row->nama_mapel,
-                        $row->kode_unit,
-                        $row->kelompok_mapel,
-                        $row->urutan,
-                        $row->keterangan,
-                        $row->status,
-                    ]);
-                }
-            });
-
-            fclose($output);
-        }, 'data-mata-pelajaran-' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        return Excel::download(
+            new DataMataPelajaranExport(
+                kodeUnit: $request->filled('kode_unit') ? (string) $request->kode_unit : null,
+                kelompokMapel: $request->filled('kelompok_mapel') ? (string) $request->kelompok_mapel : null,
+                status: $request->filled('status') ? (string) $request->status : null,
+                keyword: $request->filled('q') ? (string) $request->q : null,
+            ),
+            'data-mata-pelajaran-' . now()->format('Ymd_His') . '.xlsx'
+        );
     }
 
     /**

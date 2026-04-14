@@ -20,6 +20,10 @@ class DataTahunAjaranController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = DataTahunAjaran::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
             ->where('is_deleted', false)
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -41,7 +45,12 @@ class DataTahunAjaranController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'kode_tahun' => ['required', 'string', 'max:20', 'unique:data_tahun_ajaran,kode_tahun'],
+            'kode_tahun' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('data_tahun_ajaran', 'kode_tahun')->where(fn ($q) => $q->where('is_deleted', false)),
+            ],
             'nama_tahun' => ['required', 'string', 'max:50'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
@@ -53,9 +62,29 @@ class DataTahunAjaranController extends Controller
             $validated['status'] = strtoupper($validated['status']);
         }
 
-        $validated['is_deleted'] = false;
+        $existingDeleted = DataTahunAjaran::where('kode_tahun', $validated['kode_tahun'])
+            ->where('is_deleted', true)
+            ->first();
 
-        $data = DataTahunAjaran::create($validated);
+        if ($existingDeleted) {
+            $existingDeleted->update([
+                'nama_tahun' => $validated['nama_tahun'],
+                'keterangan' => $validated['keterangan'] ?? null,
+                'status' => $validated['status'] ?? 'AKTIF',
+                'is_deleted' => false,
+                'deleted_at' => null,
+            ]);
+
+            $data = $existingDeleted->fresh();
+        } else {
+            $validated['is_deleted'] = false;
+            $data = DataTahunAjaran::create($validated);
+        }
+
+        $data->loadCount([
+            'kelas as jumlah_kelas',
+            'santri as jumlah_santri',
+        ]);
 
         return response()->json([
             'message' => 'Data tahun ajaran berhasil dibuat.',
@@ -68,7 +97,13 @@ class DataTahunAjaranController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
+        $data = DataTahunAjaran::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
+            ->where('is_deleted', false)
+            ->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -85,7 +120,9 @@ class DataTahunAjaranController extends Controller
                 'sometimes',
                 'string',
                 'max:20',
-                Rule::unique('data_tahun_ajaran', 'kode_tahun')->ignore($tahun->id_tahun_ajaran, 'id_tahun_ajaran'),
+                Rule::unique('data_tahun_ajaran', 'kode_tahun')
+                    ->ignore($tahun->id_tahun_ajaran, 'id_tahun_ajaran')
+                    ->where(fn ($q) => $q->where('is_deleted', false)),
             ],
             'nama_tahun' => ['sometimes', 'string', 'max:50'],
             'keterangan' => ['nullable', 'string'],
@@ -101,24 +138,25 @@ class DataTahunAjaranController extends Controller
         }
 
         $tahun->update($validated);
+        $tahun->loadCount([
+            'kelas as jumlah_kelas',
+            'santri as jumlah_santri',
+        ]);
 
         return response()->json([
             'message' => 'Data tahun ajaran berhasil diperbarui.',
-            'data' => $tahun->fresh(),
+            'data' => $tahun,
         ]);
     }
 
     /**
-     * Soft delete data tahun ajaran via flag is_deleted.
+     * Hapus data tahun ajaran dari database.
      */
     public function destroy(int $id): JsonResponse
     {
         $tahun = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
 
-        $tahun->update([
-            'is_deleted' => true,
-            'deleted_at' => now(),
-        ]);
+        $tahun->delete();
 
         return response()->json([
             'message' => 'Data tahun ajaran berhasil dihapus.',
@@ -158,6 +196,7 @@ class DataTahunAjaranController extends Controller
         $updated = 0;
         $failed = [];
         $lineNumber = 1;
+        $affectedKodeTahun = [];
 
         while (($row = fgetcsv($handle)) !== false) {
             $lineNumber++;
@@ -189,19 +228,44 @@ class DataTahunAjaranController extends Controller
             $payload['is_deleted'] = false;
             $payload['deleted_at'] = null;
 
-            $existing = DataTahunAjaran::where('kode_tahun', $payload['kode_tahun'])->first();
+            $existing = DataTahunAjaran::where('kode_tahun', $payload['kode_tahun'])
+                ->where('is_deleted', false)
+                ->first();
+
+            $existingDeleted = DataTahunAjaran::where('kode_tahun', $payload['kode_tahun'])
+                ->where('is_deleted', true)
+                ->first();
 
             if ($existing) {
                 $existing->update($payload);
+                $affectedKodeTahun[$payload['kode_tahun']] = $payload['kode_tahun'];
+                $updated++;
+                continue;
+            }
+
+            if ($existingDeleted) {
+                $existingDeleted->update($payload);
+                $affectedKodeTahun[$payload['kode_tahun']] = $payload['kode_tahun'];
                 $updated++;
                 continue;
             }
 
             DataTahunAjaran::create($payload);
+            $affectedKodeTahun[$payload['kode_tahun']] = $payload['kode_tahun'];
             $inserted++;
         }
 
         fclose($handle);
+
+        $affectedTahunAjaran = DataTahunAjaran::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
+            ->whereIn('kode_tahun', array_values($affectedKodeTahun))
+            ->where('is_deleted', false)
+            ->orderByDesc('id_tahun_ajaran')
+            ->get();
 
         return response()->json([
             'message' => 'Import data tahun ajaran selesai.',
@@ -210,6 +274,7 @@ class DataTahunAjaranController extends Controller
                 'updated' => $updated,
                 'failed' => count($failed),
                 'error_rows' => $failed,
+                'affected_tahun_ajaran' => $affectedTahunAjaran,
             ],
         ]);
     }
@@ -220,6 +285,10 @@ class DataTahunAjaranController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $query = DataTahunAjaran::query()
+            ->withCount([
+                'kelas as jumlah_kelas',
+                'santri as jumlah_santri',
+            ])
             ->where('is_deleted', false)
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -232,7 +301,7 @@ class DataTahunAjaranController extends Controller
             })
             ->orderByDesc('id_tahun_ajaran');
 
-        $headers = ['kode_tahun', 'nama_tahun', 'keterangan', 'status'];
+        $headers = ['kode_tahun', 'nama_tahun', 'keterangan', 'status', 'jumlah_kelas', 'jumlah_santri'];
 
         return response()->streamDownload(function () use ($query, $headers) {
             $output = fopen('php://output', 'w');
@@ -245,6 +314,8 @@ class DataTahunAjaranController extends Controller
                         $row->nama_tahun,
                         $row->keterangan,
                         $row->status,
+                        $row->jumlah_kelas,
+                        $row->jumlah_santri,
                     ]);
                 }
             });

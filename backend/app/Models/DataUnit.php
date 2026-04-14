@@ -22,6 +22,18 @@ class DataUnit extends Model
     {
         return $this->hasMany(DataKelas::class, 'kode_unit', 'kode_unit');
     }
+
+    public function santri()
+    {
+        return $this->hasManyThrough(
+            DataSantri::class,
+            DataKelas::class,
+            'kode_unit',
+            'kode_kelas',
+            'kode_unit',
+            'kode_kelas'
+        );
+    }
 }
 
 
