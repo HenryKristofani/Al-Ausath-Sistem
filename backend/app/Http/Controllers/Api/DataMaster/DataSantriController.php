@@ -54,7 +54,7 @@ class DataSantriController extends Controller
         $limit = max(1, min((int) $request->query('limit', 20), 50));
 
         $options = DataSantri::query()
-            ->select(['id_santri', 'nomor_induk', 'nama_lengkap_santri'])
+            ->select(['id_santri', 'nomor_induk', 'nama_lengkap_santri', 'kode_kelas'])
             ->when($keyword !== '', function ($q) use ($keyword) {
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
