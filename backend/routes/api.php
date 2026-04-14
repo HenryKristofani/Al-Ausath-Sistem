@@ -28,10 +28,22 @@ use App\Http\Controllers\Api\Administrasi\SppSettingController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
+Route::prefix('ppdb')->group(function () {
+    Route::post('/login', [AuthController::class, 'loginPpdb']);
+    Route::post('/register', [AuthController::class, 'registerPpdb']);
+    Route::post('/pendaftaran/create-identitas', [AuthController::class, 'createIdentitasPendaftaranPpdb']);
+    Route::get('/nomor/preview', [AuthController::class, 'previewNoPendaftaran']);
+    Route::get('/pengumuman/rekap', [AuthController::class, 'rekapPengumumanPpdb']);
+});
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::prefix('ppdb')->group(function () {
+        Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
+        Route::put('/form', [AuthController::class, 'updateFormPpdb']);
+        Route::post('/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
+    });
 
     Route::prefix('akademik')->group(function () {
         Route::get('/bobot', [BobotNilaiController::class, 'index']);
@@ -228,8 +240,15 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
 
         Route::get('/pembayaran', [PembayaranSppController::class, 'index']);
         Route::post('/pembayaran', [PembayaranSppController::class, 'store']);
+        Route::put('/pembayaran/{id}/verifikasi', [PembayaranSppController::class, 'verifikasiPembayaran']);
         Route::get('/pembayaran/{id}', [PembayaranSppController::class, 'show']);
         Route::put('/pembayaran/{id}', [PembayaranSppController::class, 'update']);
         Route::delete('/pembayaran/{id}', [PembayaranSppController::class, 'destroy']);
+    });
+});
+
+Route::prefix('master')->middleware(['auth:sanctum'])->group(function () {
+    Route::prefix('data-santri')->group(function () {
+        Route::get('/options', [DataSantriController::class, 'options']);
     });
 });

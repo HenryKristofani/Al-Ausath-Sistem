@@ -30,8 +30,8 @@ class DataSantriController extends Controller
 
         $query = DataSantri::query()
             ->with(['kelas', 'akun'])
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -43,6 +43,30 @@ class DataSantriController extends Controller
             ->orderByDesc('id_santri');
 
         return response()->json($query->paginate($perPage));
+    }
+
+    /**
+     * Opsi ringan data santri untuk autocomplete.
+     */
+    public function options(Request $request): JsonResponse
+    {
+        $keyword = trim((string) $request->query('q', ''));
+        $limit = max(1, min((int) $request->query('limit', 20), 50));
+
+        $options = DataSantri::query()
+            ->select(['id_santri', 'nomor_induk', 'nama_lengkap_santri', 'kode_kelas'])
+            ->when($keyword !== '', function ($q) use ($keyword) {
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('nomor_induk', 'like', "%{$keyword}%")
+                        ->orWhere('nama_lengkap_santri', 'like', "%{$keyword}%");
+                });
+            })
+            ->orderBy('nama_lengkap_santri')
+            ->limit($limit)
+            ->get();
+
+        return response()->json($options);
     }
 
     /**
@@ -336,8 +360,8 @@ class DataSantriController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $query = DataSantri::query()
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {

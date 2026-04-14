@@ -38,5 +38,24 @@ Daftar file:
 - raport-pdf.md
 - raport-self.md
 - raport-self-pdf.md
+- data-mata-pelajaran-get.md
+- data-mata-pelajaran-post.md
+- data-mata-pelajaran-show.md
+- data-mata-pelajaran-put.md
+- data-mata-pelajaran-delete.md
+- data-mata-pelajaran-import.md
+- data-mata-pelajaran-export.md
+- data-mata-pelajaran-import-template.md
+- data-santri-get.md
+- data-santri-post.md
+- data-santri-show.md
+- data-santri-put.md
+- data-santri-delete.md
+- data-santri-buat-akun.md
+- data-santri-pindah-kelas.md
+- data-santri-import.md
+- data-santri-export.md
+- data-santri-import-template.md
+- data-santri-options.md
 
 Semua endpoint berada di prefix `auth:sanctum` pada `routes/api.php`.
