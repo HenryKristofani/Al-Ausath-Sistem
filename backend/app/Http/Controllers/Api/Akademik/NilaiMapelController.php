@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Akademik;
 
 use App\Http\Controllers\Controller;
+use App\Models\BobotNilai;
 use App\Models\DataKelas;
 use App\Models\DataNilaiSiswa;
 use App\Models\DataSantri;
@@ -117,10 +118,25 @@ class NilaiMapelController extends Controller
         $nilaiUlangan = $this->averageComponent($ulanganValid);
         $nilaiUjianAkhir = (float) $validated['ujian_akhir'];
 
+        $bobot = $this->resolveBobotGlobal(
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $bobot) {
+            return response()->json([
+                'message' => 'Bobot nilai belum diset untuk tahun ajaran dan semester ini. Silakan set bobot terlebih dahulu.',
+            ], 422);
+        }
+
+        $bobotTugas = ((float) $bobot->bobot_harian) / 100;
+        $bobotUlangan = ((float) $bobot->bobot_uts) / 100;
+        $bobotUjianAkhir = ((float) $bobot->bobot_uas) / 100;
+
         $nilaiAkhirRaw =
-            ($nilaiTugas * 0.20)
-            + ($nilaiUlangan * 0.30)
-            + ($nilaiUjianAkhir * 0.50);
+            ($nilaiTugas * $bobotTugas)
+            + ($nilaiUlangan * $bobotUlangan)
+            + ($nilaiUjianAkhir * $bobotUjianAkhir);
 
         $nilaiAkhirMentah = $nilaiAkhirRaw;
         $nilaiRaporBulat = $this->roundRaporInteger($nilaiAkhirMentah);
@@ -165,9 +181,9 @@ class NilaiMapelController extends Controller
             'data' => $nilai,
             'perhitungan' => [
                 'kebijakan_bobot' => [
-                    'tugas' => 20,
-                    'ulangan' => 30,
-                    'ujian_akhir' => 50,
+                    'tugas' => (float) $bobot->bobot_harian,
+                    'ulangan' => (float) $bobot->bobot_uts,
+                    'ujian_akhir' => (float) $bobot->bobot_uas,
                 ],
                 'kriteria_tugas_diizinkan' => self::ALLOWED_TUGAS_TYPES,
                 'rata_rata_tugas' => $nilaiTugas,
@@ -258,6 +274,17 @@ class NilaiMapelController extends Controller
         }
 
         return [$nilaiRaporBulat, 'HITAM'];
+    }
+
+    private function resolveBobotGlobal(string $tahunAjaran, int $semester): ?BobotNilai
+    {
+        return BobotNilai::query()
+            ->global()
+            ->whereNull('kode_unit')
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where('semester', $semester)
+            ->orderByDesc('id_bobot')
+            ->first();
     }
 
     private function resolveKkm(string $kodeMapel, string $kodeKelas, string $tahunAjaran, int $semester): ?KkmMapel
