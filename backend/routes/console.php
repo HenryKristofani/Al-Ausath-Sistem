@@ -10,6 +10,7 @@ Artisan::command('inspire', function () {
 
 Artisan::command('raport:backfill-nilai-mapel {--dry-run : Simulasi tanpa update database}', function () {
     $dryRun = (bool) $this->option('dry-run');
+    $bobotCache = [];
 
     $roundHalfUp = static function (float $value, int $precision): float {
         $factor = 10 ** $precision;
@@ -39,11 +40,44 @@ Artisan::command('raport:backfill-nilai-mapel {--dry-run : Simulasi tanpa update
         'processed' => 0,
         'updated' => 0,
         'skipped_no_source' => 0,
+        'skipped_no_bobot' => 0,
     ];
+
+    $resolveBobot = static function (string $tahunAjaran, int $semester) use (&$bobotCache): ?array {
+        $key = $tahunAjaran . '|' . $semester;
+
+        if (array_key_exists($key, $bobotCache)) {
+            return $bobotCache[$key];
+        }
+
+        $bobot = DB::table('bobot_nilai')
+            ->where('jenjang', 'GLOBAL')
+            ->whereNull('kode_unit')
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where('semester', $semester)
+            ->orderByDesc('id_bobot')
+            ->first(['bobot_harian', 'bobot_uts', 'bobot_uas']);
+
+        if (! $bobot) {
+            $bobotCache[$key] = null;
+
+            return null;
+        }
+
+        $bobotCache[$key] = [
+            'harian' => ((float) $bobot->bobot_harian) / 100,
+            'uts' => ((float) $bobot->bobot_uts) / 100,
+            'uas' => ((float) $bobot->bobot_uas) / 100,
+        ];
+
+        return $bobotCache[$key];
+    };
 
     DB::table('data_nilai_siswa')
         ->select([
             'id_nilai',
+            'tahun_ajaran',
+            'semester',
             'nilai_harian',
             'nilai_uts',
             'nilai_uas',
@@ -52,7 +86,7 @@ Artisan::command('raport:backfill-nilai-mapel {--dry-run : Simulasi tanpa update
             'flag_warna_rapor',
         ])
         ->orderBy('id_nilai')
-        ->chunkById(500, function ($rows) use (&$stats, $dryRun, $roundHalfUp, $roundRaporInteger, $normalizeNilaiRapor) {
+        ->chunkById(500, function ($rows) use (&$stats, $dryRun, $roundHalfUp, $roundRaporInteger, $normalizeNilaiRapor, $resolveBobot) {
             foreach ($rows as $row) {
                 $stats['processed']++;
 
@@ -61,10 +95,18 @@ Artisan::command('raport:backfill-nilai-mapel {--dry-run : Simulasi tanpa update
                 if ($row->nilai_akhir_mapel !== null) {
                     $rawValue = (float) $row->nilai_akhir_mapel;
                 } elseif ($row->nilai_harian !== null && $row->nilai_uts !== null && $row->nilai_uas !== null) {
+                    $bobot = $resolveBobot((string) $row->tahun_ajaran, (int) $row->semester);
+
+                    if (! $bobot) {
+                        $stats['skipped_no_bobot']++;
+
+                        continue;
+                    }
+
                     $rawValue =
-                        (((float) $row->nilai_harian) * 0.20)
-                        + (((float) $row->nilai_uts) * 0.30)
-                        + (((float) $row->nilai_uas) * 0.50);
+                        (((float) $row->nilai_harian) * $bobot['harian'])
+                        + (((float) $row->nilai_uts) * $bobot['uts'])
+                        + (((float) $row->nilai_uas) * $bobot['uas']);
                 }
 
                 if ($rawValue === null) {
@@ -117,4 +159,5 @@ Artisan::command('raport:backfill-nilai-mapel {--dry-run : Simulasi tanpa update
     $this->line('Processed: ' . $stats['processed']);
     $this->line('Updated: ' . $stats['updated']);
     $this->line('Skipped (no source): ' . $stats['skipped_no_source']);
+    $this->line('Skipped (no bobot): ' . $stats['skipped_no_bobot']);
 })->purpose('Sinkronisasi nilai_akhir_mapel, nilai_rapor_tampil, dan flag_warna_rapor untuk data lama');
