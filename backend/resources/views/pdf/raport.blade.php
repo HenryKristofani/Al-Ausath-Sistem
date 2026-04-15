@@ -3,12 +3,17 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Rapor Santri</title>
+    <title>Laporan Perkembangan Anak Didik</title>
     <style>
+        @page {
+            margin: 14mm 12mm 16mm 12mm;
+        }
+
         body {
             font-family: DejaVu Sans, sans-serif;
-            font-size: 12px;
+            font-size: 10.5px;
             color: #111;
+            line-height: 1.25;
         }
 
         .page {
@@ -17,11 +22,11 @@
 
         .watermark {
             position: fixed;
-            top: 45%;
-            left: 10%;
+            top: 42%;
+            left: 8%;
             width: 80%;
             text-align: center;
-            font-size: 92px;
+            font-size: 86px;
             color: rgba(200, 0, 0, 0.10);
             transform: rotate(-25deg);
             z-index: -1;
@@ -31,14 +36,11 @@
 
         .title {
             text-align: center;
-            font-size: 18px;
+            font-size: 17px;
             font-weight: bold;
-            margin-bottom: 8px;
-        }
-
-        .subtitle {
-            text-align: center;
-            margin-bottom: 14px;
+            border-bottom: 2px solid #111;
+            padding-bottom: 3px;
+            margin-bottom: 10px;
         }
 
         table {
@@ -49,22 +51,81 @@
         th,
         td {
             border: 1px solid #222;
-            padding: 6px;
+            padding: 5px 6px;
             vertical-align: top;
         }
 
         th {
-            background: #efefef;
+            background: #f5f5f5;
         }
 
-        .section {
-            margin-top: 14px;
-            margin-bottom: 8px;
+        .header-table td {
+            border: 0;
+            padding: 1px 0;
+        }
+
+        .header-table .label {
+            width: 32%;
             font-weight: bold;
         }
 
-        .meta td {
-            border: 1px solid #666;
+        .header-table .colon {
+            width: 4%;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .header-table .value {
+            width: 64%;
+        }
+
+        .meta-wrap {
+            margin-bottom: 12px;
+        }
+
+        .subject-table {
+            margin-top: 8px;
+        }
+
+        .subject-table th,
+        .subject-table td {
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .subject-table td.subject-name,
+        .subject-table td.subject-note {
+            text-align: left;
+        }
+
+        .subject-table td.blank {
+            color: transparent;
+        }
+
+        .summary-table td,
+        .summary-table th {
+            vertical-align: middle;
+        }
+
+        .summary-label {
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .signature-wrap {
+            margin-top: 22px;
+            width: 100%;
+        }
+
+        .signature-table td {
+            border: 0;
+            padding: 0;
+            vertical-align: top;
+        }
+
+        .signature-title {
+            text-align: center;
+            margin-bottom: 48px;
         }
 
         .text-right {
@@ -80,132 +141,132 @@
             font-weight: bold;
         }
 
-        .footer-note {
-            margin-top: 14px;
-            font-size: 11px;
-            color: #444;
+        .signature-line {
+            display: inline-block;
+            width: 76%;
+            border-bottom: 1px solid #111;
+            margin-top: 30px;
+        }
+
+        .small-note {
+            font-size: 9.5px;
         }
     </style>
 </head>
 
 <body>
     <div class="page">
-        @if(strtoupper((string) $raport->status_raport) === 'DRAFT')
+        @if (strtoupper((string) $raport->status_raport) === 'DRAFT')
         <div class="watermark">DRAFT</div>
         @endif
 
-        <div class="title">LAPORAN HASIL BELAJAR SANTRI</div>
-        <div class="subtitle">Tahun Ajaran {{ $raport->tahun_ajaran }} - Semester {{ $raport->semester }}</div>
+        @php
+            $namaSekolah = $unit->nama_unit ?? 'Ma\'had Al Ausath';
+            $tingkat = $kelas->nama_kelas ?? $raport->kode_kelas;
+            $jumlahNilaiDisplay = number_format((float) $jumlahNilai, 2, ',', '.');
+            $rataRataDisplay = number_format((float) $rataRataNilai, 2, ',', '.');
+            $peringkatKelas = $raport->peringkat_kelas ?: '-';
+            $totalSiswaKelas = $raport->total_siswa_kelas ?: '-';
+            $tanggalTerbit = $raport->tanggal_terbit
+                ? \Carbon\Carbon::parse($raport->tanggal_terbit)->translatedFormat('d F Y')
+                : '-';
+            $waliKelasNama = $waliKelas->nama_lengkap ?? '-';
+        @endphp
 
-        <table class="meta">
-            <tr>
-                <td width="20%"><strong>Nomor Induk</strong></td>
-                <td width="30%">{{ $santri->nomor_induk }}</td>
-                <td width="20%"><strong>Kelas</strong></td>
-                <td width="30%">{{ $raport->kode_kelas }}</td>
-            </tr>
-            <tr>
-                <td><strong>Nama Santri</strong></td>
-                <td>{{ $santri->nama_lengkap_santri }}</td>
-                <td><strong>Status Rapor</strong></td>
-                <td>{{ $raport->status_raport }}</td>
-            </tr>
-        </table>
+        <div class="title">LAPORAN PERKEMBANGAN ANAK DIDIK</div>
 
-        <div class="section">A. Nilai Mata Pelajaran</div>
-        <table>
+        <div class="meta-wrap">
+            <table class="header-table">
+                <tr>
+                    <td class="label">Nama Anak Didik</td>
+                    <td class="colon">:</td>
+                    <td class="value">{{ $santri->nama_lengkap_santri }}</td>
+                    <td class="label">Tingkat</td>
+                    <td class="colon">:</td>
+                    <td class="value">{{ $tingkat }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Nomor Induk</td>
+                    <td class="colon">:</td>
+                    <td class="value">{{ $santri->nomor_induk }}</td>
+                    <td class="label">Semester</td>
+                    <td class="colon">:</td>
+                    <td class="value">{{ $raport->semester }} ({{ $raport->semester == 1 ? 'Satu' : 'Dua' }})</td>
+                </tr>
+                <tr>
+                    <td class="label">Nama Sekolah</td>
+                    <td class="colon">:</td>
+                    <td class="value">{{ $namaSekolah }}</td>
+                    <td class="label">Tahun Pelajaran</td>
+                    <td class="colon">:</td>
+                    <td class="value">{{ $raport->tahun_ajaran }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <table class="subject-table">
             <thead>
                 <tr>
-                    <th width="6%">No</th>
-                    <th width="28%">Mata Pelajaran</th>
-                    <th width="10%">Harian</th>
-                    <th width="10%">Ulangan</th>
-                    <th width="10%">Ujian</th>
-                    <th width="12%">Akhir</th>
-                    <th width="12%">Nilai Rapor</th>
-                    <th width="12%">Warna</th>
+                    <th rowspan="2" width="6%">No</th>
+                    <th rowspan="2" width="29%">Mata Pelajaran</th>
+                    <th colspan="2" width="20%">Nilai</th>
+                    <th rowspan="2" width="45%">Keterangan</th>
+                </tr>
+                <tr>
+                    <th width="10%">Angka</th>
+                    <th width="10%">Huruf</th>
                 </tr>
             </thead>
             <tbody>
-                @forelse($nilaiMapel as $index => $row)
-                <tr>
-                    <td class="text-center">{{ $index + 1 }}</td>
-                    <td>{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
-                    <td class="text-center">{{ $row->nilai_harian }}</td>
-                    <td class="text-center">{{ $row->nilai_uts }}</td>
-                    <td class="text-center">{{ $row->nilai_uas }}</td>
-                    <td class="text-center">{{ $row->nilai_akhir_mapel }}</td>
-                    <td class="text-center {{ strtoupper((string) $row->flag_warna_rapor) === 'MERAH' ? 'red' : '' }}">{{ $row->nilai_rapor_tampil }}</td>
-                    <td class="text-center">{{ $row->flag_warna_rapor }}</td>
-                </tr>
+                @forelse ($nilaiMapel as $index => $row)
+                    <tr>
+                        <td>{{ $index + 1 }}</td>
+                        <td class="subject-name">{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
+                        <td>{{ rtrim(rtrim(number_format((float) ($row->nilai_rapor_tampil ?? 0), 2, ',', '.'), '0'), ',') }}</td>
+                        <td>{{ $row->nilai_huruf ?? '' }}</td>
+                        <td class="subject-note">{{ $row->keterangan_mapel ?: ($row->predikat ?? '') }}</td>
+                    </tr>
                 @empty
-                <tr>
-                    <td colspan="8" class="text-center">Belum ada data nilai mapel.</td>
-                </tr>
+                    <tr>
+                        <td colspan="5" class="text-center">Belum ada data nilai.</td>
+                    </tr>
                 @endforelse
+                <tr>
+                    <td colspan="2" class="summary-label">Jumlah Nilai</td>
+                    <td class="text-center">{{ $jumlahNilaiDisplay }}</td>
+                    <td class="blank">-</td>
+                    <td class="blank">-</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="summary-label">Nilai Rata-Rata</td>
+                    <td class="text-center">{{ $rataRataDisplay }}</td>
+                    <td class="blank">-</td>
+                    <td class="blank">-</td>
+                </tr>
+                <tr>
+                    <td colspan="5" class="text-left">
+                        Peringkat Kelas Ke: {{ $peringkatKelas }} dari {{ $totalSiswaKelas }} Siswa
+                    </td>
+                </tr>
             </tbody>
         </table>
 
-        <div class="section">B. Kehadiran</div>
-        <table>
-            <tr>
-                <th>Hadir</th>
-                <th>Sakit</th>
-                <th>Izin</th>
-                <th>Tanpa Keterangan</th>
-            </tr>
-            <tr>
-                <td class="text-center">{{ $raport->hadir }}</td>
-                <td class="text-center">{{ $raport->sakit }}</td>
-                <td class="text-center">{{ $raport->izin }}</td>
-                <td class="text-center">{{ $raport->alpha }}</td>
-            </tr>
-        </table>
-
-        <div class="section">C. Akhlak dan Catatan</div>
-        <table>
-            <tr>
-                <th width="30%">Aspek Akhlak</th>
-                <th width="10%">Nilai</th>
-                <th width="60%">Deskripsi</th>
-            </tr>
-            @forelse($nilaiAkhlak as $akhlak)
-            <tr>
-                <td>{{ $akhlak->aspek }}</td>
-                <td class="text-center">{{ $akhlak->nilai_angka }}</td>
-                <td>{{ $akhlak->deskripsi }}</td>
-            </tr>
-            @empty
-            <tr>
-                <td colspan="3" class="text-center">Belum ada data nilai akhlak.</td>
-            </tr>
-            @endforelse
-        </table>
-
-        <table style="margin-top: 10px;">
-            <tr>
-                <td width="35%"><strong>Keseharian - Kebersihan</strong></td>
-                <td width="15%" class="text-center">{{ $raport->keseharian_kebersihan }}</td>
-                <td width="35%"><strong>Keseharian - Kerapian</strong></td>
-                <td width="15%" class="text-center">{{ $raport->keseharian_kerapian }}</td>
-            </tr>
-            <tr>
-                <td><strong>Keseharian - Keterampilan</strong></td>
-                <td class="text-center">{{ $raport->keseharian_keterampilan }}</td>
-                <td><strong>Rata-rata Rapor</strong></td>
-                <td class="text-center">{{ $raport->rata_rata }}</td>
-            </tr>
-        </table>
-
-        <div class="section">D. Catatan Wali Kelas</div>
-        <table>
-            <tr>
-                <td>{{ $raport->catatan_wali ?: '-' }}</td>
-            </tr>
-        </table>
-
-        <div class="footer-note">
-            Tanggal terbit: {{ $raport->tanggal_terbit ?: '-' }}
+        <div class="signature-wrap">
+            <table class="signature-table">
+                <tr>
+                    <td width="50%" class="text-center">
+                        <div>Mengetahui</div>
+                        <div>Orang Tua / Wali</div>
+                        <div class="signature-line"></div>
+                    </td>
+                    <td width="50%" class="text-center">
+                        <div>Diberikan pada {{ $tanggalTerbit }}</div>
+                        <div>Wali Kelas</div>
+                        <div class="signature-line"></div>
+                        <div style="margin-top: 10px;">{{ $waliKelasNama }}</div>
+                    </td>
+                </tr>
+            </table>
         </div>
     </div>
 </body>
