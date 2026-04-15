@@ -179,7 +179,7 @@ class RaportPdfController extends Controller
 
         $nilaiMapel = $this->appendKonversiToNilaiMapel($nilaiMapel, $konversiRows);
 
-        $jumlahNilai = round($nilaiMapel->sum(fn ($row) => (float) ($row->nilai_rapor_tampil ?? 0)), 2);
+        $jumlahNilai = round($nilaiMapel->sum(fn($row) => (float) ($row->nilai_rapor_tampil ?? 0)), 2);
         $jumlahMapel = $nilaiMapel->count();
         $rataRataNilai = $jumlahMapel > 0
             ? round($jumlahNilai / $jumlahMapel, 2)

@@ -161,16 +161,16 @@
         @endif
 
         @php
-            $namaSekolah = $unit->nama_unit ?? 'Ma\'had Al Ausath';
-            $tingkat = $kelas->nama_kelas ?? $raport->kode_kelas;
-            $jumlahNilaiDisplay = number_format((float) $jumlahNilai, 2, ',', '.');
-            $rataRataDisplay = number_format((float) $rataRataNilai, 2, ',', '.');
-            $peringkatKelas = $raport->peringkat_kelas ?: '-';
-            $totalSiswaKelas = $raport->total_siswa_kelas ?: '-';
-            $tanggalTerbit = $raport->tanggal_terbit
-                ? \Carbon\Carbon::parse($raport->tanggal_terbit)->translatedFormat('d F Y')
-                : '-';
-            $waliKelasNama = $waliKelas->nama_lengkap ?? '-';
+        $namaSekolah = $unit->nama_unit ?? 'Ma\'had Al Ausath';
+        $tingkat = $kelas->nama_kelas ?? $raport->kode_kelas;
+        $jumlahNilaiDisplay = number_format((float) $jumlahNilai, 2, ',', '.');
+        $rataRataDisplay = number_format((float) $rataRataNilai, 2, ',', '.');
+        $peringkatKelas = $raport->peringkat_kelas ?: '-';
+        $totalSiswaKelas = $raport->total_siswa_kelas ?: '-';
+        $tanggalTerbit = $raport->tanggal_terbit
+        ? \Carbon\Carbon::parse($raport->tanggal_terbit)->translatedFormat('d F Y')
+        : '-';
+        $waliKelasNama = $waliKelas->nama_lengkap ?? '-';
         @endphp
 
         <div class="title">LAPORAN PERKEMBANGAN ANAK DIDIK</div>
@@ -219,17 +219,17 @@
             </thead>
             <tbody>
                 @forelse ($nilaiMapel as $index => $row)
-                    <tr>
-                        <td>{{ $index + 1 }}</td>
-                        <td class="subject-name">{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
-                        <td>{{ rtrim(rtrim(number_format((float) ($row->nilai_rapor_tampil ?? 0), 2, ',', '.'), '0'), ',') }}</td>
-                        <td>{{ $row->nilai_huruf ?? '' }}</td>
-                        <td class="subject-note">{{ $row->keterangan_mapel ?: ($row->predikat ?? '') }}</td>
-                    </tr>
+                <tr>
+                    <td>{{ $index + 1 }}</td>
+                    <td class="subject-name">{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
+                    <td>{{ rtrim(rtrim(number_format((float) ($row->nilai_rapor_tampil ?? 0), 2, ',', '.'), '0'), ',') }}</td>
+                    <td>{{ $row->nilai_huruf ?? '' }}</td>
+                    <td class="subject-note">{{ $row->keterangan_mapel ?: ($row->predikat ?? '') }}</td>
+                </tr>
                 @empty
-                    <tr>
-                        <td colspan="5" class="text-center">Belum ada data nilai.</td>
-                    </tr>
+                <tr>
+                    <td colspan="5" class="text-center">Belum ada data nilai.</td>
+                </tr>
                 @endforelse
                 <tr>
                     <td colspan="2" class="summary-label">Jumlah Nilai</td>
