@@ -51,7 +51,22 @@ class DataKelasController extends Controller
             ->orderBy('kode_unit')
             ->orderBy('nama_kelas');
 
-        return response()->json($query->paginate($perPage));
+        $summaryRows = (clone $query)
+            ->select(['id_kelas'])
+            ->get();
+
+        $summaryGlobal = [
+            'total_kelas' => $summaryRows->count(),
+            'total_santri' => (int) $summaryRows->sum('jumlah_santri'),
+            'total_santri_aktif' => (int) $summaryRows->sum('jumlah_santri_aktif'),
+            'total_santri_lulus' => (int) $summaryRows->sum('jumlah_santri_lulus'),
+            'total_santri_keluar' => (int) $summaryRows->sum('jumlah_santri_keluar'),
+        ];
+
+        $paginated = $query->paginate($perPage)->toArray();
+        $paginated['summary_global'] = $summaryGlobal;
+
+        return response()->json($paginated);
     }
 
     /**

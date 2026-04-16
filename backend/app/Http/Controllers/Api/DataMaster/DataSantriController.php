@@ -10,8 +10,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataSantriController extends Controller
@@ -30,8 +32,16 @@ class DataSantriController extends Controller
 
         $query = DataSantri::query()
             ->with(['kelas', 'akun'])
+            ->where('is_deleted', false)
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('kode_unit') || $request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->whereHas('kelas', function ($kelasQuery) use ($request) {
+                    $kelasQuery
+                        ->when($request->filled('kode_unit'), fn($subQuery) => $subQuery->where('kode_unit', $request->kode_unit))
+                        ->when($request->filled('tahun_ajaran'), fn($subQuery) => $subQuery->where('tahun_ajaran', $request->tahun_ajaran));
+                });
+            })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -54,6 +64,7 @@ class DataSantriController extends Controller
         $limit = max(1, min((int) $request->query('limit', 20), 50));
 
         $options = DataSantri::query()
+            ->where('is_deleted', false)
             ->select(['id_santri', 'nomor_induk', 'nama_lengkap_santri', 'kode_kelas'])
             ->when($keyword !== '', function ($q) use ($keyword) {
                 $q->where(function ($subQuery) use ($keyword) {
@@ -75,9 +86,19 @@ class DataSantriController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'nomor_induk' => ['required', 'string', 'max:20', 'unique:data_santri,nomor_induk'],
+            'nomor_induk' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('data_santri', 'nomor_induk')->where(fn ($q) => $q->where('is_deleted', false)),
+            ],
             'nama_lengkap_santri' => ['required', 'string', 'max:200'],
-            'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'kode_kelas' => [
+                'required',
+                'string',
+                'max:10',
+                Rule::exists('data_kelas', 'kode_kelas')->where(fn ($q) => $q->where('is_deleted', false)),
+            ],
             'status' => ['nullable', 'string', 'max:20'],
             'tahun_masuk' => ['nullable', 'integer'],
             'tahun_lulus' => ['nullable', 'integer'],
@@ -100,6 +121,26 @@ class DataSantriController extends Controller
             'nama_wali' => ['nullable', 'string', 'max:200'],
         ]);
 
+        $existingDeleted = DataSantri::where('nomor_induk', $validated['nomor_induk'])
+            ->where('is_deleted', true)
+            ->first();
+
+        if ($existingDeleted) {
+            $existingDeleted->update(array_merge($validated, [
+                'is_deleted' => false,
+                'deleted_at' => null,
+            ]));
+
+            $data = $existingDeleted->fresh(['kelas', 'akun']);
+
+            return response()->json([
+                'message' => 'Data santri berhasil dibuat dari riwayat terhapus.',
+                'data' => $data,
+            ], 201);
+        }
+
+        $validated['is_deleted'] = false;
+        $validated['deleted_at'] = null;
         $data = DataSantri::create($validated);
 
         return response()->json([
@@ -113,7 +154,10 @@ class DataSantriController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataSantri::with(['kelas', 'akun'])->findOrFail($id);
+        $data = DataSantri::query()
+            ->with(['kelas', 'akun'])
+            ->where('is_deleted', false)
+            ->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -123,7 +167,7 @@ class DataSantriController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $santri = DataSantri::findOrFail($id);
+        $santri = DataSantri::where('is_deleted', false)->findOrFail($id);
 
         $validated = $request->validate([
             'nomor_induk' => [
@@ -133,7 +177,12 @@ class DataSantriController extends Controller
                 Rule::unique('data_santri', 'nomor_induk')->ignore($santri->id_santri, 'id_santri'),
             ],
             'nama_lengkap_santri' => ['sometimes', 'string', 'max:200'],
-            'kode_kelas' => ['sometimes', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'kode_kelas' => [
+                'sometimes',
+                'string',
+                'max:10',
+                Rule::exists('data_kelas', 'kode_kelas')->where(fn ($q) => $q->where('is_deleted', false)),
+            ],
             'status' => ['nullable', 'string', 'max:20'],
             'tahun_masuk' => ['nullable', 'integer'],
             'tahun_lulus' => ['nullable', 'integer'],
@@ -169,10 +218,13 @@ class DataSantriController extends Controller
      */
     public function destroy(int $id): JsonResponse
     {
-        $santri = DataSantri::findOrFail($id);
+        $santri = DataSantri::where('is_deleted', false)->findOrFail($id);
 
         try {
-            $santri->delete();
+            $santri->update([
+                'is_deleted' => true,
+                'deleted_at' => now(),
+            ]);
         } catch (QueryException $exception) {
             return response()->json([
                 'message' => 'Data santri tidak dapat dihapus karena masih dipakai pada data pembayaran SPP atau data terkait lainnya.',
@@ -189,7 +241,7 @@ class DataSantriController extends Controller
      */
     public function buatAkun(int $id, Request $request): JsonResponse
     {
-        $santri = DataSantri::with(['kelas', 'akun'])->findOrFail($id);
+        $santri = DataSantri::with(['kelas', 'akun'])->where('is_deleted', false)->findOrFail($id);
 
         if ($santri->akun) {
             return response()->json([
@@ -231,14 +283,23 @@ class DataSantriController extends Controller
     {
         $validated = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
-            'ids.*' => ['integer', 'exists:data_santri,id_santri'],
-            'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'ids.*' => [
+                'integer',
+                Rule::exists('data_santri', 'id_santri')->where(fn ($q) => $q->where('is_deleted', false)),
+            ],
+            'kode_kelas' => [
+                'required',
+                'string',
+                'max:10',
+                Rule::exists('data_kelas', 'kode_kelas')->where(fn ($q) => $q->where('is_deleted', false)),
+            ],
         ]);
 
         $updated = 0;
 
         DB::transaction(function () use ($validated, &$updated) {
-            $updated = DataSantri::whereIn('id_santri', $validated['ids'])
+            $updated = DataSantri::where('is_deleted', false)
+                ->whereIn('id_santri', $validated['ids'])
                 ->update(['kode_kelas' => $validated['kode_kelas']]);
         });
 
@@ -252,32 +313,32 @@ class DataSantriController extends Controller
     }
 
     /**
-     * Import data santri dari CSV (upsert berdasarkan nomor_induk).
+     * Import data santri dari CSV atau Excel (upsert berdasarkan nomor_induk).
      */
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls'],
         ]);
 
-        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        $file = $request->file('file');
+        $fileExt = strtolower($file->getClientOriginalExtension());
 
-        if ($handle === false) {
+        // Parse berdasarkan format file
+        if (in_array($fileExt, ['xlsx', 'xls'])) {
+            $parseResult = $this->parseExcelFile($file);
+        } else {
+            $parseResult = $this->parseCsvFile($file);
+        }
+
+        if (!$parseResult['success']) {
             return response()->json([
-                'message' => 'File CSV tidak dapat dibaca.',
+                'message' => $parseResult['error'],
             ], 422);
         }
 
-        $headers = fgetcsv($handle);
-
-        if ($headers === false) {
-            fclose($handle);
-
-            return response()->json([
-                'message' => 'Header CSV tidak ditemukan.',
-            ], 422);
-        }
-
+        $headers = $parseResult['headers'];
+        $rows = $parseResult['rows'];
         $normalizedHeaders = array_map([$this, 'normalizeImportHeader'], $headers);
 
         $inserted = 0;
@@ -285,7 +346,7 @@ class DataSantriController extends Controller
         $failed = [];
         $lineNumber = 1;
 
-        while (($row = fgetcsv($handle)) !== false) {
+        foreach ($rows as $row) {
             $lineNumber++;
 
             $rowData = $this->combineRowData($normalizedHeaders, $row);
@@ -298,7 +359,12 @@ class DataSantriController extends Controller
             $validator = Validator::make($payload, [
                 'nomor_induk' => ['required', 'string', 'max:20'],
                 'nama_lengkap_santri' => ['required', 'string', 'max:200'],
-                'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+                'kode_kelas' => [
+                    'required',
+                    'string',
+                    'max:10',
+                    Rule::exists('data_kelas', 'kode_kelas')->where(fn ($q) => $q->where('is_deleted', false)),
+                ],
                 'status' => ['nullable', 'string', 'max:20'],
                 'tahun_masuk' => ['nullable', 'integer'],
                 'tahun_lulus' => ['nullable', 'integer'],
@@ -332,16 +398,19 @@ class DataSantriController extends Controller
             $existing = DataSantri::where('nomor_induk', $payload['nomor_induk'])->first();
 
             if ($existing) {
-                $existing->update($payload);
+                $existing->update(array_merge($payload, [
+                    'is_deleted' => false,
+                    'deleted_at' => null,
+                ]));
                 $updated++;
                 continue;
             }
 
+            $payload['is_deleted'] = false;
+            $payload['deleted_at'] = null;
             DataSantri::create($payload);
             $inserted++;
         }
-
-        fclose($handle);
 
         return response()->json([
             'message' => 'Import data santri selesai.',
@@ -360,8 +429,16 @@ class DataSantriController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $query = DataSantri::query()
+            ->where('is_deleted', false)
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('kode_unit') || $request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->whereHas('kelas', function ($kelasQuery) use ($request) {
+                    $kelasQuery
+                        ->when($request->filled('kode_unit'), fn($subQuery) => $subQuery->where('kode_unit', $request->kode_unit))
+                        ->when($request->filled('tahun_ajaran'), fn($subQuery) => $subQuery->where('tahun_ajaran', $request->tahun_ajaran));
+                });
+            })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -439,7 +516,7 @@ class DataSantriController extends Controller
     }
 
     /**
-     * Template CSV import data santri.
+     * Template CSV/Excel import data santri.
      */
     public function importTemplate(): StreamedResponse
     {
@@ -476,6 +553,229 @@ class DataSantriController extends Controller
         }, 'template-import-santri.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * List data santri di trash.
+     */
+    public function trash(Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+
+        $query = DataSantri::query()
+            ->with(['kelas', 'akun'])
+            ->where('is_deleted', true)
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('kode_unit') || $request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->whereHas('kelas', function ($kelasQuery) use ($request) {
+                    $kelasQuery
+                        ->when($request->filled('kode_unit'), fn($subQuery) => $subQuery->where('kode_unit', $request->kode_unit))
+                        ->when($request->filled('tahun_ajaran'), fn($subQuery) => $subQuery->where('tahun_ajaran', $request->tahun_ajaran));
+                });
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('nama_lengkap_santri', 'like', "%{$keyword}%")
+                        ->orWhere('nomor_induk', 'like', "%{$keyword}%");
+                });
+            })
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('id_santri');
+
+        return response()->json($query->paginate($perPage));
+    }
+
+    /**
+     * Pulihkan data santri dari trash.
+     */
+    public function restore(int $id): JsonResponse
+    {
+        $santri = DataSantri::where('is_deleted', true)->findOrFail($id);
+
+        $activeConflict = DataSantri::query()
+            ->where('nomor_induk', $santri->nomor_induk)
+            ->where('is_deleted', false)
+            ->where('id_santri', '!=', $santri->id_santri)
+            ->exists();
+
+        if ($activeConflict) {
+            return response()->json([
+                'message' => 'Data santri tidak dapat dipulihkan karena nomor_induk sudah dipakai data aktif lain.',
+            ], 422);
+        }
+
+        $santri->update([
+            'is_deleted' => false,
+            'deleted_at' => null,
+        ]);
+
+        $santri->load(['kelas', 'akun']);
+
+        return response()->json([
+            'message' => 'Data santri berhasil dipulihkan.',
+            'data' => $santri,
+        ], 200);
+    }
+
+    /**
+     * Ringkasan ketergantungan data santri.
+     */
+    public function dependencySummary(int $id): JsonResponse
+    {
+        $santri = DataSantri::findOrFail($id);
+        $dependencies = $this->santriDependenciesByIdentity($santri->id_santri, $santri->nomor_induk);
+
+        return response()->json([
+            'data' => [
+                'id_santri' => $santri->id_santri,
+                'nomor_induk' => $santri->nomor_induk,
+                'is_deleted' => (bool) $santri->is_deleted,
+                'dependencies' => $dependencies,
+                'can_force_delete' => $dependencies['total'] === 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Hapus permanen data santri dari trash.
+     */
+    public function forceDelete(int $id): JsonResponse
+    {
+        $santri = DataSantri::where('is_deleted', true)->findOrFail($id);
+        $dependencies = $this->santriDependenciesByIdentity($santri->id_santri, $santri->nomor_induk);
+
+        if ($dependencies['total'] > 0) {
+            return response()->json([
+                'message' => 'Data santri tidak dapat dihapus permanen karena masih dipakai data lain.',
+                'data' => [
+                    'dependencies' => $dependencies,
+                ],
+            ], 422);
+        }
+
+        try {
+            $santri->delete();
+        } catch (QueryException $exception) {
+            return response()->json([
+                'message' => 'Data santri tidak dapat dihapus permanen karena masih dipakai data lain.',
+                'data' => [
+                    'dependencies' => $this->santriDependenciesByIdentity($santri->id_santri, $santri->nomor_induk),
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Data santri berhasil dihapus permanen.',
+        ]);
+    }
+
+    private function santriDependenciesByIdentity(int $idSantri, string $nomorInduk): array
+    {
+        $safeCount = function (string $table, string $column, mixed $value): int {
+            if (!Schema::hasTable($table) || !Schema::hasColumn($table, $column)) {
+                return 0;
+            }
+
+            return DB::table($table)->where($column, $value)->count();
+        };
+
+        $dependencies = [
+            'absensi_santri' => $safeCount('absensi_santri', 'nomor_induk', $nomorInduk),
+            'data_akun_santri' => $safeCount('data_akun_santri', 'nomor_induk', $nomorInduk),
+            'pembayaran_spp' => $safeCount('pembayaran_spp', 'id_santri', $idSantri),
+            'administrasi_bebas' => $safeCount('administrasi_bebas', 'id_santri', $idSantri),
+            'spp_setting' => $safeCount('spp_setting', 'id_santri', $idSantri),
+        ];
+
+        $dependencies['total'] = array_sum($dependencies);
+
+        return $dependencies;
+    }
+
+    /**
+     * Parse file CSV.
+     */
+    private function parseCsvFile($file): array
+    {
+        $handle = fopen($file->getRealPath(), 'r');
+
+        if ($handle === false) {
+            return [
+                'success' => false,
+                'error' => 'File CSV tidak dapat dibaca.',
+            ];
+        }
+
+        $headers = fgetcsv($handle);
+
+        if ($headers === false) {
+            fclose($handle);
+
+            return [
+                'success' => false,
+                'error' => 'Header CSV tidak ditemukan.',
+            ];
+        }
+
+        $rows = [];
+        while (($row = fgetcsv($handle)) !== false) {
+            $rows[] = $row;
+        }
+
+        fclose($handle);
+
+        return [
+            'success' => true,
+            'headers' => $headers,
+            'rows' => $rows,
+        ];
+    }
+
+    /**
+     * Parse file Excel (.xlsx, .xls).
+     */
+    private function parseExcelFile($file): array
+    {
+        try {
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $data = $sheet->toArray();
+
+            if (empty($data)) {
+                return [
+                    'success' => false,
+                    'error' => 'File Excel kosong atau tidak dapat dibaca.',
+                ];
+            }
+
+            $headers = array_shift($data);
+
+            if (empty($headers)) {
+                return [
+                    'success' => false,
+                    'error' => 'Header Excel tidak ditemukan.',
+                ];
+            }
+
+            // Filter rows yang kosong
+            $rows = array_filter($data, function ($row) {
+                return !empty(array_filter($row));
+            });
+
+            return [
+                'success' => true,
+                'headers' => $headers,
+                'rows' => array_values($rows),
+            ];
+        } catch (\Exception $exception) {
+            return [
+                'success' => false,
+                'error' => 'File Excel tidak dapat diproses: ' . $exception->getMessage(),
+            ];
+        }
     }
 
     private function normalizeImportHeader(string $header): string

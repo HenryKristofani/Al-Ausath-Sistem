@@ -9,7 +9,7 @@ class DataSantri extends Model
     protected $table = 'data_santri';
     protected $primaryKey = 'id_santri';
 
-        protected $fillable = [
+    protected $fillable = [
         'nomor_induk',
         'nama_lengkap_santri',
         'kode_kelas',
@@ -33,10 +33,14 @@ class DataSantri extends Model
         'nama_ayah_kandung',
         'nama_ibu_kandung',
         'nama_wali',
+        'is_deleted',
+        'deleted_at',
     ];
 
-        protected $casts = [
+    protected $casts = [
         'tanggal_lahir' => 'date',
+        'is_deleted' => 'boolean',
+        'deleted_at' => 'datetime',
     ];
 
     // Relasi ke DataKelas
