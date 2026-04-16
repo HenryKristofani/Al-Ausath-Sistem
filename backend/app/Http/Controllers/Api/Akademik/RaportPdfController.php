@@ -140,6 +140,17 @@ class RaportPdfController extends Controller
             ->where('nomor_induk', $nomorInduk)
             ->firstOrFail();
 
+        $kelas = DataKelas::query()
+            ->with('unit')
+            ->where('kode_kelas', $raport->kode_kelas)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->orderByDesc('id_kelas')
+            ->first();
+
+        $waliKelas = $raport->id_wali_kelas
+            ? DataPetugas::query()->find($raport->id_wali_kelas)
+            : null;
+
         $nilaiMapel = DB::table('data_nilai_siswa as ns')
             ->leftJoin('data_mata_pelajaran as mp', 'mp.kode_mapel', '=', 'ns.kode_mapel')
             ->where('ns.nomor_induk', $nomorInduk)
@@ -149,6 +160,7 @@ class RaportPdfController extends Controller
                 'ns.kode_mapel',
                 'mp.nama_mapel',
                 'mp.kelompok_mapel',
+                'mp.keterangan as keterangan_mapel',
                 'ns.nilai_harian',
                 'ns.nilai_uts',
                 'ns.nilai_uas',
@@ -167,6 +179,12 @@ class RaportPdfController extends Controller
 
         $nilaiMapel = $this->appendKonversiToNilaiMapel($nilaiMapel, $konversiRows);
 
+        $jumlahNilai = round($nilaiMapel->sum(fn($row) => (float) ($row->nilai_rapor_tampil ?? 0)), 2);
+        $jumlahMapel = $nilaiMapel->count();
+        $rataRataNilai = $jumlahMapel > 0
+            ? round($jumlahNilai / $jumlahMapel, 2)
+            : 0.0;
+
         $nilaiAkhlak = NilaiAkhlak::query()
             ->where('nomor_induk', $nomorInduk)
             ->where('tahun_ajaran', $tahunAjaran)
@@ -177,8 +195,13 @@ class RaportPdfController extends Controller
         return [
             'raport' => $raport,
             'santri' => $santri,
+            'kelas' => $kelas,
+            'unit' => $kelas?->unit,
+            'waliKelas' => $waliKelas,
             'nilaiMapel' => $nilaiMapel,
             'nilaiAkhlak' => $nilaiAkhlak,
+            'jumlahNilai' => $jumlahNilai,
+            'rataRataNilai' => $rataRataNilai,
         ];
     }
 
