@@ -8,6 +8,7 @@ use App\Models\DataPetugas;
 use App\Models\DataAkunSantri;
 use App\Models\PpdbNotifikasi;
 use App\Models\PpdbPendaftar;
+use App\Models\PpdbTesKonfigurasi;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -352,6 +353,68 @@ class AuthController extends Controller
         ]);
     }
 
+    public function tesStatusPpdb(Request $request)
+    {
+        $akun = $this->resolveAuthenticatedPpdbUser();
+
+        if (!$akun) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $pendaftar = $akun->pendaftaran()
+            ->orderByDesc('id_pendaftaran')
+            ->first();
+
+        if (!$pendaftar) {
+            return response()->json([
+                'message' => 'ID pendaftaran belum dibuat untuk akun ini.',
+            ], 422);
+        }
+
+        $pendaftar->load(['tes', 'verifikasi']);
+        $flow = $this->buildPpdbFlowState($pendaftar);
+
+        $canAccessTes = (bool) ($flow['show_halaman_tes'] ?? false);
+        $step = (string) ($flow['step'] ?? 'lengkapi-form');
+
+        $message = 'Status tes berhasil dimuat.';
+        if (!$canAccessTes) {
+            if ($step === 'lengkapi-form') {
+                $message = 'Lengkapi biodata terlebih dahulu untuk membuka tes.';
+            } elseif (!(bool) ($flow['fitur_soal_aktif'] ?? false)) {
+                $message = 'Tes belum diaktifkan admin untuk jenjang ini.';
+            } elseif (!(bool) ($flow['tes_available'] ?? false)) {
+                $message = 'Soal tes untuk jenjang ini belum tersedia.';
+            } elseif ((bool) ($flow['tes_submitted'] ?? false)) {
+                $message = 'Jawaban tes sudah dikirim.';
+            } else {
+                $message = 'Tes belum bisa diakses saat ini.';
+            }
+        }
+
+        return response()->json([
+            'message' => $message,
+            'data' => [
+                'can_access_tes' => $canAccessTes,
+                'show_halaman_tes' => (bool) ($flow['show_halaman_tes'] ?? false),
+                'pendaftaran_selesai' => (bool) ($flow['pendaftaran_selesai'] ?? false),
+                'fitur_soal_aktif' => (bool) ($flow['fitur_soal_aktif'] ?? false),
+                'soal_tes' => (string) ($flow['soal_tes'] ?? ''),
+                'form_schema' => is_array($flow['form_schema'] ?? null) ? $flow['form_schema'] : [],
+                'tes_required' => (bool) ($flow['tes_required'] ?? false),
+                'tes_available' => (bool) ($flow['tes_available'] ?? false),
+                'tes_finished' => (bool) ($flow['tes_finished'] ?? false),
+                'tes_submitted' => (bool) ($flow['tes_submitted'] ?? false),
+                'tes_title' => 'Tes Seleksi PPDB',
+                'tes_description' => $canAccessTes
+                    ? 'Kerjakan tes sesuai instruksi admin untuk jenjang pendaftaran Anda.'
+                    : 'Tes akan muncul setelah biodata lengkap dan konfigurasi tes diaktifkan oleh admin.',
+                'step' => $step,
+                'message' => $message,
+            ],
+        ]);
+    }
+
     public function updateFormPpdb(Request $request)
     {
         $akun = $this->resolveAuthenticatedPpdbUser();
@@ -373,68 +436,96 @@ class AuthController extends Controller
             ], 404);
         }
 
+        $normalizedPayload = $this->normalizePpdbFormPayload($request);
+        if ($normalizedPayload !== []) {
+            $request->merge($normalizedPayload);
+        }
+
+        $storedFilePaths = $this->storePpdbFormFiles($request);
+        if ($storedFilePaths !== []) {
+            $request->merge($storedFilePaths);
+        }
+
         $validated = $request->validate([
-            'nama_calon' => 'required|string|max:200',
-            'program_pendaftaran' => 'required|string|max:100',
-            'jenjang' => 'nullable|string|max:20',
-            'jenis_kelamin' => 'required|in:L,P',
-            'tempat_lahir' => 'required|string|max:100',
-            'tanggal_lahir' => 'required|date',
-            'nik_calon_santri' => 'required|string|max:30',
-            'alamat_lengkap' => 'required|string',
-            'riwayat_penyakit' => 'nullable|string',
-            'nama_ayah' => 'required|string|max:200',
-            'penghasilan_ayah' => 'nullable|string|max:100',
-            'no_hp_calon' => 'required|string|max:30',
-            'nama_ibu' => 'required|string|max:200',
-            'no_hp_ibu' => 'required|string|max:30',
-            'soal_jawab' => 'nullable|string',
-            'file_akta_path' => 'required|string',
-            'file_kk_path' => 'required|string',
-            'file_surat_rekomendasi_path' => 'required|string',
-            'surat_pernyataan_setuju' => 'required|boolean',
-            'surat_pernyataan_file_path' => 'nullable|string',
-            'nomor_umi' => 'nullable|string|max:50',
-            'asal_kota' => 'nullable|string|max:100',
-            'phone_ppdb' => 'nullable|string|max:30',
+            'nama_calon' => 'sometimes|nullable|string|max:200',
+            'program_pendaftaran' => 'sometimes|nullable|string|max:100',
+            'jenjang' => 'sometimes|nullable|string|max:20',
+            'jenis_kelamin' => 'sometimes|nullable|in:L,P',
+            'tempat_lahir' => 'sometimes|nullable|string|max:100',
+            'tanggal_lahir' => 'sometimes|nullable|date',
+            'nik_calon_santri' => 'sometimes|nullable|string|max:30',
+            'alamat_lengkap' => 'sometimes|nullable|string',
+            'riwayat_penyakit' => 'sometimes|nullable|string',
+            'nama_ayah' => 'sometimes|nullable|string|max:200',
+            'penghasilan_ayah' => 'sometimes|nullable|string|max:100',
+            'no_hp_calon' => 'sometimes|nullable|string|max:30',
+            'nama_ibu' => 'sometimes|nullable|string|max:200',
+            'no_hp_ibu' => 'sometimes|nullable|string|max:30',
+            'soal_jawab' => 'sometimes|nullable|string',
+            'file_akta_path' => 'sometimes|nullable|string',
+            'file_kk_path' => 'sometimes|nullable|string',
+            'file_surat_rekomendasi_path' => 'sometimes|nullable|string',
+            'surat_pernyataan_setuju' => 'sometimes|nullable|boolean',
+            'surat_pernyataan_file_path' => 'sometimes|nullable|string',
+            'nomor_umi' => 'sometimes|nullable|string|max:50',
+            'asal_kota' => 'sometimes|nullable|string|max:100',
+            'phone_ppdb' => 'sometimes|nullable|string|max:30',
         ]);
 
         $jenjangDipakai = mb_strtolower((string) ($validated['jenjang'] ?? $pendaftar->jenjang));
-        if ($jenjangDipakai === 'smp' && empty($validated['nomor_umi'])) {
+        if (
+            $jenjangDipakai === 'smp'
+            && array_key_exists('nomor_umi', $validated)
+            && blank($validated['nomor_umi'])
+        ) {
             throw ValidationException::withMessages([
                 'nomor_umi' => ['Nomor UMI wajib diisi untuk jenjang SMP.'],
             ]);
         }
 
-        $asalKota = $validated['asal_kota'] ?? $pendaftar->asal_kota;
+        $updatableFields = [
+            'nama_calon',
+            'program_pendaftaran',
+            'jenjang',
+            'jenis_kelamin',
+            'tempat_lahir',
+            'tanggal_lahir',
+            'nik_calon_santri',
+            'alamat_lengkap',
+            'riwayat_penyakit',
+            'nama_ayah',
+            'penghasilan_ayah',
+            'no_hp_calon',
+            'nama_ibu',
+            'no_hp_ibu',
+            'soal_jawab',
+            'file_akta_path',
+            'file_kk_path',
+            'file_surat_rekomendasi_path',
+            'surat_pernyataan_setuju',
+            'surat_pernyataan_file_path',
+            'nomor_umi',
+            'asal_kota',
+        ];
 
-        $pendaftar->fill([
-            'nama_calon' => $validated['nama_calon'],
-            'program_pendaftaran' => $validated['program_pendaftaran'],
-            'jenjang' => $validated['jenjang'] ?? $pendaftar->jenjang,
-            'jenis_kelamin' => $validated['jenis_kelamin'],
-            'tempat_lahir' => $validated['tempat_lahir'],
-            'tanggal_lahir' => $validated['tanggal_lahir'],
-            'nik_calon_santri' => $validated['nik_calon_santri'],
-            'alamat_lengkap' => $validated['alamat_lengkap'],
-            'riwayat_penyakit' => $validated['riwayat_penyakit'] ?? null,
-            'nama_ayah' => $validated['nama_ayah'],
-            'penghasilan_ayah' => $validated['penghasilan_ayah'] ?? null,
-            'no_hp_calon' => $validated['no_hp_calon'],
-            'nama_ibu' => $validated['nama_ibu'],
-            'no_hp_ibu' => $validated['no_hp_ibu'],
-            'soal_jawab' => $validated['soal_jawab'] ?? null,
-            'file_akta_path' => $validated['file_akta_path'],
-            'file_kk_path' => $validated['file_kk_path'],
-            'file_surat_rekomendasi_path' => $validated['file_surat_rekomendasi_path'],
-            'surat_pernyataan_setuju' => $validated['surat_pernyataan_setuju'],
-            'surat_pernyataan_file_path' => $validated['surat_pernyataan_file_path'] ?? null,
-            'nomor_umi' => $validated['nomor_umi'] ?? null,
-            'asal_kota' => $asalKota,
-            'is_luar_kota' => $this->registrationNumberService()->isLuarKota($asalKota),
-        ])->save();
+        $updates = [];
+        foreach ($updatableFields as $field) {
+            if (!array_key_exists($field, $validated)) {
+                continue;
+            }
 
-        if (!empty($validated['phone_ppdb'])) {
+            $updates[$field] = $validated[$field];
+        }
+
+        if (array_key_exists('asal_kota', $updates)) {
+            $updates['is_luar_kota'] = $this->registrationNumberService()->isLuarKota($updates['asal_kota']);
+        }
+
+        if ($updates !== []) {
+            $pendaftar->fill($updates)->save();
+        }
+
+        if (array_key_exists('phone_ppdb', $validated) && !empty($validated['phone_ppdb'])) {
             $akun->update(['phone' => $validated['phone_ppdb']]);
         }
 
@@ -447,6 +538,223 @@ class AuthController extends Controller
                 'flow' => $this->buildPpdbFlowState($pendaftar),
             ],
         ]);
+    }
+
+    protected function normalizePpdbFormPayload(Request $request): array
+    {
+        $payload = [];
+
+        $namaCalon = trim((string) (
+            $request->input('nama_calon')
+            ?? $request->input('nama_lengkap')
+            ?? $request->input('nama')
+            ?? ''
+        ));
+        if ($namaCalon !== '') {
+            $payload['nama_calon'] = $namaCalon;
+        }
+
+        $programPendaftaran = trim((string) (
+            $request->input('program_pendaftaran')
+            ?? $request->input('program')
+            ?? $request->input('program_daftar')
+            ?? ''
+        ));
+
+        if ($programPendaftaran === '') {
+            $programPendaftaran = trim((string) $request->input('jenjang', ''));
+        }
+
+        if ($programPendaftaran !== '') {
+            $payload['program_pendaftaran'] = $programPendaftaran;
+            if (!$request->filled('jenjang')) {
+                $payload['jenjang'] = $programPendaftaran;
+            }
+        }
+
+        if (!$request->filled('jenjang') && $request->filled('programPendaftaran')) {
+            $payload['jenjang'] = trim((string) $request->input('programPendaftaran'));
+        }
+
+        $jenisKelaminInput = trim((string) (
+            $request->input('jenis_kelamin')
+            ?? $request->input('jenisKelamin')
+            ?? ''
+        ));
+
+        if ($jenisKelaminInput !== '') {
+            $normalizedJenisKelamin = mb_strtolower($jenisKelaminInput);
+
+            if (in_array($normalizedJenisKelamin, ['l', 'lk', 'laki', 'laki-laki', 'laki laki', 'pria', 'male', 'm'], true)) {
+                $payload['jenis_kelamin'] = 'L';
+            } elseif (in_array($normalizedJenisKelamin, ['p', 'pr', 'perempuan', 'wanita', 'female', 'f'], true)) {
+                $payload['jenis_kelamin'] = 'P';
+            }
+        }
+
+        $nikCalonSantri = trim((string) (
+            $request->input('nik_calon_santri')
+            ?? $request->input('nik')
+            ?? ''
+        ));
+        if ($nikCalonSantri !== '') {
+            $payload['nik_calon_santri'] = $nikCalonSantri;
+        }
+
+        $alamatLengkap = trim((string) (
+            $request->input('alamat_lengkap')
+            ?? $request->input('alamat')
+            ?? ''
+        ));
+        if ($alamatLengkap !== '') {
+            $payload['alamat_lengkap'] = $alamatLengkap;
+        }
+
+        if (!$request->filled('tempat_lahir') && $request->filled('tempatLahir')) {
+            $payload['tempat_lahir'] = trim((string) $request->input('tempatLahir'));
+        }
+
+        if (!$request->filled('tanggal_lahir') && $request->filled('tanggalLahir')) {
+            $payload['tanggal_lahir'] = trim((string) $request->input('tanggalLahir'));
+        }
+
+        if (!$request->filled('riwayat_penyakit') && $request->filled('riwayatPenyakit')) {
+            $payload['riwayat_penyakit'] = trim((string) $request->input('riwayatPenyakit'));
+        }
+
+        if (!$request->filled('nama_ayah') && $request->filled('namaAyah')) {
+            $payload['nama_ayah'] = trim((string) $request->input('namaAyah'));
+        }
+
+        if (!$request->filled('penghasilan_ayah') && $request->filled('penghasilanAyah')) {
+            $payload['penghasilan_ayah'] = trim((string) $request->input('penghasilanAyah'));
+        }
+
+        if (!$request->filled('nama_ibu') && $request->filled('namaIbu')) {
+            $payload['nama_ibu'] = trim((string) $request->input('namaIbu'));
+        }
+
+        if (!$request->filled('no_hp_ibu') && $request->filled('noHpIbu')) {
+            $payload['no_hp_ibu'] = trim((string) $request->input('noHpIbu'));
+        }
+
+        if (!$request->filled('soal_jawab') && $request->filled('soalJawab')) {
+            $payload['soal_jawab'] = trim((string) $request->input('soalJawab'));
+        }
+
+        if (!$request->filled('nomor_umi') && $request->filled('nomorUmi')) {
+            $payload['nomor_umi'] = trim((string) $request->input('nomorUmi'));
+        }
+
+        if (!$request->filled('asal_kota') && $request->filled('asalKota')) {
+            $payload['asal_kota'] = trim((string) $request->input('asalKota'));
+        }
+
+        $asalSekolah = trim((string) (
+            $request->input('asal_sekolah')
+            ?? $request->input('asalSekolah')
+            ?? ''
+        ));
+        if (!$request->filled('asal_kota') && $asalSekolah !== '') {
+            $payload['asal_kota'] = $asalSekolah;
+        }
+
+        $noHpCalon = trim((string) (
+            $request->input('no_hp_calon')
+            ?? $request->input('no_hp_ayah')
+            ?? $request->input('noHpCalon')
+            ?? $request->input('noHpAyah')
+            ?? $request->input('phone_ppdb')
+            ?? $request->input('phonePpdb')
+            ?? $request->input('phone')
+            ?? ''
+        ));
+        if ($noHpCalon !== '') {
+            $payload['no_hp_calon'] = $noHpCalon;
+        }
+
+        if (!$request->filled('phone_ppdb') && $request->filled('phonePpdb')) {
+            $payload['phone_ppdb'] = trim((string) $request->input('phonePpdb'));
+        }
+
+        $suratPernyataanSetuju = $request->input('surat_pernyataan_setuju');
+        if ($suratPernyataanSetuju === null) {
+            $suratPernyataanSetuju = $request->input('suratPernyataanSetuju');
+        }
+        if (is_string($suratPernyataanSetuju)) {
+            $normalizedValue = mb_strtolower(trim($suratPernyataanSetuju));
+
+            if (in_array($normalizedValue, ['accepted', '1', 'true', 'yes', 'y', 'on'], true)) {
+                $payload['surat_pernyataan_setuju'] = true;
+            } elseif (in_array($normalizedValue, ['0', 'false', 'no', 'n', 'off'], true)) {
+                $payload['surat_pernyataan_setuju'] = false;
+            }
+        }
+
+        return $payload;
+    }
+
+    protected function storePpdbFormFiles(Request $request): array
+    {
+        $storedPaths = [];
+
+        $storeByAliases = function (array $aliases, string $targetField) use ($request, &$storedPaths): bool {
+            foreach ($aliases as $alias) {
+                if ($request->hasFile($alias)) {
+                    $storedPaths[$targetField] = $request->file($alias)->store('ppdb/berkas', 'public');
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        $aktaStored = $storeByAliases(['akta', 'berkas_akta', 'dokumen_akta', 'dokumenAkta'], 'file_akta_path');
+        $kkStored = $storeByAliases(['kk', 'berkas_kk', 'dokumen_kk', 'dokumenKk'], 'file_kk_path');
+
+        $aktaKkFile = null;
+        foreach (['akta_kk', 'dokumen_akta_kk', 'dokumenAktaKk'] as $alias) {
+            if (!$request->hasFile($alias)) {
+                continue;
+            }
+
+            $aktaKkFile = $request->file($alias);
+            break;
+        }
+
+        if ($aktaKkFile) {
+            $aktaKkPath = $aktaKkFile->store('ppdb/berkas', 'public');
+
+            if (!$aktaStored) {
+                $storedPaths['file_akta_path'] = $aktaKkPath;
+            }
+
+            if (!$kkStored) {
+                $storedPaths['file_kk_path'] = $aktaKkPath;
+            }
+        }
+
+        $storeByAliases(
+            [
+                'surat_rekomendasi_ustadz',
+                'berkas_rekomendasi_ustadz',
+                'dokumen_rekomendasi_ustadz',
+                'dokumenRekomendasiUstadz',
+            ],
+            'file_surat_rekomendasi_path'
+        );
+
+        $storeByAliases(
+            [
+                'surat_pernyataan_file',
+                'berkas_surat_pernyataan',
+                'dokumen_surat_pernyataan',
+                'dokumenSuratPernyataan',
+            ],
+            'surat_pernyataan_file_path'
+        );
+
+        return $storedPaths;
     }
 
     public function cekPengumumanPpdb(Request $request)
@@ -547,7 +855,7 @@ class AuthController extends Controller
 
         if ($apiUser && method_exists($apiUser, 'currentAccessToken')) {
             $currentAccessToken = $apiUser->currentAccessToken();
-            if ($currentAccessToken) {
+            if ($currentAccessToken && method_exists($currentAccessToken, 'delete')) {
                 $currentAccessToken->delete();
             }
         }
@@ -660,7 +968,7 @@ class AuthController extends Controller
             return $existing;
         }
 
-        $tanggalDaftar = now();
+        $tanggalDaftar = Carbon::now();
         $nomorService = $this->registrationNumberService();
         $idPendaftaran = $nomorService->generatePendaftaranId($tanggalDaftar);
         $noPendaftaran = $nomorService->generateInitialNumber($tanggalDaftar);
@@ -691,14 +999,20 @@ class AuthController extends Controller
 
     protected function buildPpdbFlowState(PpdbPendaftar $pendaftar): array
     {
-        $tes = $pendaftar->relationLoaded('tes') ? $pendaftar->tes : $pendaftar->tes()->first();
         $verifikasi = $pendaftar->relationLoaded('verifikasi') ? $pendaftar->verifikasi : $pendaftar->verifikasi()->first();
 
-        $statusTes = mb_strtolower((string) ($tes?->status_tes ?? ''));
-        $adaTes = $tes !== null && (
-            trim((string) ($tes->soal_tes ?? '')) !== '' || trim((string) ($tes->status_tes ?? '')) !== ''
+        $konfigurasiTes = $this->resolveTesKonfigurasiForPendaftar($pendaftar);
+        $fiturSoalAktif = (bool) ($konfigurasiTes?->fitur_soal_aktif ?? false);
+        $soalTes = trim((string) ($konfigurasiTes?->soal_tes ?? ''));
+        $formSchema = is_array($konfigurasiTes?->form_schema) ? $konfigurasiTes->form_schema : [];
+
+        $tesAvailable = $fiturSoalAktif && (
+            $soalTes !== '' || (is_array($formSchema) && count($formSchema) > 0)
         );
-        $tesSelesai = in_array($statusTes, ['selesai', 'sudah', 'done', 'submitted'], true);
+
+        $isFormLengkap = $this->isPpdbFormLengkapUntukTes($pendaftar);
+        $tesSubmitted = trim((string) ($pendaftar->soal_jawab ?? '')) !== '';
+        $tesSelesai = $tesSubmitted;
 
         $tanggalPengumuman = $this->resolveTanggalPengumuman($pendaftar, $verifikasi?->tanggal_verif ?? null);
         $statusVerifikasi = mb_strtolower((string) ($pendaftar->status_verifikasi ?? 'pending'));
@@ -712,9 +1026,19 @@ class AuthController extends Controller
             $isPengumumanDibuka = true;
         }
 
-        $showTesPage = $adaTes && !$tesSelesai;
+        $showTesPage = $tesAvailable && $isFormLengkap && !$tesSelesai;
         $showTanggalPengumuman = !$showTesPage;
         $showFormPengumuman = !$showTesPage && $isPengumumanDibuka;
+        $pendaftaranSelesai = $isFormLengkap && (!$tesAvailable || $tesSelesai);
+
+        $step = 'lengkapi-form';
+        if ($showTesPage) {
+            $step = 'tes';
+        } elseif ($pendaftaranSelesai && $isPengumumanDibuka) {
+            $step = 'pengumuman';
+        } elseif ($pendaftaranSelesai) {
+            $step = 'menunggu-pengumuman';
+        }
 
         return [
             'id_pendaftaran' => $pendaftar->id_pendaftaran,
@@ -724,8 +1048,83 @@ class AuthController extends Controller
             'show_form_pengumuman' => $showFormPengumuman,
             'tanggal_pengumuman' => $tanggalPengumuman,
             'is_pengumuman_dibuka' => $isPengumumanDibuka,
+            'fitur_soal_aktif' => $fiturSoalAktif,
+            'tes_required' => $tesAvailable,
+            'tes_available' => $tesAvailable,
+            'tes_submitted' => $tesSubmitted,
+            'tes_finished' => $tesSelesai,
+            'is_form_lengkap' => $isFormLengkap,
+            'pendaftaran_selesai' => $pendaftaranSelesai,
+            'soal_tes' => $soalTes,
+            'form_schema' => $formSchema,
+            'step' => $step,
             'status_verifikasi' => $pendaftar->status_verifikasi,
         ];
+    }
+
+    protected function resolveTesKonfigurasiForPendaftar(PpdbPendaftar $pendaftar): ?PpdbTesKonfigurasi
+    {
+        $jenjang = $this->normalizeJenjangKonfigurasiKey(
+            (string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran)
+        );
+
+        if (!$jenjang) {
+            return null;
+        }
+
+        return PpdbTesKonfigurasi::query()
+            ->where('jenjang', $jenjang)
+            ->first();
+    }
+
+    protected function normalizeJenjangKonfigurasiKey(string $value): ?string
+    {
+        $raw = mb_strtoupper(trim($value));
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = preg_replace('/[^A-Z0-9]/', '', $raw) ?? '';
+
+        if ($normalized === 'MI' || str_contains($normalized, 'IBTIDAIYAH') || $normalized === 'SD') {
+            return 'MI';
+        }
+
+        if ($normalized === 'MTS' || str_contains($normalized, 'TSANAWIYAH') || $normalized === 'SMP') {
+            return 'MTS';
+        }
+
+        if ($normalized === 'MA' || str_contains($normalized, 'ALIYAH') || $normalized === 'SMA') {
+            return 'MA';
+        }
+
+        return in_array($normalized, ['MI', 'MTS', 'MA'], true) ? $normalized : null;
+    }
+
+    protected function isPpdbFormLengkapUntukTes(PpdbPendaftar $pendaftar): bool
+    {
+        $jenjang = $this->normalizeJenjangKonfigurasiKey(
+            (string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran)
+        );
+
+        $required = [
+            trim((string) $pendaftar->nama_calon) !== '',
+            $jenjang !== null,
+            trim((string) $pendaftar->nik_calon_santri) !== '',
+            trim((string) $pendaftar->alamat_lengkap) !== '',
+            trim((string) $pendaftar->tempat_lahir) !== '',
+            !empty($pendaftar->tanggal_lahir),
+            trim((string) $pendaftar->nama_ayah) !== '',
+            trim((string) $pendaftar->no_hp_calon) !== '',
+            trim((string) $pendaftar->nama_ibu) !== '',
+            trim((string) $pendaftar->no_hp_ibu) !== '',
+        ];
+
+        if (in_array($jenjang, ['MI', 'MTS', 'MA'], true)) {
+            $required[] = trim((string) $pendaftar->asal_kota) !== '';
+        }
+
+        return !in_array(false, $required, true);
     }
 
     protected function resolveTanggalPengumuman(PpdbPendaftar $pendaftar, $tanggalVerifikasi = null): ?string

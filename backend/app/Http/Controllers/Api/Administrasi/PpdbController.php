@@ -12,18 +12,22 @@ use App\Models\PpdbPendaftar;
 use App\Models\PpdbTes;
 use App\Models\PpdbVerifikasi;
 use App\Support\PpdbRegistrationNumberService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class PpdbController extends Controller
 {
     private PpdbRegistrationNumberService $nomorService;
+    private array $ppdbPendaftarColumnCache = [];
 
     public function __construct()
     {
@@ -36,10 +40,11 @@ class PpdbController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 25);
+        $perPage = max(1, min($perPage, 1000));
 
         $query = PpdbPendaftar::query()
-            ->with(['akun', 'santriDiterima', 'berkas', 'tes', 'verifikasi', 'notifikasi'])
+            ->with(['akun'])
             ->when($request->filled('status_verifikasi'), fn ($q) => $q->where('status_verifikasi', $request->status_verifikasi))
             ->when($request->filled('jenjang'), fn ($q) => $q->where('jenjang', $request->jenjang))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -59,6 +64,151 @@ class PpdbController extends Controller
             ->orderByDesc('id_pendaftaran');
 
         return response()->json($query->paginate($perPage));
+    }
+
+    /**
+     * Rekap pendaftar PPDB yang diterima.
+     */
+    public function rekapDiterima(Request $request): JsonResponse
+    {
+        $query = PpdbPendaftar::query()
+            ->when($request->filled('jenjang'), fn ($q) => $q->where('jenjang', $request->query('jenjang')))
+            ->when($request->filled('tahun_masuk'), function ($q) use ($request) {
+                $tahunMasuk = (int) $request->query('tahun_masuk');
+                if ($tahunMasuk > 0) {
+                    $q->whereYear('tanggal_daftar', $tahunMasuk);
+                }
+            });
+
+        $this->applyAcceptedStatusFilter($query);
+
+        $rows = $query
+            ->orderByDesc('id_pendaftaran')
+            ->get();
+
+        $data = $rows->map(function (PpdbPendaftar $row) {
+            return [
+                'id_pendaftaran' => $row->id_pendaftaran,
+                'waktu_pendaftaran' => optional($row->waktu_pendaftaran)->format('Y-m-d H:i:s')
+                    ?? optional($row->created_at)->format('Y-m-d H:i:s'),
+                'no_pendaftaran' => $row->no_pendaftaran_final ?: $row->no_pendaftaran,
+                'nomor_induk' => $row->nomor_induk_generated,
+                'nama_anak' => $row->nama_calon,
+                'jenjang' => $row->jenjang ?: $row->program_pendaftaran,
+                'tempat_lahir' => $row->tempat_lahir,
+                'tanggal_lahir' => optional($row->tanggal_lahir)->format('Y-m-d'),
+                'nama_ortu' => $row->nama_ayah ?: $row->nama_ibu,
+                'alamat' => $row->alamat_lengkap,
+                'no_hp_ortu' => $row->no_hp_ibu ?: $row->no_hp_calon,
+                'status_verifikasi' => $row->status_verifikasi,
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'jumlah_diterima' => $data->count(),
+            ],
+        ]);
+    }
+
+    /**
+     * Export data pendaftar PPDB ke CSV.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $statusFilter = mb_strtolower(trim((string) $request->query('status_verifikasi', 'diterima')));
+
+        $query = PpdbPendaftar::query()
+            ->when($request->filled('jenjang'), fn ($q) => $q->where('jenjang', $request->query('jenjang')))
+            ->when($request->filled('tahun_masuk'), function ($q) use ($request) {
+                $tahunMasuk = (int) $request->query('tahun_masuk');
+                if ($tahunMasuk > 0) {
+                    $q->whereYear('tanggal_daftar', $tahunMasuk);
+                }
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = (string) $request->query('q');
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('nama_calon', 'like', "%{$keyword}%")
+                        ->orWhere('program_pendaftaran', 'like', "%{$keyword}%")
+                        ->orWhere('jenjang', 'like', "%{$keyword}%")
+                        ->orWhere('no_pendaftaran', 'like', "%{$keyword}%")
+                        ->orWhere('no_pendaftaran_final', 'like', "%{$keyword}%")
+                        ->orWhere('nomor_induk_generated', 'like', "%{$keyword}%");
+                });
+            });
+
+        if ($statusFilter === '' || in_array($statusFilter, ['diterima', 'accepted', 'lulus'], true)) {
+            $this->applyAcceptedStatusFilter($query);
+            $statusLabel = 'diterima';
+        } else {
+            $query->whereRaw('LOWER(status_verifikasi) = ?', [$statusFilter]);
+            $statusLabel = preg_replace('/[^a-z0-9_-]+/i', '-', $statusFilter) ?: 'filtered';
+        }
+
+        $headers = [
+            'id_pendaftaran',
+            'waktu_pendaftaran',
+            'no_pendaftaran',
+            'no_pendaftaran_final',
+            'nomor_induk_generated',
+            'nama_calon',
+            'program_pendaftaran',
+            'jenjang',
+            'jenis_kelamin',
+            'tempat_lahir',
+            'tanggal_lahir',
+            'nik_calon_santri',
+            'alamat_lengkap',
+            'nama_ayah',
+            'no_hp_calon',
+            'nama_ibu',
+            'no_hp_ibu',
+            'status_verifikasi',
+            'tanggal_daftar',
+            'tanggal_pengumuman',
+            'tanggal_diterima',
+        ];
+
+        return response()->streamDownload(function () use ($query, $headers) {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, $headers);
+
+            $query->orderByDesc('id_pendaftaran')->chunk(500, function ($rows) use ($output) {
+                foreach ($rows as $row) {
+                    fputcsv($output, [
+                        $row->id_pendaftaran,
+                        optional($row->waktu_pendaftaran)->format('Y-m-d H:i:s')
+                            ?? optional($row->created_at)->format('Y-m-d H:i:s'),
+                        $row->no_pendaftaran,
+                        $row->no_pendaftaran_final,
+                        $row->nomor_induk_generated,
+                        $row->nama_calon,
+                        $row->program_pendaftaran,
+                        $row->jenjang,
+                        $row->jenis_kelamin,
+                        $row->tempat_lahir,
+                        optional($row->tanggal_lahir)->format('Y-m-d'),
+                        $row->nik_calon_santri,
+                        $row->alamat_lengkap,
+                        $row->nama_ayah,
+                        $row->no_hp_calon,
+                        $row->nama_ibu,
+                        $row->no_hp_ibu,
+                        $row->status_verifikasi,
+                        optional($row->tanggal_daftar)->format('Y-m-d'),
+                        optional($row->tanggal_pengumuman)->format('Y-m-d'),
+                        optional($row->tanggal_diterima)->format('Y-m-d'),
+                    ]);
+                }
+            });
+
+            fclose($output);
+        }, 'ppdb-' . $statusLabel . '-' . now()->format('Ymd_His') . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     /**
@@ -130,10 +280,9 @@ class PpdbController extends Controller
     /**
      * Tampilkan detail pendaftar PPDB.
      */
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        $data = PpdbPendaftar::with(['akun', 'santriDiterima', 'berkas', 'tes', 'verifikasi', 'notifikasi'])
-            ->findOrFail($id);
+        $data = $this->resolvePendaftarByIdentifier($id, ['akun', 'santriDiterima', 'berkas', 'tes', 'verifikasi', 'notifikasi']);
 
         return response()->json(['data' => $data]);
     }
@@ -141,9 +290,9 @@ class PpdbController extends Controller
     /**
      * Perbarui data pendaftar PPDB.
      */
-    public function update(Request $request, int $id): JsonResponse
+    public function update(Request $request, string $id): JsonResponse
     {
-        $pendaftar = PpdbPendaftar::findOrFail($id);
+        $pendaftar = $this->resolvePendaftarByIdentifier($id);
 
         $validated = $request->validate([
             'id_akun' => ['nullable', 'integer', 'exists:akun_pendaftar,id_akun'],
@@ -218,9 +367,9 @@ class PpdbController extends Controller
     /**
      * Hapus data pendaftar PPDB.
      */
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
-        $pendaftar = PpdbPendaftar::findOrFail($id);
+        $pendaftar = $this->resolvePendaftarByIdentifier($id);
 
         if ($pendaftar->id_santri) {
             return response()->json([
@@ -245,9 +394,9 @@ class PpdbController extends Controller
     /**
      * Tambahkan berkas PPDB untuk pendaftar.
      */
-    public function storeBerkas(Request $request, int $id): JsonResponse
+    public function storeBerkas(Request $request, string $id): JsonResponse
     {
-        $pendaftar = PpdbPendaftar::findOrFail($id);
+        $pendaftar = $this->resolvePendaftarByIdentifier($id);
 
         if (!$this->isBisaUploadBerkas($pendaftar)) {
             return response()->json([
@@ -262,7 +411,7 @@ class PpdbController extends Controller
         ]);
 
         $berkas = PpdbBerkas::create([
-            'id_pendaftaran' => $id,
+            'id_pendaftaran' => $pendaftar->id_pendaftaran,
             ...$validated,
         ]);
 
@@ -275,9 +424,9 @@ class PpdbController extends Controller
     /**
      * Simpan atau perbarui hasil tes PPDB.
      */
-    public function upsertTes(Request $request, int $id): JsonResponse
+    public function upsertTes(Request $request, string $id): JsonResponse
     {
-        PpdbPendaftar::findOrFail($id);
+        $pendaftar = $this->resolvePendaftarByIdentifier($id);
 
         $validated = $request->validate([
             'nilai' => ['nullable', 'numeric'],
@@ -288,7 +437,7 @@ class PpdbController extends Controller
         ]);
 
         $tes = PpdbTes::updateOrCreate(
-            ['id_pendaftaran' => $id],
+            ['id_pendaftaran' => $pendaftar->id_pendaftaran],
             $validated
         );
 
@@ -301,9 +450,10 @@ class PpdbController extends Controller
     /**
      * Simpan atau perbarui verifikasi PPDB.
      */
-    public function upsertVerifikasi(Request $request, int $id): JsonResponse
+    public function upsertVerifikasi(Request $request, string $id): JsonResponse
     {
-        $pendaftar = PpdbPendaftar::with('akun')->findOrFail($id);
+        $pendaftar = $this->resolvePendaftarByIdentifier($id, ['akun']);
+        $idPendaftaran = (int) $pendaftar->id_pendaftaran;
 
         $hasilInput = mb_strtolower((string) $request->input('hasil', ''));
 
@@ -313,7 +463,7 @@ class PpdbController extends Controller
             'hasil' => ['nullable', 'string', 'max:20'],
             'catatan' => ['nullable', 'string'],
             'kode_kelas_diterima' => [
-                Rule::requiredIf(fn () => $this->isStatusDiterima($hasilInput)),
+                Rule::requiredIf(fn () => $this->isStatusDiterima($hasilInput) && $request->boolean('integrasikan_langsung_ke_santri')),
                 'nullable',
                 'string',
                 'exists:data_kelas,kode_kelas',
@@ -337,19 +487,26 @@ class PpdbController extends Controller
 
         $integrasiDiterima = null;
 
-        $verifikasi = DB::transaction(function () use ($id, $validated, $payloadVerifikasi, $pendaftar, $integrasiLangsung, $autoBuatAkunSantri, &$integrasiDiterima) {
+        $verifikasi = DB::transaction(function () use ($idPendaftaran, $validated, $payloadVerifikasi, $pendaftar, $integrasiLangsung, $autoBuatAkunSantri, &$integrasiDiterima) {
             $verifikasi = PpdbVerifikasi::updateOrCreate(
-                ['id_pendaftaran' => $id],
+                ['id_pendaftaran' => $idPendaftaran],
                 $payloadVerifikasi
             );
 
             if (!empty($validated['hasil'])) {
-                $pendaftar->update([
+                $payloadPendaftar = [
                     'status_verifikasi' => $validated['hasil'],
-                    'tanggal_pengumuman' => $pendaftar->tanggal_pengumuman
-                        ? $pendaftar->tanggal_pengumuman
-                        : Carbon::parse($validated['tanggal_verif'])->toDateString(),
-                ]);
+                ];
+
+                if (empty($pendaftar->tanggal_pengumuman) && $this->hasPendaftarColumn('tanggal_pengumuman')) {
+                    $payloadPendaftar['tanggal_pengumuman'] = Carbon::parse($validated['tanggal_verif'])->toDateString();
+                }
+
+                $payloadPendaftar = $this->filterPendaftarPayloadByExistingColumns($payloadPendaftar);
+
+                if ($payloadPendaftar !== []) {
+                    $pendaftar->update($payloadPendaftar);
+                }
             }
 
             if ($this->isStatusDiterima($validated['hasil'] ?? null) && $integrasiLangsung) {
@@ -373,9 +530,9 @@ class PpdbController extends Controller
     /**
      * Tambahkan notifikasi PPDB untuk pendaftar.
      */
-    public function storeNotifikasi(Request $request, int $id): JsonResponse
+    public function storeNotifikasi(Request $request, string $id): JsonResponse
     {
-        $pendaftar = PpdbPendaftar::with('akun')->findOrFail($id);
+        $pendaftar = $this->resolvePendaftarByIdentifier($id, ['akun']);
 
         $validated = $request->validate([
             'type' => ['required', 'string', 'max:20'],
@@ -386,7 +543,7 @@ class PpdbController extends Controller
         ]);
 
         $notifikasi = PpdbNotifikasi::create([
-            'id_pendaftaran' => $id,
+            'id_pendaftaran' => $pendaftar->id_pendaftaran,
             'type' => $validated['type'],
             'konten' => $validated['konten'],
             'sent_at' => isset($validated['sent_at']) ? Carbon::parse($validated['sent_at']) : null,
@@ -489,13 +646,17 @@ class PpdbController extends Controller
             );
         }
 
-        $pendaftar->update([
+        $payloadPendaftar = $this->filterPendaftarPayloadByExistingColumns([
             'id_santri' => $santri->id_santri,
             'nomor_induk_generated' => $nomorInduk,
             'kode_kelas_diterima' => $kodeKelasDiterima,
             'tanggal_diterima' => now()->toDateString(),
             'status_verifikasi' => 'diterima',
         ]);
+
+        if ($payloadPendaftar !== []) {
+            $pendaftar->update($payloadPendaftar);
+        }
 
         return [
             'nomor_induk_generated' => $nomorInduk,
@@ -517,5 +678,52 @@ class PpdbController extends Controller
         }
 
         return $this->nomorService->isLuarKota($pendaftar->asal_kota);
+    }
+
+    private function applyAcceptedStatusFilter(Builder $query): void
+    {
+        $acceptedStatuses = ['diterima', 'lulus', 'accepted'];
+
+        $query->where(function (Builder $statusQuery) use ($acceptedStatuses) {
+            foreach ($acceptedStatuses as $status) {
+                $statusQuery->orWhereRaw('LOWER(status_verifikasi) = ?', [$status]);
+            }
+        });
+    }
+
+    private function resolvePendaftarByIdentifier(string $identifier, array $with = []): PpdbPendaftar
+    {
+        $normalizedIdentifier = trim($identifier);
+
+        return PpdbPendaftar::query()
+            ->with($with)
+            ->where(function ($query) use ($normalizedIdentifier) {
+                if (ctype_digit($normalizedIdentifier)) {
+                    $query->orWhere('id_pendaftaran', (int) $normalizedIdentifier);
+                }
+
+                $query
+                    ->orWhere('no_pendaftaran', $normalizedIdentifier)
+                    ->orWhere('no_pendaftaran_final', $normalizedIdentifier);
+            })
+            ->firstOrFail();
+    }
+
+    private function hasPendaftarColumn(string $column): bool
+    {
+        if (!array_key_exists($column, $this->ppdbPendaftarColumnCache)) {
+            $this->ppdbPendaftarColumnCache[$column] = Schema::hasColumn('ppdb_pendaftar', $column);
+        }
+
+        return $this->ppdbPendaftarColumnCache[$column];
+    }
+
+    private function filterPendaftarPayloadByExistingColumns(array $payload): array
+    {
+        return array_filter(
+            $payload,
+            fn ($column) => $this->hasPendaftarColumn((string) $column),
+            ARRAY_FILTER_USE_KEY
+        );
     }
 }

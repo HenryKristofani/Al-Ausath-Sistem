@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
 use App\Http\Controllers\Api\DataMaster\DataUnitController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
+use App\Http\Controllers\Api\Administrasi\PpdbTesKonfigurasiController;
 use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
 
@@ -42,6 +43,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::prefix('ppdb')->group(function () {
         Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
+        Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
         Route::put('/form', [AuthController::class, 'updateFormPpdb']);
         Route::post('/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
     });
@@ -225,6 +227,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
 Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('ppdb')->group(function () {
+        Route::get('/pendaftar/rekap/diterima', [PpdbController::class, 'rekapDiterima']);
+        Route::get('/pendaftar/export', [PpdbController::class, 'export']);
         Route::get('/pendaftar', [PpdbController::class, 'index']);
         Route::post('/pendaftar', [PpdbController::class, 'store']);
         Route::get('/pendaftar/{id}', [PpdbController::class, 'show']);
@@ -235,6 +239,9 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/pendaftar/{id}/tes', [PpdbController::class, 'upsertTes']);
         Route::put('/pendaftar/{id}/verifikasi', [PpdbController::class, 'upsertVerifikasi']);
         Route::post('/pendaftar/{id}/notifikasi', [PpdbController::class, 'storeNotifikasi']);
+
+        Route::get('/tes/konfigurasi', [PpdbTesKonfigurasiController::class, 'index']);
+        Route::put('/tes/konfigurasi/{jenjang}', [PpdbTesKonfigurasiController::class, 'update']);
     });
 
     Route::prefix('spp')->group(function () {
@@ -250,6 +257,8 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/pembayaran/{id}', [PembayaranSppController::class, 'show']);
         Route::put('/pembayaran/{id}', [PembayaranSppController::class, 'update']);
         Route::delete('/pembayaran/{id}', [PembayaranSppController::class, 'destroy']);
+        
+        Route::get('/tunggakan-ringkasan', [PembayaranSppController::class, 'tunggakanRingkasan']);
     });
 });
 
