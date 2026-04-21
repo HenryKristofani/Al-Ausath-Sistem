@@ -34,6 +34,7 @@ Daftar file:
 - raport-show.md
 - raport-generate.md
 - raport-rank.md
+- rangking-kelas-generate.md
 - raport-publish.md
 - raport-pdf.md
 - raport-self.md
