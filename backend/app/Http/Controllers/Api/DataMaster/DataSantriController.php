@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataSantriController extends Controller
@@ -64,16 +63,25 @@ class DataSantriController extends Controller
         $limit = max(1, min((int) $request->query('limit', 20), 50));
 
         $options = DataSantri::query()
-            ->where('is_deleted', false)
-            ->select(['id_santri', 'nomor_induk', 'nama_lengkap_santri', 'kode_kelas'])
+            ->leftJoin('data_kelas', 'data_kelas.kode_kelas', '=', 'data_santri.kode_kelas')
+            ->leftJoin('data_unit', 'data_unit.kode_unit', '=', 'data_kelas.kode_unit')
+            ->where('data_santri.is_deleted', false)
+            ->select([
+                'data_santri.id_santri',
+                'data_santri.nomor_induk',
+                'data_santri.nama_lengkap_santri',
+                'data_santri.kode_kelas',
+                'data_kelas.kode_unit',
+                'data_unit.nama_unit',
+            ])
             ->when($keyword !== '', function ($q) use ($keyword) {
                 $q->where(function ($subQuery) use ($keyword) {
                     $subQuery
-                        ->where('nomor_induk', 'like', "%{$keyword}%")
-                        ->orWhere('nama_lengkap_santri', 'like', "%{$keyword}%");
+                        ->where('data_santri.nomor_induk', 'like', "%{$keyword}%")
+                        ->orWhere('data_santri.nama_lengkap_santri', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('nama_lengkap_santri')
+            ->orderBy('data_santri.nama_lengkap_santri')
             ->limit($limit)
             ->get();
 
@@ -739,8 +747,17 @@ class DataSantriController extends Controller
      */
     private function parseExcelFile($file): array
     {
+        $ioFactoryClass = 'PhpOffice\\PhpSpreadsheet\\IOFactory';
+
+        if (!class_exists($ioFactoryClass)) {
+            return [
+                'success' => false,
+                'error' => 'Dependensi pembaca Excel tidak ditemukan. Jalankan composer install/update untuk memasang phpoffice/phpspreadsheet.',
+            ];
+        }
+
         try {
-            $spreadsheet = IOFactory::load($file->getRealPath());
+            $spreadsheet = $ioFactoryClass::load($file->getRealPath());
             $sheet = $spreadsheet->getActiveSheet();
             $data = $sheet->toArray();
 
