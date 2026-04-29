@@ -13,6 +13,7 @@ class DataSantri extends Model
         'nomor_induk',
         'nama_lengkap_santri',
         'kode_kelas',
+        'id_golongan_spp',
         'status',
         'tahun_masuk',
         'tahun_lulus',
@@ -68,6 +69,11 @@ class DataSantri extends Model
     public function sppSettingKhusus()
     {
         return $this->hasMany(SppSetting::class, 'id_santri', 'id_santri');
+    }
+
+    public function golonganSpp()
+    {
+        return $this->belongsTo(SppGolongan::class, 'id_golongan_spp', 'id_golongan');
     }
 }
 

@@ -23,10 +23,14 @@ use App\Http\Controllers\Api\DataMaster\DataPetugasController;
 use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
 use App\Http\Controllers\Api\DataMaster\DataUnitController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
+use App\Http\Controllers\Api\Administrasi\DashboardController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
 use App\Http\Controllers\Api\Administrasi\PpdbTesKonfigurasiController;
+use App\Http\Controllers\Api\Administrasi\SppGolonganController;
 use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
+use App\Http\Controllers\Api\Administrasi\PengumumanController;
+use App\Http\Controllers\Api\Administrasi\PembayaranController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -38,12 +42,16 @@ Route::prefix('ppdb')->group(function () {
     Route::get('/pengumuman/rekap', [AuthController::class, 'rekapPengumumanPpdb']);
 });
 
+// Public route untuk landing page — tanpa auth
+Route::get('/pengumuman', [PengumumanController::class, 'indexPublic']);
+
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::prefix('ppdb')->group(function () {
         Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
+        Route::get('/pembayaran', [AuthController::class, 'pembayaranStatusPpdb']);
         Route::put('/form', [AuthController::class, 'updateFormPpdb']);
         Route::post('/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
     });
@@ -226,6 +234,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index']);
+
     Route::prefix('ppdb')->group(function () {
         Route::get('/pendaftar/rekap/diterima', [PpdbController::class, 'rekapDiterima']);
         Route::get('/pendaftar/export', [PpdbController::class, 'export']);
@@ -239,17 +249,33 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/pendaftar/{id}/tes', [PpdbController::class, 'upsertTes']);
         Route::put('/pendaftar/{id}/verifikasi', [PpdbController::class, 'upsertVerifikasi']);
         Route::post('/pendaftar/{id}/notifikasi', [PpdbController::class, 'storeNotifikasi']);
+        Route::post('/pendaftar/{id}/tagihan', [PpdbController::class, 'createTagihanPpdb']);
 
         Route::get('/tes/konfigurasi', [PpdbTesKonfigurasiController::class, 'index']);
         Route::put('/tes/konfigurasi/{jenjang}', [PpdbTesKonfigurasiController::class, 'update']);
     });
 
+    Route::prefix('pengumuman')->group(function () {
+        Route::get('/', [PengumumanController::class, 'index']);
+        Route::post('/', [PengumumanController::class, 'store']);
+        Route::get('/{id}', [PengumumanController::class, 'show']);
+        Route::put('/{id}', [PengumumanController::class, 'update']);
+        Route::delete('/{id}', [PengumumanController::class, 'destroy']);
+    });
+
     Route::prefix('spp')->group(function () {
         Route::get('/setting', [SppSettingController::class, 'index']);
+        Route::get('/setting/kelas', [SppSettingController::class, 'kelasIndex']);
         Route::post('/setting', [SppSettingController::class, 'store']);
         Route::get('/setting/{id}', [SppSettingController::class, 'show']);
         Route::put('/setting/{id}', [SppSettingController::class, 'update']);
         Route::delete('/setting/{id}', [SppSettingController::class, 'destroy']);
+
+        Route::get('/golongan', [SppGolonganController::class, 'index']);
+        Route::post('/golongan', [SppGolonganController::class, 'store']);
+        Route::get('/golongan/{id}', [SppGolonganController::class, 'show']);
+        Route::put('/golongan/{id}', [SppGolonganController::class, 'update']);
+        Route::delete('/golongan/{id}', [SppGolonganController::class, 'destroy']);
 
         Route::get('/pembayaran', [PembayaranSppController::class, 'index']);
         Route::post('/pembayaran', [PembayaranSppController::class, 'store']);
@@ -259,6 +285,20 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::delete('/pembayaran/{id}', [PembayaranSppController::class, 'destroy']);
         
         Route::get('/tunggakan-ringkasan', [PembayaranSppController::class, 'tunggakanRingkasan']);
+    });
+
+    Route::prefix('pembayaran')->group(function () {
+        Route::get('/options', [PembayaranController::class, 'options']);
+        Route::get('/tagihan', [PembayaranController::class, 'tagihan']);
+        Route::get('/proses', [PembayaranController::class, 'proses']);
+        Route::get('/verifikasi', [PembayaranController::class, 'verifikasi']);
+        Route::get('/', [PembayaranController::class, 'index']);
+        Route::get('/ringkasan', [PembayaranController::class, 'ringkasan']);
+        Route::get('/{id}/detail', [PembayaranController::class, 'detail']);
+        Route::post('/{id}/upload-bukti', [PembayaranController::class, 'uploadBuktiBayar']);
+        Route::put('/{id}/konfirmasi', [PembayaranController::class, 'konfirmasiVerifikasi']);
+        Route::put('/{id}/status', [PembayaranSppController::class, 'updateStatusVerifikasi']);
+        Route::delete('/{id}', [PembayaranSppController::class, 'destroy']);
     });
 });
 

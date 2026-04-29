@@ -11,7 +11,7 @@ class PembayaranSpp extends Model
 
     public $timestamps = false;
 
-        protected $fillable = [
+    protected $fillable = [
         'id_pendaftaran',
         'id_santri',
         'id_setting',
@@ -20,13 +20,17 @@ class PembayaranSpp extends Model
         'metode_bayar',
         'id_rekening',
         'status',
+        'bukti_bayar_path',
+        'catatan_bayar',
         'tanggal_verifikasi',
+        'tanggal_konfirmasi',
         'id_petugas_verifikator',
     ];
 
-        protected $casts = [
+    protected $casts = [
         'tanggal_bayar' => 'datetime',
         'tanggal_verifikasi' => 'datetime',
+        'tanggal_konfirmasi' => 'datetime',
         'nominal_bayar' => 'decimal:2',
     ];
 

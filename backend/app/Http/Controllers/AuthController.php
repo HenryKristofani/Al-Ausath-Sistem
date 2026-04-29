@@ -7,8 +7,10 @@ use App\Models\AkunPendaftar;
 use App\Models\DataPetugas;
 use App\Models\DataAkunSantri;
 use App\Models\PpdbNotifikasi;
+use App\Models\PpdbBerkas;
 use App\Models\PpdbPendaftar;
 use App\Models\PpdbTesKonfigurasi;
+use App\Models\PembayaranSpp;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -415,6 +417,38 @@ class AuthController extends Controller
         ]);
     }
 
+    public function pembayaranStatusPpdb(Request $request)
+    {
+        $akun = $this->resolveAuthenticatedPpdbUser();
+
+        if (!$akun) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $pendaftar = $akun->pendaftaran()
+            ->orderByDesc('id_pendaftaran')
+            ->first();
+
+        if (!$pendaftar) {
+            return response()->json([
+                'message' => 'ID pendaftaran belum dibuat untuk akun ini.',
+            ], 422);
+        }
+
+        $flow = $this->buildPpdbFlowState($pendaftar);
+
+        return response()->json([
+            'message' => 'Status pembayaran PPDB berhasil dimuat.',
+            'data' => [
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'show_halaman_pembayaran_ppdb' => (bool) ($flow['show_halaman_pembayaran_ppdb'] ?? false),
+                'pembayaran_ppdb' => $flow['pembayaran_ppdb'] ?? null,
+                'step' => $flow['step'] ?? null,
+                'flow' => $flow,
+            ],
+        ]);
+    }
+
     public function updateFormPpdb(Request $request)
     {
         $akun = $this->resolveAuthenticatedPpdbUser();
@@ -523,6 +557,7 @@ class AuthController extends Controller
 
         if ($updates !== []) {
             $pendaftar->fill($updates)->save();
+            $this->syncPpdbBerkasRecords($pendaftar, $updates);
         }
 
         if (array_key_exists('phone_ppdb', $validated) && !empty($validated['phone_ppdb'])) {
@@ -755,6 +790,38 @@ class AuthController extends Controller
         );
 
         return $storedPaths;
+    }
+
+    protected function syncPpdbBerkasRecords(PpdbPendaftar $pendaftar, array $payload): void
+    {
+        $jenisByField = [
+            'file_akta_path' => 'akta',
+            'file_kk_path' => 'kk',
+            'file_surat_rekomendasi_path' => 'surat_rekomendasi',
+            'surat_pernyataan_file_path' => 'surat_pernyataan',
+        ];
+
+        foreach ($jenisByField as $field => $jenisBerkas) {
+            if (!array_key_exists($field, $payload)) {
+                continue;
+            }
+
+            $filePath = trim((string) ($payload[$field] ?? ''));
+            if ($filePath === '') {
+                continue;
+            }
+
+            PpdbBerkas::updateOrCreate(
+                [
+                    'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                    'jenis_berkas' => $jenisBerkas,
+                ],
+                [
+                    'file_path' => $filePath,
+                    'uploaded_at' => now(),
+                ]
+            );
+        }
     }
 
     public function cekPengumumanPpdb(Request $request)
@@ -1030,10 +1097,19 @@ class AuthController extends Controller
         $showTanggalPengumuman = !$showTesPage;
         $showFormPengumuman = !$showTesPage && $isPengumumanDibuka;
         $pendaftaranSelesai = $isFormLengkap && (!$tesAvailable || $tesSelesai);
+        $pembayaranPpdb = $this->resolvePpdbPaymentInfo($pendaftar);
+        $showPembayaranPpdb = $pendaftaranSelesai;
+
+        $isStatusDiterima = in_array($statusVerifikasi, ['diterima', 'lulus', 'accepted'], true);
+        $isPaymentVerified = ($pembayaranPpdb['status'] ?? null) === 'terverifikasi';
 
         $step = 'lengkapi-form';
         if ($showTesPage) {
             $step = 'tes';
+        } elseif ($showPembayaranPpdb && $isStatusDiterima && !$isPaymentVerified) {
+            $step = 'pembayaran-ppdb';
+        } elseif ($showPembayaranPpdb && $isStatusDiterima && $isPaymentVerified) {
+            $step = 'siap-menjadi-santri';
         } elseif ($pendaftaranSelesai && $isPengumumanDibuka) {
             $step = 'pengumuman';
         } elseif ($pendaftaranSelesai) {
@@ -1055,6 +1131,8 @@ class AuthController extends Controller
             'tes_finished' => $tesSelesai,
             'is_form_lengkap' => $isFormLengkap,
             'pendaftaran_selesai' => $pendaftaranSelesai,
+            'show_halaman_pembayaran_ppdb' => $showPembayaranPpdb,
+            'pembayaran_ppdb' => $pembayaranPpdb,
             'soal_tes' => $soalTes,
             'form_schema' => $formSchema,
             'step' => $step,
@@ -1138,6 +1216,43 @@ class AuthController extends Controller
         }
 
         return null;
+    }
+
+    protected function resolvePpdbPaymentInfo(PpdbPendaftar $pendaftar): array
+    {
+        $latestPayment = PembayaranSpp::query()
+            ->with(['kwitansi'])
+            ->where('id_pendaftaran', $pendaftar->id_pendaftaran)
+            ->orderByDesc('id_pembayaran')
+            ->first();
+
+        if (!$latestPayment) {
+            return [
+                'has_tagihan' => false,
+                'status' => null,
+                'nominal_bayar' => null,
+                'tanggal_bayar' => null,
+                'tanggal_verifikasi' => null,
+                'metode_bayar' => null,
+                'kwitansi_tersedia' => false,
+            ];
+        }
+
+        return [
+            'has_tagihan' => true,
+            'id_pembayaran' => $latestPayment->id_pembayaran,
+            'status' => $latestPayment->status,
+            'nominal_bayar' => $latestPayment->nominal_bayar,
+            'tanggal_bayar' => optional($latestPayment->tanggal_bayar)->format('Y-m-d H:i:s'),
+            'tanggal_verifikasi' => optional($latestPayment->tanggal_verifikasi)->format('Y-m-d H:i:s'),
+            'metode_bayar' => $latestPayment->metode_bayar,
+            'kwitansi_tersedia' => (bool) $latestPayment->kwitansi,
+            'kwitansi' => $latestPayment->kwitansi ? [
+                'id_kwitansi' => $latestPayment->kwitansi->id_kwitansi,
+                'file_path_pdf' => $latestPayment->kwitansi->file_path_pdf,
+                'jumlah' => $latestPayment->kwitansi->jumlah,
+            ] : null,
+        ];
     }
 
     protected function registrationNumberService(): PpdbRegistrationNumberService

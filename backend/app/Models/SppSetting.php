@@ -14,6 +14,8 @@ class SppSetting extends Model
         protected $fillable = [
         'id_unit',
         'id_santri',
+            'id_golongan_spp',
+        'kode_kelas',
         'jenjang',
         'kategori_tagihan_id',
         'jumlah',
@@ -40,9 +42,19 @@ class SppSetting extends Model
         return $this->belongsTo(DataKategoriTagihan::class, 'kategori_tagihan_id', 'id_kategori');
     }
 
+    public function kelas()
+    {
+        return $this->belongsTo(DataKelas::class, 'kode_kelas', 'kode_kelas');
+    }
+
     public function pembayaran()
     {
         return $this->hasMany(PembayaranSpp::class, 'id_setting', 'id_setting');
+    }
+
+    public function golonganSpp()
+    {
+        return $this->belongsTo(SppGolongan::class, 'id_golongan_spp', 'id_golongan');
     }
 }
 

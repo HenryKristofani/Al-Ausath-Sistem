@@ -177,8 +177,14 @@ class PembayaranSppController extends Controller
     {
         $pembayaran = PembayaranSpp::with(['pendaftarPpdb.akun', 'santri.kelas', 'kwitansi'])->findOrFail($id);
 
+        if ($request->has('status')) {
+            $request->merge([
+                'status' => $this->normalizeVerifikasiStatusInput((string) $request->input('status')),
+            ]);
+        }
+
         $validated = $request->validate([
-            'status' => ['required', 'in:menunggu_verifikasi,terverifikasi,ditolak'],
+            'status' => ['required', 'in:menunggu_pembayaran,menunggu_konfirmasi,dibatalkan,lunas,menunggu_verifikasi,terverifikasi,ditolak'],
             'id_petugas_verifikator' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             'tanggal_verifikasi' => ['nullable', 'date'],
         ]);
@@ -188,8 +194,10 @@ class PembayaranSppController extends Controller
                 ? Carbon::parse($validated['tanggal_verifikasi'])
                 : now();
 
+            $statusStorage = $this->mapStatusToStorage((string) $validated['status']);
+
             $pembayaran->update([
-                'status' => $validated['status'],
+                'status' => $statusStorage,
                 'id_petugas_verifikator' => $validated['id_petugas_verifikator'] ?? $pembayaran->id_petugas_verifikator,
                 'tanggal_verifikasi' => $tanggalVerifikasi,
             ]);
@@ -197,7 +205,7 @@ class PembayaranSppController extends Controller
             $integrasi = null;
             $kwitansi = $pembayaran->kwitansi;
 
-            if ($validated['status'] === 'terverifikasi') {
+            if ($statusStorage === 'terverifikasi') {
                 $integrasi = $this->integrasikanPembayaranTerverifikasi($pembayaran);
 
                 $kwitansi = KwitansiPdf::firstOrCreate(
@@ -222,6 +230,14 @@ class PembayaranSppController extends Controller
             'message' => 'Verifikasi pembayaran SPP berhasil disimpan.',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Endpoint status verifikasi pembayaran untuk halaman verifikasi pembayaran.
+     */
+    public function updateStatusVerifikasi(Request $request, int $id): JsonResponse
+    {
+        return $this->verifikasiPembayaran($request, $id);
     }
 
     /**
@@ -291,7 +307,11 @@ class PembayaranSppController extends Controller
             return SppSetting::find($idSetting);
         }
 
+        $santri = null;
+
         if ($idSantri) {
+            $santri = DataSantri::with(['kelas'])->find($idSantri);
+
             $settingKhusus = SppSetting::query()
                 ->where('id_santri', $idSantri)
                 ->orderByDesc('id_setting')
@@ -300,12 +320,30 @@ class PembayaranSppController extends Controller
             if ($settingKhusus) {
                 return $settingKhusus;
             }
+
+            $kodeKelas = strtoupper(trim((string) ($santri?->kode_kelas ?? '')));
+            if ($kodeKelas !== '') {
+                $settingKelas = SppSetting::query()
+                    ->whereNull('id_santri')
+                    ->where('kode_kelas', $kodeKelas)
+                    ->orderByDesc('id_setting')
+                    ->first();
+
+                if ($settingKelas) {
+                    return $settingKelas;
+                }
+            }
         }
 
-        if ($jenjang) {
+        $jenjangTarget = $this->normalizeJenjangTarget($jenjang);
+        if (!$jenjangTarget && $santri) {
+            $jenjangTarget = $this->resolveJenjangFromSantri($santri);
+        }
+
+        if ($jenjangTarget) {
             return SppSetting::query()
                 ->whereNull('id_santri')
-                ->where('jenjang', $jenjang)
+                ->whereRaw('UPPER(jenjang) = ?', [strtoupper($jenjangTarget)])
                 ->orderByDesc('id_setting')
                 ->first();
         }
@@ -313,9 +351,58 @@ class PembayaranSppController extends Controller
         return null;
     }
 
+    private function resolveJenjangFromSantri(DataSantri $santri): ?string
+    {
+        $fromUnit = (string) ($santri->kelas?->kode_unit ?? '');
+        return $this->normalizeJenjangTarget($fromUnit);
+    }
+
+    private function normalizeJenjangTarget(?string $jenjang): ?string
+    {
+        $trimmed = strtoupper(trim((string) $jenjang));
+        return $trimmed !== '' ? $trimmed : null;
+    }
+
     private function tunggakanStatuses(): array
     {
-        return ['tunggakan', 'belum_lunas', 'pending', 'TUNGGAKAN', 'BELUM_LUNAS', 'PENDING'];
+        return [
+            'tunggakan',
+            'belum_lunas',
+            'pending',
+            'menunggu_pembayaran',
+            'menunggu_verifikasi',
+            'TUNGGAKAN',
+            'BELUM_LUNAS',
+            'PENDING',
+            'MENUNGGU_PEMBAYARAN',
+            'MENUNGGU_VERIFIKASI',
+        ];
+    }
+
+    private function normalizeVerifikasiStatusInput(string $status): string
+    {
+        $normalized = mb_strtolower(trim($status));
+
+        return match ($normalized) {
+            'pending' => 'menunggu_pembayaran',
+            'menunggu_verifikasi' => 'menunggu_konfirmasi',
+            'terverifikasi' => 'lunas',
+            'ditolak' => 'dibatalkan',
+            default => $normalized,
+        };
+    }
+
+    private function mapStatusToStorage(string $status): string
+    {
+        $normalized = mb_strtolower(trim($status));
+
+        return match ($normalized) {
+            'menunggu_pembayaran' => 'menunggu_pembayaran',
+            'menunggu_konfirmasi', 'menunggu_verifikasi' => 'menunggu_verifikasi',
+            'lunas', 'terverifikasi' => 'terverifikasi',
+            'dibatalkan', 'ditolak' => 'ditolak',
+            default => $normalized,
+        };
     }
 
     private function integrasikanPembayaranTerverifikasi(PembayaranSpp $pembayaran): ?array

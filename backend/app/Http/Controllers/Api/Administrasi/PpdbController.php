@@ -11,6 +11,8 @@ use App\Models\PpdbNotifikasi;
 use App\Models\PpdbPendaftar;
 use App\Models\PpdbTes;
 use App\Models\PpdbVerifikasi;
+use App\Models\PembayaranSpp;
+use App\Models\SppSetting;
 use App\Support\PpdbRegistrationNumberService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -44,7 +46,7 @@ class PpdbController extends Controller
         $perPage = max(1, min($perPage, 1000));
 
         $query = PpdbPendaftar::query()
-            ->with(['akun'])
+            ->with(['akun', 'berkas'])
             ->when($request->filled('status_verifikasi'), fn ($q) => $q->where('status_verifikasi', $request->status_verifikasi))
             ->when($request->filled('jenjang'), fn ($q) => $q->where('jenjang', $request->jenjang))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -406,14 +408,47 @@ class PpdbController extends Controller
 
         $validated = $request->validate([
             'jenis_berkas' => ['required', 'string', 'max:80'],
-            'file_path' => ['required', 'string'],
+            'file_path' => ['nullable', 'string'],
+            'file' => ['nullable', 'file', 'max:10240'],
             'uploaded_at' => ['nullable', 'date'],
         ]);
 
-        $berkas = PpdbBerkas::create([
-            'id_pendaftaran' => $pendaftar->id_pendaftaran,
-            ...$validated,
-        ]);
+        $filePath = trim((string) ($validated['file_path'] ?? ''));
+        if ($request->hasFile('file')) {
+            $filePath = $request->file('file')->store('ppdb/berkas', 'public');
+        }
+
+        if ($filePath === '') {
+            return response()->json([
+                'message' => 'Upload berkas gagal: kirimkan file atau file_path.',
+            ], 422);
+        }
+
+        $berkas = PpdbBerkas::updateOrCreate(
+            [
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'jenis_berkas' => $validated['jenis_berkas'],
+            ],
+            [
+                'file_path' => $filePath,
+                'uploaded_at' => isset($validated['uploaded_at'])
+                    ? Carbon::parse($validated['uploaded_at'])
+                    : now(),
+            ]
+        );
+
+        if (in_array($validated['jenis_berkas'], ['akta', 'kk', 'surat_rekomendasi', 'surat_pernyataan'], true)) {
+            $fieldMap = [
+                'akta' => 'file_akta_path',
+                'kk' => 'file_kk_path',
+                'surat_rekomendasi' => 'file_surat_rekomendasi_path',
+                'surat_pernyataan' => 'surat_pernyataan_file_path',
+            ];
+
+            $pendaftar->update([
+                $fieldMap[$validated['jenis_berkas']] => $filePath,
+            ]);
+        }
 
         return response()->json([
             'message' => 'Berkas PPDB berhasil ditambahkan.',
@@ -455,7 +490,12 @@ class PpdbController extends Controller
         $pendaftar = $this->resolvePendaftarByIdentifier($id, ['akun']);
         $idPendaftaran = (int) $pendaftar->id_pendaftaran;
 
-        $hasilInput = mb_strtolower((string) $request->input('hasil', ''));
+        $hasilInput = $this->normalizeVerifikasiResult(
+            $request->input('hasil', $request->input('status_verifikasi', $request->input('status', '')))
+        );
+        if ($hasilInput !== '') {
+            $request->merge(['hasil' => $hasilInput]);
+        }
 
         $validated = $request->validate([
             'id_petugas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
@@ -470,6 +510,7 @@ class PpdbController extends Controller
             ],
             'integrasikan_langsung_ke_santri' => ['nullable', 'boolean'],
             'auto_buat_akun_santri' => ['nullable', 'boolean'],
+            'buat_tagihan_ppdb' => ['nullable', 'boolean'],
         ]);
 
         $validated['tanggal_verif'] = isset($validated['tanggal_verif'])
@@ -478,16 +519,19 @@ class PpdbController extends Controller
 
         $integrasiLangsung = $validated['integrasikan_langsung_ke_santri'] ?? false;
         $autoBuatAkunSantri = $validated['auto_buat_akun_santri'] ?? true;
+        $buatTagihanPpdb = $validated['buat_tagihan_ppdb'] ?? true;
 
         unset($validated['integrasikan_langsung_ke_santri']);
         unset($validated['auto_buat_akun_santri']);
+        unset($validated['buat_tagihan_ppdb']);
 
         $payloadVerifikasi = $validated;
         unset($payloadVerifikasi['kode_kelas_diterima']);
 
         $integrasiDiterima = null;
+        $tagihanPpdb = null;
 
-        $verifikasi = DB::transaction(function () use ($idPendaftaran, $validated, $payloadVerifikasi, $pendaftar, $integrasiLangsung, $autoBuatAkunSantri, &$integrasiDiterima) {
+        $verifikasi = DB::transaction(function () use ($idPendaftaran, $validated, $payloadVerifikasi, $pendaftar, $integrasiLangsung, $autoBuatAkunSantri, $buatTagihanPpdb, &$integrasiDiterima, &$tagihanPpdb) {
             $verifikasi = PpdbVerifikasi::updateOrCreate(
                 ['id_pendaftaran' => $idPendaftaran],
                 $payloadVerifikasi
@@ -517,6 +561,10 @@ class PpdbController extends Controller
                 );
             }
 
+            if ($this->isStatusDiterima($validated['hasil'] ?? null) && $buatTagihanPpdb) {
+                $tagihanPpdb = $this->createTagihanPpdbIfNeeded($pendaftar);
+            }
+
             return $verifikasi;
         });
 
@@ -524,6 +572,7 @@ class PpdbController extends Controller
             'message' => 'Verifikasi manual PPDB berhasil disimpan.',
             'data' => $verifikasi,
             'integrasi_diterima' => $integrasiDiterima,
+            'tagihan_ppdb' => $tagihanPpdb,
         ]);
     }
 
@@ -589,11 +638,94 @@ class PpdbController extends Controller
         ], 201);
     }
 
+    /**
+     * Buat tagihan pembayaran PPDB untuk pendaftar yang diterima.
+     * Bisa dipanggil dari halaman PPDB admin setelah pendaftar diterima.
+     */
+    public function createTagihanPpdb(Request $request, string $id): JsonResponse
+    {
+        $pendaftar = $this->resolvePendaftarByIdentifier($id, ['akun']);
+
+        if (!$this->isStatusDiterima($pendaftar->status_verifikasi)) {
+            return response()->json([
+                'message' => 'Tagihan PPDB hanya dapat dibuat untuk pendaftar yang sudah diterima.',
+            ], 422);
+        }
+
+        $tagihanExisting = PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)->first();
+        if ($tagihanExisting) {
+            return response()->json([
+                'message' => 'Tagihan PPDB untuk pendaftar ini sudah ada.',
+                'data'    => $tagihanExisting->load(['setting', 'kwitansi']),
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'id_setting'    => ['nullable', 'integer', 'exists:spp_setting,id_setting'],
+            'nominal_bayar' => ['nullable', 'numeric', 'min:0'],
+            'tanggal_bayar' => ['nullable', 'date'],
+            'metode_bayar'  => ['nullable', 'string', 'max:50'],
+            'id_rekening'   => ['nullable', 'integer', 'exists:data_rekening_bank,id_rekening'],
+        ]);
+
+        $tagihan = $this->createTagihanPpdbIfNeeded($pendaftar, $validated);
+
+        return response()->json([
+            'message' => 'Tagihan PPDB berhasil dibuat.',
+            'data'    => $tagihan->load(['setting', 'pendaftarPpdb', 'kwitansi']),
+        ], 201);
+    }
+
+    private function createTagihanPpdbIfNeeded(PpdbPendaftar $pendaftar, array $overrides = []): PembayaranSpp
+    {
+        $existing = PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        $setting = null;
+
+        if (!empty($overrides['id_setting'])) {
+            $setting = SppSetting::find($overrides['id_setting']);
+        } elseif ($jenjang) {
+            $setting = SppSetting::whereNull('id_santri')
+                ->whereRaw('UPPER(jenjang) = ?', [$jenjang])
+                ->orderByDesc('id_setting')
+                ->first();
+        }
+
+        $nominal = $overrides['nominal_bayar'] ?? ($setting?->jumlah ?? null);
+
+        return PembayaranSpp::create([
+            'id_pendaftaran' => $pendaftar->id_pendaftaran,
+            'id_santri' => $pendaftar->id_santri ?? null,
+            'id_setting' => $setting?->id_setting ?? ($overrides['id_setting'] ?? null),
+            'nominal_bayar' => $nominal,
+            'tanggal_bayar' => $overrides['tanggal_bayar'] ?? null,
+            'metode_bayar' => $overrides['metode_bayar'] ?? null,
+            'id_rekening' => $overrides['id_rekening'] ?? null,
+            'status' => 'menunggu_pembayaran',
+        ]);
+    }
+
     private function isStatusDiterima(?string $hasil): bool
+    {
+        $normalized = $this->normalizeVerifikasiResult($hasil);
+
+        return in_array($normalized, ['diterima', 'lulus', 'accepted'], true);
+    }
+
+    private function normalizeVerifikasiResult(?string $hasil): string
     {
         $normalized = mb_strtolower(trim((string) $hasil));
 
-        return in_array($normalized, ['diterima', 'lulus', 'accepted'], true);
+        return match ($normalized) {
+            'accepted', 'approve', 'approved', 'lulus' => 'diterima',
+            'rejected', 'reject' => 'ditolak',
+            'waiting', 'wait', 'pending', 'menunggu' => 'pending',
+            default => $normalized,
+        };
     }
 
     private function integrasikanPendaftarDiterima(
