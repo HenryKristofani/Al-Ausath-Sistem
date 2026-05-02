@@ -326,8 +326,9 @@ class RaportGenerateController extends Controller
             'tahun_ajaran' => ['required', 'string', 'max:20'],
             'semester' => ['required', 'integer', 'in:1,2'],
             'nomor_induk' => ['nullable', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
-            'tanggal_terbit' => ['nullable', 'date'],
         ]);
+
+        $tanggalTerbit = now()->toDateString();
 
         $query = DataRaport::query()
             ->where('kode_kelas', $validated['kode_kelas'])
@@ -340,7 +341,7 @@ class RaportGenerateController extends Controller
 
         $updated = $query->update([
             'status_raport' => 'TERBIT',
-            'tanggal_terbit' => $validated['tanggal_terbit'] ?? now()->toDateString(),
+            'tanggal_terbit' => $tanggalTerbit,
         ]);
 
         return response()->json([
@@ -351,7 +352,7 @@ class RaportGenerateController extends Controller
                 'tahun_ajaran' => $validated['tahun_ajaran'],
                 'semester' => (int) $validated['semester'],
                 'nomor_induk' => $validated['nomor_induk'] ?? null,
-                'tanggal_terbit' => $validated['tanggal_terbit'] ?? now()->toDateString(),
+                'tanggal_terbit' => $tanggalTerbit,
             ],
         ]);
     }
