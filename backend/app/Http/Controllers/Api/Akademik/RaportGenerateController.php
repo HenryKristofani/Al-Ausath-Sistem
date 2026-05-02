@@ -357,6 +357,54 @@ class RaportGenerateController extends Controller
         ]);
     }
 
+    public function tarik(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+            'nomor_induk' => ['nullable', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+        ]);
+
+        $query = DataRaport::query()
+            ->where('kode_kelas', $validated['kode_kelas'])
+            ->where('tahun_ajaran', $validated['tahun_ajaran'])
+            ->where('semester', $validated['semester'])
+            ->where('status_raport', 'TERBIT');
+
+        if (! empty($validated['nomor_induk'])) {
+            $query->where('nomor_induk', $validated['nomor_induk']);
+        }
+
+        $updated = $query->update([
+            'status_raport' => 'DRAFT',
+        ]);
+
+        if ($updated === 0) {
+            return response()->json([
+                'message' => 'Tidak ada raport TERBIT yang bisa ditarik dengan filter yang diberikan.',
+                'data' => [
+                    'total_terupdate' => 0,
+                    'kode_kelas' => $validated['kode_kelas'],
+                    'tahun_ajaran' => $validated['tahun_ajaran'],
+                    'semester' => (int) $validated['semester'],
+                    'nomor_induk' => $validated['nomor_induk'] ?? null,
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Status raport berhasil ditarik kembali menjadi DRAFT.',
+            'data' => [
+                'total_terupdate' => $updated,
+                'kode_kelas' => $validated['kode_kelas'],
+                'tahun_ajaran' => $validated['tahun_ajaran'],
+                'semester' => (int) $validated['semester'],
+                'nomor_induk' => $validated['nomor_induk'] ?? null,
+            ],
+        ]);
+    }
+
     private function buildAbsensiSummary(string $nomorInduk, string $kodeKelas, string $tahunAjaran, int $semester): array
     {
         $summary = DB::table('absensi_santri as a')

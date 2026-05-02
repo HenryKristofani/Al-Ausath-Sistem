@@ -98,6 +98,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/raport/rank', [RaportGenerateController::class, 'rank']);
         Route::post('/rangking-kelas/generate', [RangkingKelasController::class, 'generate']);
         Route::post('/raport/publish', [RaportGenerateController::class, 'publish']);
+        Route::post('/raport/tarik', [RaportGenerateController::class, 'tarik']);
         Route::get('/raport/pdf', [RaportPdfController::class, 'download']);
         Route::get('/raport/self', [RaportPdfController::class, 'selfShow']);
         Route::get('/raport/self/pdf', [RaportPdfController::class, 'selfDownload']);
