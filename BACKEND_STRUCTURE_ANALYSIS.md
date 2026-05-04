@@ -1,29 +1,18 @@
 📌 Workflow Sistem PPDB & SPP (Current Issues & Expected Flow)
-🚨 1. Masalah yang Ditemukan (Current Issues)
-1.1 Upload File
-Data upload file:
-❌ Belum tersimpan di database
-❌ Tidak muncul di POV Admin
-1.2 Status Penerimaan Santri
-❌ Tidak bisa mengubah status penerimaan santri
-Expected:
-Admin bisa update status:
-Menunggu
-Diterima
-Ditolak
-1.3 Toggle Pertanyaan (On/Off)
-❌ Status ON/OFF pertanyaan tidak tersimpan
-Case:
-Tes aktif → ingin dimatikan → gagal
-1.4 SPP (UI & Flow)
-❌ UI membingungkan
-❌ Flow belum jelas
-❌ Belum dipisah antara:
-Tagihan
-Pembayaran
-🧩 2. Struktur Fitur SPP (Expected Design)
-📊 2.1 Fitur: TAGIHAN
-📌 Deskripsi
+1. Belum bisa untuk mengintegrasikan Langsung ke data master karena apa ? belum bisa pilih kelas . kira kira kenapa ya ? apa karena tidak ada relasi antar tablenya atau gimana ya? tolong bantu saya untuk solving hal ini .
+2. kondisi setelah kita menyimpan form di pov pendaftar yaitu di halaman http://localhost:3000/ppdb/dashboard/pengumuman harusnya kita juga menambahkan pembayaran yang berjumlah 100.000 
+Biaya administrasi: Rp 100.000
+Flow:
+Calon santri daftar
+Masuk ke tagihan
+Jika belum bayar:
+❌ Tidak bisa diterima
+Jika sudah bayar:
+✅ Bisa diverifikasi admin
+✅ Bisa lanjut ke penerimaan
+💳 2.2 Fitur: PEMBAYARAN
+
+3. untuk halaman proses pembayaran mungkin untuk contoh fitur yang sudah existing bisa diterapkan kembali di website yang kita buat sekarang , untuk lengkapnya di foto. nah untuk detail tagihan bisa dilihat di foto yang kedua . nanti ketika pencet detail di generate new page saja , dengan id santri tersebut for example localhost / bill/detail/id 
 
 Menampilkan daftar tagihan seluruh santri (termasuk calon santri PPDB)
 
@@ -109,6 +98,24 @@ Generate Nomor Induk
 Jenjang / Tahun Masuk / Nomor Absen
 ⚠️ Catatan
 Nomor induk dibuat setelah daftar ulang / pembayaran selesai
+
+🧩 Catatan implementasi backend saat ini:
+- Otomatis integrasi PPDB → Master Data dibuat di `backend/app/Http/Controllers/Api/Administrasi/PembayaranSppController.php`.
+- Proses integrasi berjalan ketika `PembayaranSpp.status` diubah menjadi `terverifikasi` dan `PpdbPendaftar.status_verifikasi` telah berstatus `diterima`, `lulus`, atau `accepted`.
+- Syarat penting integrasi:
+  - `kode_kelas_diterima` harus diisi dan valid.
+  - `status_verifikasi` pendaftar harus `diterima` atau setara.
+  - `PembayaranSpp` harus terkait `id_pendaftaran` pendaftar PPDB.
+- Hasil integrasi:
+  - membuat/memperbarui `DataSantri`
+  - membuat/memperbarui `DataAkunSantri`
+  - menyimpan `nomor_induk_generated` di `ppdb_pendaftar`
+  - mengaitkan `id_santri` ke `PpdbPendaftar` dan `PembayaranSpp`
+
+⚠️ Poin yang masih perlu diperhatikan:
+- Backend sekarang membuat tagihan administrasi 100.000 otomatis saat pendaftar menyimpan form PPDB melalui `AuthController::updateFormPpdb`.
+- Jika frontend tidak dapat memilih kelas, kemungkinan field `kode_kelas_diterima` belum dikirim pada verifikasi PPDB, karena model `PpdbPendaftar` saat ini hanya menyimpan kelas terima sebagai string bukan relasi Eloquent langsung.
+
 💸 4. Alur SPP (Simplified Flow)
 📌 Konsep Utama
 Website:
@@ -128,15 +135,4 @@ Sistem generate kwitansi otomatis
 Mengacu pada prinsip sistem informasi berbasis web, penting bahwa:
 
 Data harus terintegrasi antar modul
-Tidak boleh ada data terpisah (silo)
-Semua modul harus terhubung ke master data
-🚀 6. Rekomendasi Perbaikan
-✔ Perbaiki penyimpanan upload file (DB + admin view)
-✔ Implement status management (santri & pembayaran)
-✔ Fix toggle ON/OFF agar persist ke DB
-✔ Pisahkan jelas:
-Tagihan vs Pembayaran
-✔ Pastikan relasi:
-PPDB → Tagihan → Pembayaran → Master Data
-✔ Auto-generate Nomor Induk setelah pembayaran
 

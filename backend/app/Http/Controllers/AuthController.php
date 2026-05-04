@@ -307,6 +307,7 @@ class AuthController extends Controller
             ], 422);
         }
 
+        $this->ensurePpdbAdministrasiTagihan($pendaftar);
         $pendaftar->load(['tes', 'verifikasi']);
 
         return response()->json([
@@ -435,6 +436,7 @@ class AuthController extends Controller
             ], 422);
         }
 
+        $this->ensurePpdbAdministrasiTagihan($pendaftar);
         $flow = $this->buildPpdbFlowState($pendaftar);
 
         return response()->json([
@@ -564,6 +566,7 @@ class AuthController extends Controller
             $akun->update(['phone' => $validated['phone_ppdb']]);
         }
 
+        $this->ensurePpdbAdministrasiTagihan($pendaftar);
         $pendaftar->load(['tes', 'verifikasi']);
 
         return response()->json([
@@ -572,6 +575,30 @@ class AuthController extends Controller
                 'pendaftaran' => $pendaftar,
                 'flow' => $this->buildPpdbFlowState($pendaftar),
             ],
+        ]);
+    }
+
+    protected function ensurePpdbAdministrasiTagihan(PpdbPendaftar $pendaftar): void
+    {
+        if (!$pendaftar->id_pendaftaran) {
+            return;
+        }
+
+        $exists = PembayaranSpp::query()
+            ->where('id_pendaftaran', $pendaftar->id_pendaftaran)
+            ->where('metode_bayar', 'administrasi')
+            ->exists();
+
+        if ($exists) {
+            return;
+        }
+
+        PembayaranSpp::create([
+            'id_pendaftaran' => $pendaftar->id_pendaftaran,
+            'id_santri' => $pendaftar->id_santri,
+            'nominal_bayar' => 100000,
+            'status' => 'menunggu_pembayaran',
+            'metode_bayar' => 'administrasi',
         ]);
     }
 
@@ -1106,7 +1133,7 @@ class AuthController extends Controller
         $step = 'lengkapi-form';
         if ($showTesPage) {
             $step = 'tes';
-        } elseif ($showPembayaranPpdb && $isStatusDiterima && !$isPaymentVerified) {
+        } elseif ($showPembayaranPpdb && !$isPaymentVerified) {
             $step = 'pembayaran-ppdb';
         } elseif ($showPembayaranPpdb && $isStatusDiterima && $isPaymentVerified) {
             $step = 'siap-menjadi-santri';

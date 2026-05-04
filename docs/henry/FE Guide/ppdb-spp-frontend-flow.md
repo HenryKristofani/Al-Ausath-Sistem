@@ -72,6 +72,13 @@ Nilai status yang direkomendasikan:
 Jika diterima dan ingin langsung integrasi ke data santri:
 - set `integrasikan_langsung_ke_santri = true`
 - kirim `kode_kelas_diterima`
+- pastikan `id_pendaftaran` valid dan `status_verifikasi` sudah `diterima`
+
+Catatan penting:
+- Backend akan membuat `DataSantri` + `DataAkunSantri` otomatis hanya ketika:
+  - pembayaran PPDB terkait `id_pendaftaran` sudah diubah ke `terverifikasi`
+  - `status_verifikasi` pendaftar adalah `diterima`, `lulus`, atau `accepted`
+  - `kode_kelas_diterima` sudah diisi dan cocok dengan `DataKelas`
 
 ### 4.3 Toggle Pertanyaan Tes (ON/OFF)
 Endpoint:
@@ -111,7 +118,9 @@ Menampilkan daftar ringkas tagihan semua entitas (santri master data dan calon s
 
 ### 5.4 Integrasi PPDB
 - Calon santri PPDB tetap masuk daftar tagihan.
+- Backend akan otomatis membuat akun santri dan master santri setelah pembayaran PPDB diverifikasi, jika pendaftar berstatus diterima dan `kode_kelas_diterima` sudah terisi.
 - Jika biaya administrasi belum terverifikasi, status penerimaan belum bisa final.
+- Pastikan frontend menampilkan status `terverifikasi` saat tagihan administrasi selesai, karena status ini memicu integrasi master data.
 
 ## 6. Halaman SPP: Pembayaran
 
@@ -160,9 +169,15 @@ Status pembayaran untuk kontrol frontend:
 - menunggu_pembayaran
 - menunggu_konfirmasi
 - dibatalkan
+- terverifikasi
 
 Status tambahan dari sistem (read-only di badge):
 - lunas
+
+Catatan endpoint:
+- Gunakan `PUT /api/administrasi/pembayaran/{id}/status` untuk memperbarui status pembayaran.
+- Jika status diubah menjadi `terverifikasi`, backend akan mencoba mengintegrasikan calon santri PPDB ke master data.
+- Pastikan payload verifikasi menyertakan `tanggal_verifikasi` dan `id_petugas_verifikator` jika tersedia.
 
 ## 7. Halaman Detail Pembayaran (Halaman Khusus)
 

@@ -503,7 +503,7 @@ class PpdbController extends Controller
             'hasil' => ['nullable', 'string', 'max:20'],
             'catatan' => ['nullable', 'string'],
             'kode_kelas_diterima' => [
-                Rule::requiredIf(fn () => $this->isStatusDiterima($hasilInput) && $request->boolean('integrasikan_langsung_ke_santri')),
+                Rule::requiredIf(fn () => $this->isStatusDiterima($hasilInput)),
                 'nullable',
                 'string',
                 'exists:data_kelas,kode_kelas',
@@ -544,6 +544,10 @@ class PpdbController extends Controller
 
                 if (empty($pendaftar->tanggal_pengumuman) && $this->hasPendaftarColumn('tanggal_pengumuman')) {
                     $payloadPendaftar['tanggal_pengumuman'] = Carbon::parse($validated['tanggal_verif'])->toDateString();
+                }
+
+                if (!empty($validated['kode_kelas_diterima'])) {
+                    $payloadPendaftar['kode_kelas_diterima'] = $validated['kode_kelas_diterima'];
                 }
 
                 $payloadPendaftar = $this->filterPendaftarPayloadByExistingColumns($payloadPendaftar);
