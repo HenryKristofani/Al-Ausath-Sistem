@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Akademik\KkmMapelController;
 use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
 use App\Http\Controllers\Api\Akademik\NilaiMapelController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
+use App\Http\Controllers\Api\Akademik\NilaiStatistikController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportGenerateController;
 use App\Http\Controllers\Api\Akademik\RaportPdfController;
@@ -80,6 +81,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
         Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
         Route::delete('/nilai-mapel/{id}', [NilaiMapelController::class, 'destroy']);
+
+        Route::prefix('nilai-statistik')->group(function () {
+            Route::get('/', [NilaiStatistikController::class, 'index']);
+            Route::get('/per-kelas', [NilaiStatistikController::class, 'averagePerClass']);
+            Route::get('/trend', [NilaiStatistikController::class, 'trendPerSemester']);
+            Route::get('/berprestasi', [NilaiStatistikController::class, 'topPerformers']);
+            Route::get('/perlu-bimbingan', [NilaiStatistikController::class, 'needsHelp']);
+        });
 
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);

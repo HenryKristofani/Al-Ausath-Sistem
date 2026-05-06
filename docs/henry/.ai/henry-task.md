@@ -201,3 +201,94 @@ Status fase: **DONE 100%** ✅
 - [x] Pastikan semua endpoint akademik yang menampilkan nilai mapel memakai sumber yang sama: `flag_warna_rapor` dari aturan nilai asli `< 50`.
 - [x] Tambahkan uji kasus backend untuk skenario batas: `49.x -> 50 MERAH`, `50 asli -> 50 HITAM`, dan `100 -> 98 HITAM`.
 - [x] Pastikan data lama/backfill (jika ada) tidak menimbulkan inkonsistensi antara `nilai_akhir_mapel`, `nilai_rapor_tampil`, dan `flag_warna_rapor` (tersedia command `php artisan raport:backfill-nilai-mapel`, aman dengan opsi `--dry-run`).
+
+---
+
+## Fase 6 — Statistik & Analytics Nilai
+
+Status fase: **DONE 100%** ✅
+
+### 6.1 API Statistik Nilai Santri
+
+- [x] Endpoint statistik keseluruhan:
+  - nilai rata-rata keseluruhan santri
+  - nilai tertinggi
+  - nilai terendah
+  - jumlah santri yang sudah dinilai
+- [x] Filter by: `kode_kelas`, `kode_mapel`, `tahun_ajaran`, `semester`
+- [x] Controller: `NilaiStatistikController@index`
+- [x] Endpoint: `GET /api/akademik/nilai-statistik/`
+
+### 6.2 API Rata-rata Nilai per Kelas
+
+- [x] Endpoint list kelas dengan rata-rata nilai per kelas.
+- [x] Output: `kode_kelas`, `nama_kelas`, `rata_rata_nilai`, `jumlah_santri`.
+- [x] Cocok untuk bar chart atau tabel perbandingan performa kelas.
+- [x] Controller: `NilaiStatistikController@averagePerClass`
+- [x] Endpoint: `GET /api/akademik/nilai-statistik/per-kelas`
+
+### 6.3 API Grafik Perkembangan Nilai (Trend per Semester)
+
+- [x] Endpoint tracking perkembangan per semester.
+- [x] Format output: array per semester dengan nilai rata-rata.
+- [x] Support filter: per santri, per kelas, per mata pelajaran.
+- [x] Cocok untuk line chart.
+- [x] Controller: `NilaiStatistikController@trendPerSemester`
+- [x] Endpoint: `GET /api/akademik/nilai-statistik/trend`
+
+### 6.4 API Identifikasi Santri Berprestasi
+
+- [x] Kriteria: nilai rata-rata >= 85 (configurable).
+- [x] Output: list santri top performers dengan nilai detail per mapel.
+- [x] Filter by: `kode_kelas`, `tahun_ajaran`, `semester`, `threshold`, `limit`.
+- [x] Controller: `NilaiStatistikController@topPerformers`
+- [x] Endpoint: `GET /api/akademik/nilai-statistik/berprestasi`
+
+### 6.5 API Identifikasi Santri Perlu Bimbingan
+
+- [x] Kriteria: nilai < KKM atau rata-rata nilai rendah (configurable).
+- [x] Output: list santri dengan mapel yang kurang memuaskan.
+- [x] Include: mata pelajaran yang lemah, nilai akhir, status ketuntasan.
+- [x] Filter by: `kode_kelas`, `tahun_ajaran`, `semester`, `threshold`, `limit`.
+- [x] Controller: `NilaiStatistikController@needsHelp`
+- [x] Endpoint: `GET /api/akademik/nilai-statistik/perlu-bimbingan`
+- [x] Fix: PostgreSQL string literal quotes (single quotes untuk status comparison)
+
+### 6.6 Routing dan Security
+
+- [x] Daftarkan route `/api/akademik/nilai-statistik/*`.
+- [x] Lindungi dengan `auth:sanctum`.
+- [x] Role-based access: admin + pengajar bisa akses.
+
+---
+
+## Backlog Lanjutan (Setelah Fase 6)
+
+### B3. Middleware Role-Based Access Control
+
+- [ ] Buat middleware `CheckRoleAccess` untuk validasi `peran_akun`.
+- [ ] Terapkan pada endpoint sensitif (akademik, administrasi).
+- [ ] Validasi: `auth:sanctum` + role check.
+- [ ] Priority: HIGH (blok akses yang seharusnya tidak boleh)
+
+### B4. Dashboard Pengajar & Santri
+
+- [ ] `DashboardPengajarController`: nilai, absensi, rekap per kelas diajar.
+- [ ] `DashboardSantriController`: nilai sendiri, rapor, nilai akhlak.
+- [ ] Route: `/api/akademik/dashboard`.
+- [ ] Priority: HIGH (user engagement langsung)
+
+### B5. Audit Trail / Riwayat Perubahan
+
+- [ ] Catat siapa, kapan, apa yang diubah (nilai, rapor, schedule).
+- [ ] Model: `LogAktivitas` atau extend existing `LogDownloadRaport`.
+- [ ] Endpoint viewing: `/api/master/log-aktivitas`.
+- [ ] Priority: MEDIUM (compliance + troubleshooting)
+
+### B6. Schedule Enhancements
+
+- [ ] Filter jadwal by tanggal (date range) + jenis kegiatan.
+- [ ] Notifikasi (log DB) jika jadwal berubah.
+- [ ] Export jadwal ke PDF (per kelas/pengajar/minggu).
+- [ ] Controller: `DataJadwalPembelajaranController` enhancement.
+- [ ] Priority: MEDIUM (UX polish)
