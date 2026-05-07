@@ -14,6 +14,7 @@ use App\Models\PpdbVerifikasi;
 use App\Models\PembayaranSpp;
 use App\Models\SppSetting;
 use App\Support\PpdbRegistrationNumberService;
+use App\Support\SppBillingService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,12 +30,14 @@ use Throwable;
 class PpdbController extends Controller
 {
     private PpdbRegistrationNumberService $nomorService;
+    private SppBillingService $billingService;
     private array $ppdbPendaftarColumnCache = [];
 
-    public function __construct()
+    public function __construct(SppBillingService $billingService)
     {
         $this->middleware('auth:sanctum');
         $this->nomorService = app(PpdbRegistrationNumberService::class);
+        $this->billingService = $billingService;
     }
 
     /**
@@ -497,6 +500,12 @@ class PpdbController extends Controller
             $request->merge(['hasil' => $hasilInput]);
         }
 
+        if ($this->isStatusDiterima($hasilInput) && !$this->isPembayaranPpdbLunas($idPendaftaran)) {
+            return response()->json([
+                'message' => 'Pendaftar belum bisa diterima. Pembayaran administrasi PPDB belum lunas atau belum diverifikasi.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'id_petugas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             'tanggal_verif' => ['nullable', 'date'],
@@ -713,6 +722,22 @@ class PpdbController extends Controller
         ]);
     }
 
+    private function isPembayaranPpdbLunas(int $idPendaftaran): bool
+    {
+        $lunasStatuses = [
+            'lunas',
+            'paid',
+            'terverifikasi',
+            'verified',
+            'selesai',
+        ];
+
+        return PembayaranSpp::query()
+            ->where('id_pendaftaran', $idPendaftaran)
+            ->whereIn(DB::raw('LOWER(status)'), $lunasStatuses)
+            ->exists();
+    }
+
     private function isStatusDiterima(?string $hasil): bool
     {
         $normalized = $this->normalizeVerifikasiResult($hasil);
@@ -754,6 +779,15 @@ class PpdbController extends Controller
         ]);
 
         $santri->save();
+
+        // Link existing PPDB payment records to the new santri id,
+        // so PPDB bills and SPP bills are merged under the same santri identity.
+        PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)
+            ->whereNull('id_santri')
+            ->update(['id_santri' => $santri->id_santri]);
+
+        // Provision SPP billing for the active santri
+        $this->billingService->provisionBillingForActiveSantri($santri);
 
         $akunSantri = null;
         $passwordDefault = null;
