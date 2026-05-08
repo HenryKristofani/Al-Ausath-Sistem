@@ -10,6 +10,7 @@ use App\Models\KwitansiPdf;
 use App\Models\PembayaranSpp;
 use App\Models\PpdbPendaftar;
 use App\Models\SppSetting;
+use App\Support\KwitansiPdfGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -217,6 +218,8 @@ class PembayaranSppController extends Controller
                         'file_path_pdf' => 'kwitansi/spp/' . $pembayaran->id_pembayaran . '/kwitansi-' . $pembayaran->id_pembayaran . '.pdf',
                     ]
                 );
+
+                $this->ensureKwitansiPdf($kwitansi, $pembayaran, $validated['id_petugas_verifikator'] ?? null);
             }
 
             return [
@@ -363,6 +366,34 @@ class PembayaranSppController extends Controller
         return $trimmed !== '' ? $trimmed : null;
     }
 
+    private function buildNomorInvoice(int $idPembayaran): string
+    {
+        return '#' . str_pad((string) $idPembayaran, 8, '0', STR_PAD_LEFT);
+    }
+
+    private function buildStatusLabel(string $status): string
+    {
+        return match ($this->normalizeStatusForFrontend($status)) {
+            'menunggu_pembayaran' => 'Menunggu Pembayaran',
+            'menunggu_konfirmasi' => 'Menunggu Konfirmasi',
+            'dibatalkan' => 'Dibatalkan',
+            'lunas' => 'Lunas',
+            default => ucfirst(str_replace('_', ' ', $status)),
+        };
+    }
+
+    private function normalizeStatusForFrontend(string $status): string
+    {
+        $normalized = mb_strtolower(trim($status));
+
+        return match ($normalized) {
+            'menunggu_verifikasi' => 'menunggu_konfirmasi',
+            'terverifikasi' => 'lunas',
+            'ditolak' => 'dibatalkan',
+            default => $normalized,
+        };
+    }
+
     private function tunggakanStatuses(): array
     {
         return [
@@ -501,6 +532,49 @@ class PembayaranSppController extends Controller
                 'nama_akun' => $akunSantri->nama_akun,
                 'password_default' => $passwordDefault,
             ],
+        ];
+    }
+
+    private function ensureKwitansiPdf(KwitansiPdf $kwitansi, PembayaranSpp $pembayaran, ?int $idPetugas): string
+    {
+        return app(KwitansiPdfGenerator::class)->generate(
+            (string) $kwitansi->file_path_pdf,
+            $this->buildKwitansiPayload($pembayaran, $kwitansi, $idPetugas)
+        );
+    }
+
+    private function buildKwitansiPayload(PembayaranSpp $pembayaran, KwitansiPdf $kwitansi, ?int $idPetugas): array
+    {
+        $isPpdb = !empty($pembayaran->id_pendaftaran);
+        $nama = $pembayaran->santri?->nama_lengkap_santri ?? $pembayaran->pendaftarPpdb?->nama_calon ?? '-';
+        $nomorInduk = $pembayaran->santri?->nomor_induk
+            ?? $pembayaran->pendaftarPpdb?->nomor_induk_generated
+            ?? $pembayaran->pendaftarPpdb?->no_pendaftaran_final
+            ?? $pembayaran->pendaftarPpdb?->no_pendaftaran
+            ?? '-';
+        $unit = $pembayaran->santri?->kelas?->unit?->nama_unit
+            ?? $pembayaran->santri?->kelas?->kode_unit
+            ?? strtoupper((string) ($pembayaran->pendaftarPpdb?->jenjang ?: $pembayaran->pendaftarPpdb?->program_pendaftaran ?: '-'));
+        $kelas = $pembayaran->santri?->kelas?->nama_kelas ?? $pembayaran->pendaftarPpdb?->kode_kelas_diterima ?? '-';
+
+        return [
+            'title' => 'Kwitansi Pembayaran',
+            'judul' => 'Kwitansi Pembayaran',
+            'subtitle' => 'Bukti pembayaran resmi dari sistem',
+            'jenis' => $isPpdb ? 'PPDB' : 'SPP',
+            'nomor_kwitansi' => '#' . str_pad((string) $kwitansi->id_kwitansi, 8, '0', STR_PAD_LEFT),
+            'nomor_invoice' => $this->buildNomorInvoice($pembayaran->id_pembayaran),
+            'tanggal' => optional($pembayaran->tanggal_verifikasi ?? $pembayaran->tanggal_konfirmasi ?? $pembayaran->tanggal_bayar)->format('d-m-Y H:i'),
+            'nama' => $nama,
+            'nomor_induk' => $nomorInduk,
+            'unit' => $unit,
+            'kelas' => $kelas,
+            'metode' => $pembayaran->metode_bayar ?? '-',
+            'status' => $this->buildStatusLabel((string) $pembayaran->status),
+            'nominal' => 'Rp ' . number_format((float) ($pembayaran->nominal_bayar ?? 0), 0, ',', '.'),
+            'keterangan' => $pembayaran->catatan_bayar ?: 'Pembayaran telah diverifikasi oleh petugas.',
+            'footer_left' => $idPetugas ? 'Petugas verifikator #' . $idPetugas : 'Dicetak otomatis dari sistem.',
+            'footer_right' => 'Dokumen ini sah sebagai bukti pembayaran.',
         ];
     }
 }

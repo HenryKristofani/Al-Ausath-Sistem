@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AdministrasiBebas;
 use App\Models\AdministrasiBebasPembayaran;
 use App\Models\KwitansiPdf;
+use App\Support\KwitansiPdfGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -216,6 +217,8 @@ class AdministrasiBebasController extends Controller
                 'file_path_pdf' => $filePath,
             ]);
 
+            $this->ensureKwitansiPdf($kwitansi, $administrasi, $pembayaran);
+
             return [$pembayaran, $kwitansi, $sisaBaru, $statusBaru];
         });
 
@@ -228,5 +231,31 @@ class AdministrasiBebasController extends Controller
                 'status_tagihan' => $statusBaru,
             ],
         ], 201);
+    }
+
+    private function ensureKwitansiPdf(KwitansiPdf $kwitansi, AdministrasiBebas $administrasi, AdministrasiBebasPembayaran $pembayaran): string
+    {
+        return app(KwitansiPdfGenerator::class)->generate(
+            (string) $kwitansi->file_path_pdf,
+            [
+                'title' => 'Kwitansi Administrasi Bebas',
+                'judul' => 'Kwitansi Administrasi Bebas',
+                'subtitle' => 'Bukti pembayaran resmi dari sistem',
+                'jenis' => 'ADMINISTRASI BEBAS',
+                'nomor_kwitansi' => '#' . str_pad((string) $kwitansi->id_kwitansi, 8, '0', STR_PAD_LEFT),
+                'nomor_invoice' => '#' . str_pad((string) $pembayaran->id_bayar_bebas, 8, '0', STR_PAD_LEFT),
+                'tanggal' => optional($pembayaran->tanggal_bayar)->format('d-m-Y H:i'),
+                'nama' => $administrasi->santri?->nama_lengkap_santri ?? '-',
+                'nomor_induk' => $administrasi->santri?->nomor_induk ?? '-',
+                'unit' => $administrasi->santri?->kelas?->unit?->nama_unit ?? $administrasi->santri?->kelas?->kode_unit ?? '-',
+                'kelas' => $administrasi->santri?->kelas?->nama_kelas ?? '-',
+                'metode' => $pembayaran->metode_bayar ?? '-',
+                'status' => ucfirst((string) $administrasi->status),
+                'nominal' => 'Rp ' . number_format((float) ($pembayaran->nominal_bayar ?? 0), 0, ',', '.'),
+                'keterangan' => $pembayaran->keterangan ?: 'Cicilan administrasi bebas telah dicatat.',
+                'footer_left' => $pembayaran->id_petugas ? 'Petugas verifikator #' . (string) $pembayaran->id_petugas : 'Dicetak otomatis dari sistem.',
+                'footer_right' => 'Dokumen ini sah sebagai bukti pembayaran.',
+            ]
+        );
     }
 }
