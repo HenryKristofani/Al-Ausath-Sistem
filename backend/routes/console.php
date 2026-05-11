@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\DataSantri;
+use App\Models\PpdbPendaftar;
+use App\Support\PpdbRegistrationNumberService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -161,3 +164,81 @@ Artisan::command('raport:backfill-nilai-mapel {--dry-run : Simulasi tanpa update
     $this->line('Skipped (no source): ' . $stats['skipped_no_source']);
     $this->line('Skipped (no bobot): ' . $stats['skipped_no_bobot']);
 })->purpose('Sinkronisasi nilai_akhir_mapel, nilai_rapor_tampil, dan flag_warna_rapor untuk data lama');
+
+// ─── Fix PPDB Payments: Link id_santri to Integrated Students ────────────────
+Artisan::command('spp:fix-ppdb-payments {--dry-run : Simulasi tanpa update database}', function () {
+    $dryRun  = (bool) $this->option('dry-run');
+    $mode    = $dryRun ? 'DRY-RUN' : 'APPLY';
+    $this->info("Mode: {$mode}");
+    $this->line('Mencari PPDB payment yang belum terhubung ke id_santri...');
+
+    // Find all PPDB payments without id_santri
+    $payments = DB::table('pembayaran_spp')
+        ->whereNotNull('id_pendaftaran')
+        ->whereNull('id_santri')
+        ->select(['id_pembayaran', 'id_pendaftaran'])
+        ->get();
+
+    $this->line("Ditemukan {$payments->count()} PPDB payment tanpa id_santri.");
+
+    $nomorService = app(PpdbRegistrationNumberService::class);
+    $updated = 0;
+    $notFound = 0;
+
+    foreach ($payments as $payment) {
+        $pendaftar = PpdbPendaftar::find($payment->id_pendaftaran);
+
+        if (!$pendaftar) {
+            $this->line("  SKIP id_pembayaran={$payment->id_pembayaran}: pendaftar tidak ditemukan.");
+            $notFound++;
+            continue;
+        }
+
+        // Generate the base nomor_induk without the 'used' check tail
+        $tanggal = $pendaftar->tanggal_daftar ? \Illuminate\Support\Carbon::parse($pendaftar->tanggal_daftar) : now();
+        
+        // We need to access private methods of nomorService or just replicate the base logic
+        // Let's try to find a santri that matches the pendaftar more broadly
+        
+        // 1. Try exact match with the pendaftar's name and a nomor_induk that "looks" right
+        $santri = DataSantri::where('nama_lengkap_santri', 'ILIKE', $pendaftar->nama_calon)
+            ->where(function($q) {
+                $q->where('nomor_induk', 'LIKE', 'NIS%')
+                  ->orWhere('nomor_induk', 'LIKE', '%/%/%'); // Handle SMP/2026/001 format too
+            })
+            ->first();
+
+        if (!$santri) {
+            // 2. Fallback: Generate the nomor_induk and try to match the "taken" one
+            $expectedNomorInduk = $nomorService->generateNomorIndukFromPendaftaran($pendaftar);
+            $santri = DataSantri::where('nomor_induk', $expectedNomorInduk)->first();
+            
+            if (!$santri) {
+                // Try removing the '01', '02' etc suffix if it was added
+                $baseWithoutSuffix = preg_replace('/\d{2}$/', '', $expectedNomorInduk);
+                $santri = DataSantri::where('nomor_induk', $baseWithoutSuffix)->first();
+            }
+        }
+
+        if (!$santri) {
+            $this->line("  SKIP id_pembayaran={$payment->id_pembayaran} (id_pendaftaran={$payment->id_pendaftaran}): santri tidak ditemukan.");
+            $notFound++;
+            continue;
+        }
+
+        $this->line("  id_pembayaran={$payment->id_pembayaran} → id_santri={$santri->id_santri} (nomor_induk={$santri->nomor_induk}, nama={$santri->nama_lengkap_santri})");
+
+        if (!$dryRun) {
+            DB::table('pembayaran_spp')
+                ->where('id_pembayaran', $payment->id_pembayaran)
+                ->update(['id_santri' => $santri->id_santri]);
+        }
+
+        $updated++;
+    }
+
+    $this->info("{$updated} record " . ($dryRun ? 'akan diperbarui (simulasi).' : 'berhasil diperbarui.'));
+    if ($notFound > 0) {
+        $this->warn("{$notFound} record tidak dapat ditemukan pasangan santrinya.");
+    }
+})->purpose('Menghubungkan id_santri pada PPDB payment yang sudah terintegrasi ke santri (fix data lama)');

@@ -4,7 +4,11 @@ namespace App\Http\Controllers\Api\DataMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\DataAkunSantri;
+use App\Models\DataTahunAjaran;
 use App\Models\DataSantri;
+use App\Models\PembayaranSpp;
+use App\Models\SppSetting;
+use App\Support\SppBillingService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,9 +21,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataSantriController extends Controller
 {
-    public function __construct()
+    private SppBillingService $billingService;
+
+    public function __construct(SppBillingService $billingService)
     {
         $this->middleware('auth:sanctum');
+        $this->billingService = $billingService;
     }
 
     /**
@@ -129,27 +136,31 @@ class DataSantriController extends Controller
             'nama_wali' => ['nullable', 'string', 'max:200'],
         ]);
 
-        $existingDeleted = DataSantri::where('nomor_induk', $validated['nomor_induk'])
-            ->where('is_deleted', true)
-            ->first();
+        $data = DB::transaction(function () use ($validated) {
+            $existingDeleted = DataSantri::where('nomor_induk', $validated['nomor_induk'])
+                ->where('is_deleted', true)
+                ->first();
 
-        if ($existingDeleted) {
-            $existingDeleted->update(array_merge($validated, [
-                'is_deleted' => false,
-                'deleted_at' => null,
-            ]));
+            if ($existingDeleted) {
+                $existingDeleted->update(array_merge($validated, [
+                    'is_deleted' => false,
+                    'deleted_at' => null,
+                ]));
 
-            $data = $existingDeleted->fresh(['kelas', 'akun']);
+                $existingDeleted->load(['kelas.unit', 'akun']);
+                                $this->billingService->provisionBillingForActiveSantri($existingDeleted);
 
-            return response()->json([
-                'message' => 'Data santri berhasil dibuat dari riwayat terhapus.',
-                'data' => $data,
-            ], 201);
-        }
+                return $existingDeleted;
+            }
 
-        $validated['is_deleted'] = false;
-        $validated['deleted_at'] = null;
-        $data = DataSantri::create($validated);
+            $validated['is_deleted'] = false;
+            $validated['deleted_at'] = null;
+            $data = DataSantri::create($validated);
+            $data->load(['kelas.unit', 'akun']);
+                        $this->billingService->provisionBillingForActiveSantri($data);
+
+            return $data;
+        });
 
         return response()->json([
             'message' => 'Data santri berhasil dibuat.',
@@ -213,7 +224,11 @@ class DataSantriController extends Controller
             'nama_wali' => ['nullable', 'string', 'max:200'],
         ]);
 
-        $santri->update($validated);
+        DB::transaction(function () use ($santri, $validated) {
+            $santri->update($validated);
+            $santri->load(['kelas.unit', 'akun']);
+                        $this->billingService->provisionBillingForActiveSantri($santri);
+        });
 
         return response()->json([
             'message' => 'Data santri berhasil diperbarui.',
@@ -410,13 +425,17 @@ class DataSantriController extends Controller
                     'is_deleted' => false,
                     'deleted_at' => null,
                 ]));
+                $existing->load(['kelas.unit', 'akun']);
+                                $this->billingService->provisionBillingForActiveSantri($existing);
                 $updated++;
                 continue;
             }
 
             $payload['is_deleted'] = false;
             $payload['deleted_at'] = null;
-            DataSantri::create($payload);
+            $data = DataSantri::create($payload);
+            $data->load(['kelas.unit', 'akun']);
+                        $this->billingService->provisionBillingForActiveSantri($data);
             $inserted++;
         }
 
@@ -601,26 +620,35 @@ class DataSantriController extends Controller
      */
     public function restore(int $id): JsonResponse
     {
-        $santri = DataSantri::where('is_deleted', true)->findOrFail($id);
+        $santri = DB::transaction(function () use ($id) {
+            $santri = DataSantri::where('is_deleted', true)->findOrFail($id);
 
-        $activeConflict = DataSantri::query()
-            ->where('nomor_induk', $santri->nomor_induk)
-            ->where('is_deleted', false)
-            ->where('id_santri', '!=', $santri->id_santri)
-            ->exists();
+            $activeConflict = DataSantri::query()
+                ->where('nomor_induk', $santri->nomor_induk)
+                ->where('is_deleted', false)
+                ->where('id_santri', '!=', $santri->id_santri)
+                ->exists();
 
-        if ($activeConflict) {
+            if ($activeConflict) {
+                return null;
+            }
+
+            $santri->update([
+                'is_deleted' => false,
+                'deleted_at' => null,
+            ]);
+
+            $santri->load(['kelas.unit', 'akun']);
+                        $this->billingService->provisionBillingForActiveSantri($santri);
+
+            return $santri;
+        });
+
+        if (!$santri) {
             return response()->json([
                 'message' => 'Data santri tidak dapat dipulihkan karena nomor_induk sudah dipakai data aktif lain.',
             ], 422);
         }
-
-        $santri->update([
-            'is_deleted' => false,
-            'deleted_at' => null,
-        ]);
-
-        $santri->load(['kelas', 'akun']);
 
         return response()->json([
             'message' => 'Data santri berhasil dipulihkan.',
@@ -679,6 +707,8 @@ class DataSantriController extends Controller
             'message' => 'Data santri berhasil dihapus permanen.',
         ]);
     }
+
+
 
     private function santriDependenciesByIdentity(int $idSantri, string $nomorInduk): array
     {

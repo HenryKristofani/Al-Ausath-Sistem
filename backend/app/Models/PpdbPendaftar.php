@@ -88,6 +88,11 @@ class PpdbPendaftar extends Model
         return $this->hasMany(PpdbNotifikasi::class, 'id_pendaftaran', 'id_pendaftaran');
     }
 
+    /**
+     * Santri diterima dari proses integrasi PPDB.
+     * Relasi hanya valid jika kolom 'id_santri' tersedia di tabel ppdb_pendaftar.
+     * Jika tidak ada, gunakan PembayaranSpp.santri sebagai pengganti.
+     */
     public function santriDiterima()
     {
         return $this->belongsTo(DataSantri::class, 'id_santri', 'id_santri');

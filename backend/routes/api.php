@@ -45,6 +45,7 @@ Route::prefix('ppdb')->group(function () {
 
 // Public route untuk landing page — tanpa auth
 Route::get('/pengumuman', [PengumumanController::class, 'indexPublic']);
+Route::get('/pengumuman/{id}', [PengumumanController::class, 'showPublic']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -301,6 +302,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('pembayaran')->group(function () {
         Route::get('/options', [PembayaranController::class, 'options']);
         Route::get('/tagihan', [PembayaranController::class, 'tagihan']);
+        Route::get('/tagihan/{id}/detail', [PembayaranController::class, 'tagihanDetail']);
         Route::get('/proses', [PembayaranController::class, 'proses']);
         Route::get('/verifikasi', [PembayaranController::class, 'verifikasi']);
         Route::get('/', [PembayaranController::class, 'index']);

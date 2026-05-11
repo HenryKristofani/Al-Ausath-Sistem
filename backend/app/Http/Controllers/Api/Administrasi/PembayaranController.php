@@ -102,6 +102,7 @@ class PembayaranController extends Controller
                 'kwitansi' => $row->kwitansi ? [
                     'id_kwitansi' => $row->kwitansi->id_kwitansi,
                     'file_path_pdf' => $row->kwitansi->file_path_pdf,
+                    'file_url_pdf' => $row->kwitansi->file_path_pdf ? Storage::url($row->kwitansi->file_path_pdf) : null,
                     'jumlah' => $row->kwitansi->jumlah,
                 ] : null,
             ];
@@ -138,18 +139,35 @@ class PembayaranController extends Controller
             ->get();
 
         $grouped = $rows->groupBy(function (PembayaranSpp $row) {
+            // If the payment has an id_santri (either SPP bill or integrated PPDB bill), group by santri
             if (!empty($row->id_santri)) {
                 return 'santri:' . $row->id_santri;
+            }
+
+            // Pure PPDB payment (not yet integrated into a santri)
+            // But if the related pendaftar has an id_santri, use that for grouping
+            $linkedSantriId = $row->pendaftarPpdb?->id_santri ?? null;
+            if ($linkedSantriId) {
+                return 'santri:' . $linkedSantriId;
             }
 
             return 'ppdb:' . (int) $row->id_pendaftaran;
         });
 
         $data = $grouped->map(function (Collection $items) {
-            /** @var PembayaranSpp $first */
-            $first = $items->first();
-            $santri = $first?->santri;
-            $pendaftar = $first?->pendaftarPpdb;
+            // Resolve santri: scan all items to find one with id_santri set
+            // (SPP bills have id_santri; PPDB bills have id_santri after integration fix)
+            $santri = $items->map(fn ($item) => $item->santri)->filter()->first();
+
+            $pendaftar = $items->map(fn ($item) => $item->pendaftarPpdb)->filter()->first();
+
+            // Determine primary id for detail link: prefer santri id, fallback to pendaftaran id
+            $linkedSantriId = $santri?->id_santri;
+            $primaryId       = $linkedSantriId ?? $pendaftar?->id_pendaftaran;
+
+            if (empty($primaryId)) {
+                return null;
+            }
 
             $namaUnit = $santri?->kelas?->unit?->nama_unit
                 ?? $santri?->kelas?->kode_unit
@@ -177,21 +195,23 @@ class PembayaranController extends Controller
             }
 
             return [
-                'nama_unit' => $namaUnit,
-                'nomor_induk' => $nomorInduk,
-                'nama_lengkap' => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon ?? '-',
+                'id'             => $primaryId,
+                'nama_unit'      => $namaUnit,
+                'nomor_induk'    => $nomorInduk,
+                'nama_lengkap'   => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon ?? '-',
+                'kelas_saat_ini' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-',
                 'kelas_sekarang' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-',
-                'tahun_ajaran' => $santri?->kelas?->tahun_ajaran ?? '-',
-                'status' => $statusSantri,
-                'total_tagihan' => $totalTagihan,
-                'total_dibayar' => $totalDibayar,
+                'tahun_ajaran'   => $santri?->kelas?->tahun_ajaran ?? '-',
+                'status'         => $statusSantri,
+                'total_tagihan'  => $totalTagihan,
+                'total_dibayar'  => $totalDibayar,
                 'total_tunggakan' => $totalTunggakan,
                 'jumlah_invoice' => $items->count(),
-                'sumber_data' => $santri ? 'master_data_santri' : 'ppdb',
-                'id_santri' => $santri?->id_santri,
+                'sumber_data'    => $santri ? 'master_data_santri' : 'ppdb',
+                'id_santri'      => $linkedSantriId,
                 'id_pendaftaran' => $pendaftar?->id_pendaftaran,
             ];
-        })->values();
+        })->filter()->values();
 
         $paged = $data->forPage($page, $perPage)->values();
 
@@ -205,6 +225,102 @@ class PembayaranController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Detail tagihan per entitas (santri/ppdb) untuk halaman /spp/{id}.
+     */
+    public function tagihanDetail(int $id): JsonResponse
+    {
+        // Find the first payment row matching by id_santri OR id_pendaftaran
+        $row = PembayaranSpp::query()
+            ->with(['santri.kelas.unit', 'pendaftarPpdb', 'setting.kategoriTagihan', 'kwitansi'])
+            ->where(function ($q) use ($id) {
+                $q->where('id_santri', $id)
+                  ->orWhere('id_pendaftaran', $id);
+            })
+            ->orderByDesc('id_pembayaran')
+            ->firstOrFail();
+
+        // Resolve: if this payment has id_santri (SPP bill, or PPDB bill after integration fix),
+        // treat the whole detail as a santri-view and fetch ALL bills by id_santri.
+        $linkedSantriId = $row->id_santri;
+        $isSantri       = !empty($linkedSantriId);
+
+        // Resolve the actual entity objects for profil
+        $santri    = $isSantri ? $row->santri : null;
+        $pendaftar = $row->pendaftarPpdb;
+
+        // Fetch ALL bills for this entity
+        $items = PembayaranSpp::query()
+            ->with(['setting.kategoriTagihan', 'kwitansi'])
+            ->where(function ($q) use ($isSantri, $linkedSantriId, $row) {
+                if ($isSantri) {
+                    // Fetch both SPP bills (by id_santri) and PPDB bills (by id_pendaftaran linked to same santri)
+                    $q->where('id_santri', $linkedSantriId);
+                    if (!empty($row->id_pendaftaran)) {
+                        $q->orWhere('id_pendaftaran', $row->id_pendaftaran);
+                    }
+                } else {
+                    $q->where('id_pendaftaran', $row->id_pendaftaran);
+                }
+            })
+            ->orderByDesc('tanggal_bayar')
+            ->orderByDesc('id_pembayaran')
+            ->get();
+
+        $totalTagihan = (float) $items
+            ->reject(fn (PembayaranSpp $item) => $this->isCanceledStatus((string) $item->status))
+            ->sum('nominal_bayar');
+
+        $totalDibayar = (float) $items
+            ->filter(fn (PembayaranSpp $item) => $this->isPaidStatus((string) $item->status))
+            ->sum('nominal_bayar');
+
+        $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
+
+        return response()->json([
+            'data' => [
+                'profil' => [
+                    'id'           => $isSantri ? $linkedSantriId : $row->id_pendaftaran,
+                    'sumber'       => $isSantri ? 'santri' : 'ppdb',
+                    'nama_lengkap' => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon,
+                    'nomor_induk'  => $santri?->nomor_induk
+                        ?? $pendaftar?->nomor_induk_generated
+                        ?? $pendaftar?->no_pendaftaran_final
+                        ?? $pendaftar?->no_pendaftaran,
+                    'nama_unit'    => $santri?->kelas?->unit?->nama_unit
+                        ?? $santri?->kelas?->kode_unit
+                        ?? strtoupper((string) ($pendaftar?->jenjang ?: $pendaftar?->program_pendaftaran ?: '-')),
+                    'kelas_sekarang' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima,
+                    'tahun_ajaran'   => $santri?->kelas?->tahun_ajaran,
+                    'status'         => $santri?->status ?? $pendaftar?->status_verifikasi,
+                ],
+                'ringkasan' => [
+                    'jumlah_invoice' => $items->count(),
+                    'total_tagihan'  => $totalTagihan,
+                    'total_dibayar'  => $totalDibayar,
+                    'total_tunggakan' => $totalTunggakan,
+                ],
+                'invoice' => $items->map(fn (PembayaranSpp $item) => [
+                    'id_pembayaran'   => $item->id_pembayaran,
+                    'nomor_invoice'   => $this->buildNomorInvoice($item->id_pembayaran),
+                    'periode_tagihan' => $item->setting?->periode,
+                    'rincian_tagihan' => $item->setting?->kategoriTagihan?->nama_tagihan,
+                    'jenis_tagihan'   => empty($item->id_pendaftaran) ? 'SPP' : 'PPDB',
+                    'jumlah_tagihan'  => (float) ($item->nominal_bayar ?? 0),
+                    'jumlah_dibayar'  => $this->isPaidStatus((string) $item->status) ? (float) ($item->nominal_bayar ?? 0) : 0,
+                    'jumlah_tunggakan' => $this->isPaidStatus((string) $item->status) ? 0 : (float) ($item->nominal_bayar ?? 0),
+                    'status'          => $item->status,
+                    'status_key'      => $this->normalizeStatusForFrontend((string) $item->status),
+                    'status_label'    => $this->buildStatusLabel((string) $item->status),
+                    'waktu_invoice'   => optional($item->tanggal_bayar)->format('Y-m-d H:i:s'),
+                    'kwitansi_tersedia' => (bool) $item->kwitansi,
+                    'kwitansi_url'    => $item->kwitansi?->file_path_pdf ? Storage::url($item->kwitansi->file_path_pdf) : null,
+                ])->values(),
+            ],
+        ]);
+    }
+
 
     /**
      * Halaman proses pembayaran: filter master data santri + daftar tagihan/invoice.
@@ -255,6 +371,7 @@ class PembayaranController extends Controller
                     'status_label' => $this->buildStatusLabel((string) $row->status),
                     'waktu_invoice' => optional($row->tanggal_bayar)->format('Y-m-d H:i:s'),
                     'kwitansi_tersedia' => (bool) $row->kwitansi,
+                    'kwitansi_url' => $row->kwitansi?->file_path_pdf ? Storage::url($row->kwitansi->file_path_pdf) : null,
                 ];
             })->values();
 
@@ -427,6 +544,7 @@ class PembayaranController extends Controller
                 'kwitansi' => $pembayaran->kwitansi ? [
                     'id_kwitansi' => $pembayaran->kwitansi->id_kwitansi,
                     'file_path_pdf' => $pembayaran->kwitansi->file_path_pdf,
+                    'file_url_pdf' => $pembayaran->kwitansi->file_path_pdf ? Storage::url($pembayaran->kwitansi->file_path_pdf) : null,
                     'jumlah' => $pembayaran->kwitansi->jumlah,
                 ] : null,
             ],
@@ -461,7 +579,7 @@ class PembayaranController extends Controller
             'data' => [
                 'id_pembayaran' => $pembayaran->id_pembayaran,
                 'status' => 'menunggu_verifikasi',
-                'bukti_bayar_url' => Storage::disk('public')->url($path),
+                'bukti_bayar_url' => Storage::url($path),
             ],
         ]);
     }
