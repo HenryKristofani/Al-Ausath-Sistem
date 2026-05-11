@@ -220,6 +220,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/rekap/petugas', [SesiAbsensiController::class, 'rekapPetugas']);
             Route::post('/mulai', [SesiAbsensiController::class, 'mulai']);
             Route::post('/{id}/set-pengganti', [SesiAbsensiController::class, 'setPengganti']);
+            Route::post('/{id}/cancel', [SesiAbsensiController::class, 'cancel']);
             Route::get('/{id}/santri', [SesiAbsensiController::class, 'daftarSantri']);
             Route::post('/{id}/absensi-santri', [SesiAbsensiController::class, 'inputAbsensiSantri']);
             Route::put('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminUpsertAbsensiPengajar']);

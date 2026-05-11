@@ -138,6 +138,7 @@ class SesiAbsensiController extends Controller
         $existingSesi = SesiAbsensi::query()
             ->where('id_jadwal', $jadwal->id_jadwal)
             ->whereDate('tanggal', $tanggal)
+            ->whereNotIn('status_sesi', ['BATAL']) // Sesi BATAL diabaikan agar bisa dimulai ulang
             ->first();
 
         $idPetugasJadwal = (int) ($jadwal->kelasMapel?->id_petugas ?? 0);
@@ -484,6 +485,72 @@ class SesiAbsensiController extends Controller
         ]);
     }
 
+    public function cancel(Request $request, int $id): JsonResponse
+    {
+        $petugas = $this->resolveCurrentPetugas($request);
+
+        $validated = $request->validate([
+            'keterangan' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $sesi = SesiAbsensi::with(['absensiSantri', 'absensiPengajar'])->findOrFail($id);
+
+        // Cek izin: hanya pengajar pada sesi ini
+        if ((int) $sesi->id_petugas_hadir !== (int) $petugas->id_petugas) {
+            return response()->json([
+                'message' => 'Hanya pengajar pada sesi ini yang dapat membatalkan sesi.',
+            ], 403);
+        }
+
+        // Cek status: tidak boleh SELESAI atau BATAL
+        if (in_array($sesi->status_sesi, ['SELESAI', 'BATAL'], true)) {
+            return response()->json([
+                'message' => 'Sesi absensi tidak dapat dibatalkan karena statusnya sudah ' . $sesi->status_sesi . '.',
+                'data' => [
+                    'id_sesi' => $sesi->id_sesi,
+                    'status_sesi' => $sesi->status_sesi,
+                ],
+            ], 422);
+        }
+
+        // Cek data absensi santri: jika ada, tidak boleh cancel
+        if ($sesi->absensiSantri->count() > 0) {
+            return response()->json([
+                'message' => 'Sesi absensi tidak dapat dibatalkan karena sudah ada data absensi santri.',
+                'data' => [
+                    'id_sesi' => $sesi->id_sesi,
+                    'absensi_santri_count' => $sesi->absensiSantri->count(),
+                ],
+            ], 422);
+        }
+
+        // Simpan info untuk response sebelum dihapus
+        $idSesi = $sesi->id_sesi;
+        $idJadwal = $sesi->id_jadwal;
+        $tanggal = $sesi->tanggal;
+
+        // Cancel berhasil: hapus sesi dan semua draft absensi pengajar secara permanen
+        // agar unique constraint (id_jadwal, tanggal) tidak menghalangi sesi baru di jadwal yang sama
+        DB::transaction(function () use ($sesi) {
+            // Hapus draft absensi pengajar terlebih dahulu (foreign key)
+            AbsensiPengajar::where('id_sesi', $sesi->id_sesi)->delete();
+
+            // Hapus sesi sepenuhnya sehingga jadwal bebas digunakan kembali
+            $sesi->delete();
+        });
+
+        return response()->json([
+            'message' => 'Sesi absensi berhasil dibatalkan. Jadwal dapat digunakan kembali.',
+            'data' => [
+                'id_sesi' => $idSesi,
+                'id_jadwal' => $idJadwal,
+                'tanggal' => $tanggal,
+                'status_sesi' => 'DIHAPUS',
+                'message_detail' => 'Sesi draft berhasil dihapus, jadwal siap dipakai ulang.',
+            ],
+        ], 200);
+    }
+
     public function rekapSantri(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -680,6 +747,7 @@ class SesiAbsensiController extends Controller
         $existingSesi = SesiAbsensi::query()
             ->where('id_jadwal', (int) $validated['id_jadwal'])
             ->whereDate('tanggal', $tanggal)
+            ->whereNotIn('status_sesi', ['BATAL']) // Sesi BATAL diabaikan agar admin bisa buka sesi baru
             ->first();
 
         if ($existingSesi) {
