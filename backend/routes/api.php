@@ -283,6 +283,9 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/setting/{id}', [SppSettingController::class, 'update']);
         Route::delete('/setting/{id}', [SppSettingController::class, 'destroy']);
 
+        // Provision bills endpoint - allows manual triggering of bill generation
+        Route::post('/provision-bills', [SppSettingController::class, 'provisionBills']);
+
         Route::get('/golongan', [SppGolonganController::class, 'index']);
         Route::post('/golongan', [SppGolonganController::class, 'store']);
         Route::get('/golongan/{id}', [SppGolonganController::class, 'show']);
