@@ -16,6 +16,7 @@ class KkmMapelController extends Controller
         'guru_mapel',
         'guru mapel',
         'mapel',
+        'staf pengajar',
     ];
 
     private const ADMIN_ROLES = [
