@@ -29,6 +29,8 @@ use App\Http\Controllers\Api\Administrasi\PpdbController;
 use App\Http\Controllers\Api\Administrasi\PpdbTesKonfigurasiController;
 use App\Http\Controllers\Api\Administrasi\SppGolonganController;
 use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
+use App\Http\Controllers\Api\Akademik\AdminSesiAbsensiController;
+use App\Http\Controllers\Api\Akademik\RekapAbsensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
 use App\Http\Controllers\Api\Administrasi\PengumumanController;
 use App\Http\Controllers\Api\Administrasi\PembayaranController;
@@ -215,19 +217,26 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::prefix('sesi-absensi')->group(function () {
             Route::get('/', [SesiAbsensiController::class, 'index']);
             Route::get('/aktif', [SesiAbsensiController::class, 'aktif']);
-            Route::post('/admin/buka-sesi', [SesiAbsensiController::class, 'adminBukaSesi']);
-            Route::get('/rekap/santri', [SesiAbsensiController::class, 'rekapSantri']);
-            Route::get('/rekap/kelas', [SesiAbsensiController::class, 'rekapKelas']);
-            Route::get('/rekap/petugas', [SesiAbsensiController::class, 'rekapPetugas']);
+            Route::post('/admin/buka-sesi', [AdminSesiAbsensiController::class, 'bukaSesi']);
+            
+            Route::get('/rekap/santri', [RekapAbsensiController::class, 'rekapSantri']);
+            Route::get('/rekap/santri/export', [RekapAbsensiController::class, 'exportSantri']);
+            Route::get('/rekap/kelas', [RekapAbsensiController::class, 'rekapKelas']);
+            Route::get('/rekap/kelas/export', [RekapAbsensiController::class, 'exportKelas']);
+            Route::get('/rekap/petugas', [RekapAbsensiController::class, 'rekapPetugas']);
+            Route::get('/rekap/petugas/export', [RekapAbsensiController::class, 'exportPetugas']);
+            
             Route::post('/mulai', [SesiAbsensiController::class, 'mulai']);
             Route::post('/{id}/set-pengganti', [SesiAbsensiController::class, 'setPengganti']);
             Route::post('/{id}/cancel', [SesiAbsensiController::class, 'cancel']);
             Route::get('/{id}/santri', [SesiAbsensiController::class, 'daftarSantri']);
             Route::post('/{id}/absensi-santri', [SesiAbsensiController::class, 'inputAbsensiSantri']);
-            Route::put('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminUpsertAbsensiPengajar']);
-            Route::delete('/{id}/admin/absensi-petugas', [SesiAbsensiController::class, 'adminDeleteAbsensiPengajar']);
-            Route::put('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminUpsertAbsensiSantri']);
-            Route::delete('/{id}/admin/absensi-santri', [SesiAbsensiController::class, 'adminDeleteAbsensiSantri']);
+            
+            Route::put('/{id}/admin/absensi-petugas', [AdminSesiAbsensiController::class, 'upsertAbsensiPengajar']);
+            Route::delete('/{id}/admin/absensi-petugas', [AdminSesiAbsensiController::class, 'deleteAbsensiPengajar']);
+            Route::put('/{id}/admin/absensi-santri', [AdminSesiAbsensiController::class, 'upsertAbsensiSantri']);
+            Route::delete('/{id}/admin/absensi-santri', [AdminSesiAbsensiController::class, 'deleteAbsensiSantri']);
+            
             Route::post('/{id}/selesai', [SesiAbsensiController::class, 'selesai']);
             Route::get('/{id}', [SesiAbsensiController::class, 'show']);
         });
