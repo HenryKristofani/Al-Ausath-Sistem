@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BobotNilai;
 use App\Models\DataKelas;
 use App\Models\DataNilaiSiswa;
+use App\Models\DataRaport;
 use App\Models\DataSantri;
 use App\Models\KkmMapel;
 use Illuminate\Http\JsonResponse;
@@ -104,6 +105,20 @@ class NilaiMapelController extends Controller
             return response()->json([
                 'message' => 'kode_kelas tidak sesuai dengan data santri berdasarkan nomor_induk.',
             ], 422);
+        }
+
+        // Cek jika raport sudah TERBIT, tidak boleh input nilai lagi
+        $raportTerbit = DataRaport::query()
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->where('tahun_ajaran', $validated['tahun_ajaran'])
+            ->where('semester', $validated['semester'])
+            ->where('status_raport', 'TERBIT')
+            ->exists();
+
+        if ($raportTerbit) {
+            return response()->json([
+                'message' => 'Tidak bisa input nilai karena raport sudah terbit (TERBIT). Silakan tarik raport terlebih dahulu jika ingin mengubah nilai.',
+            ], 403);
         }
 
         $nilaiTugas = $this->averageComponent($validated['tugas']);
