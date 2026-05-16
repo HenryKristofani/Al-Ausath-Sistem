@@ -219,6 +219,133 @@ class NilaiMapelController extends Controller
     }
 
     /**
+     * Edit/update nilai mapel berdasarkan `id_nilai`.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'nomor_induk' => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'kode_mapel' => ['required', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
+            'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+            'id_petugas_input' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+            'keterangan' => ['nullable', 'string'],
+
+            'tugas' => ['required', 'array', 'min:3'],
+            'tugas.*.nilai' => ['required', 'numeric', 'min:0', 'max:100'],
+            'tugas.*.jenis' => ['required', 'string', 'in:PR,TUGAS_PENGGANTI,MODUL_KOMPETENSI'],
+
+            'ulangan' => ['required', 'array', 'min:3'],
+            'ulangan.*.nilai' => ['required', 'numeric', 'min:0', 'max:100'],
+            'ulangan.*.soal_disusun_pengajar' => ['required', 'boolean'],
+            'ulangan.*.diawasi_pengajar' => ['required', 'boolean'],
+
+            'ujian_akhir' => ['required', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $nilai = DataNilaiSiswa::findOrFail($id);
+
+        // sanity: nomor_induk and kode_mapel must match the existing record
+        if ($nilai->nomor_induk !== $validated['nomor_induk'] || $nilai->kode_mapel !== $validated['kode_mapel']) {
+            return response()->json([
+                'message' => 'Nomor_induk atau kode_mapel tidak sesuai dengan record yang dimaksud.',
+            ], 422);
+        }
+
+        $santri = DataSantri::query()
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->firstOrFail();
+
+        if ((string) $santri->kode_kelas !== (string) $validated['kode_kelas']) {
+            return response()->json([
+                'message' => 'kode_kelas tidak sesuai dengan data santri berdasarkan nomor_induk.',
+            ], 422);
+        }
+
+        // Cek jika raport sudah TERBIT, tidak boleh edit nilai
+        $raportTerbit = DataRaport::query()
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->where('tahun_ajaran', $validated['tahun_ajaran'])
+            ->where('semester', $validated['semester'])
+            ->where('status_raport', 'TERBIT')
+            ->exists();
+
+        if ($raportTerbit) {
+            return response()->json([
+                'message' => 'Tidak bisa mengubah nilai karena raport sudah terbit (TERBIT). Silakan tarik raport terlebih dahulu jika ingin mengubah nilai.',
+            ], 403);
+        }
+
+        $nilaiTugas = $this->averageComponent($validated['tugas']);
+
+        $ulanganValid = $this->filterValidUlangan($validated['ulangan']);
+        if (count($ulanganValid) < 3) {
+            return response()->json([
+                'message' => 'Minimal 3 nilai ulangan valid (soal_disusun_pengajar=true dan diawasi_pengajar=true).',
+            ], 422);
+        }
+
+        $nilaiUlangan = $this->averageComponent($ulanganValid);
+        $nilaiUjianAkhir = (float) $validated['ujian_akhir'];
+
+        $bobot = $this->resolveBobotGlobal(
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $bobot) {
+            return response()->json([
+                'message' => 'Bobot nilai belum diset untuk tahun ajaran dan semester ini. Silakan set bobot terlebih dahulu.',
+            ], 422);
+        }
+
+        $bobotTugas = ((float) $bobot->bobot_harian) / 100;
+        $bobotUlangan = ((float) $bobot->bobot_uts) / 100;
+        $bobotUjianAkhir = ((float) $bobot->bobot_uas) / 100;
+
+        $nilaiAkhirRaw =
+            ($nilaiTugas * $bobotTugas)
+            + ($nilaiUlangan * $bobotUlangan)
+            + ($nilaiUjianAkhir * $bobotUjianAkhir);
+
+        $nilaiAkhirMentah = $nilaiAkhirRaw;
+        $nilaiRaporBulat = $this->roundRaporInteger($nilaiAkhirMentah);
+
+        [$nilaiRaporTampil, $flagWarnaRapor] = $this->normalizeNilaiRapor(
+            nilaiAkhirMentah: $nilaiAkhirMentah,
+            nilaiRaporBulat: $nilaiRaporBulat
+        );
+
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+
+        $nilai->update([
+            'kode_kelas' => $validated['kode_kelas'],
+            'nilai_harian' => $this->roundHalfUp($nilaiTugas, 2),
+            'nilai_uts' => $this->roundHalfUp($nilaiUlangan, 2),
+            'nilai_uas' => $this->roundHalfUp($nilaiUjianAkhir, 2),
+            'nilai_akhir_mapel' => $this->roundHalfUp($nilaiAkhirMentah, 2),
+            'nilai_rapor_tampil' => $nilaiRaporTampil,
+            'flag_warna_rapor' => $flagWarnaRapor,
+            'status_ketuntasan' => $statusKetuntasan,
+            'keterangan' => $validated['keterangan'] ?? null,
+            'id_petugas_input' => $validated['id_petugas_input'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Nilai mapel berhasil diperbarui.',
+            'data' => $nilai,
+        ]);
+    }
+
+    /**
      * Hapus nilai mapel berdasarkan id_nilai.
      */
     public function destroy(int $id): JsonResponse
