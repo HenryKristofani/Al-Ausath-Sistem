@@ -418,7 +418,12 @@ class PpdbController extends Controller
 
         $filePath = trim((string) ($validated['file_path'] ?? ''));
         if ($request->hasFile('file')) {
-            $filePath = $request->file('file')->store('ppdb/berkas', 'public');
+            $file = $request->file('file');
+            $originalName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+            $extension = $file->getClientOriginalExtension();
+            $safeName = preg_replace('/[^A-Za-z0-9_.-]/', '_', $originalName);
+            $fileName = $safeName . '_' . time() . '.' . $extension;
+            $filePath = $file->storeAs('ppdb/berkas', $fileName, 'public');
         }
 
         if ($filePath === '') {
@@ -678,7 +683,6 @@ class PpdbController extends Controller
             'nominal_bayar' => ['nullable', 'numeric', 'min:0'],
             'tanggal_bayar' => ['nullable', 'date'],
             'metode_bayar'  => ['nullable', 'string', 'max:50'],
-            'id_rekening'   => ['nullable', 'integer', 'exists:data_rekening_bank,id_rekening'],
         ]);
 
         $tagihan = $this->createTagihanPpdbIfNeeded($pendaftar, $validated);
@@ -717,7 +721,6 @@ class PpdbController extends Controller
             'nominal_bayar' => $nominal,
             'tanggal_bayar' => $overrides['tanggal_bayar'] ?? null,
             'metode_bayar' => $overrides['metode_bayar'] ?? null,
-            'id_rekening' => $overrides['id_rekening'] ?? null,
             'status' => 'menunggu_pembayaran',
         ]);
     }

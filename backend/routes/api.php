@@ -83,6 +83,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/nilai-mapel', [NilaiMapelController::class, 'index']);
         Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
         Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
+        Route::put('/nilai-mapel/{id}', [NilaiMapelController::class, 'update']);
         Route::delete('/nilai-mapel/{id}', [NilaiMapelController::class, 'destroy']);
 
         Route::prefix('nilai-statistik')->group(function () {
@@ -291,6 +292,9 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/setting/{id}', [SppSettingController::class, 'show']);
         Route::put('/setting/{id}', [SppSettingController::class, 'update']);
         Route::delete('/setting/{id}', [SppSettingController::class, 'destroy']);
+
+        // Provision bills endpoint - allows manual triggering of bill generation
+        Route::post('/provision-bills', [SppSettingController::class, 'provisionBills']);
 
         Route::get('/golongan', [SppGolonganController::class, 'index']);
         Route::post('/golongan', [SppGolonganController::class, 'store']);

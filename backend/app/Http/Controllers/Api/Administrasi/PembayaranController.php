@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Administrasi;
 
 use App\Http\Controllers\Controller;
 use App\Models\DataSantri;
+use App\Models\PpdbPendaftar;
 use App\Models\PembayaranSpp;
 use App\Models\SppSetting;
 use Illuminate\Support\Collection;
@@ -82,11 +83,6 @@ class PembayaranController extends Controller
                 'tanggal_bayar' => optional($row->tanggal_bayar)->format('Y-m-d H:i:s'),
                 'tanggal_verifikasi' => optional($row->tanggal_verifikasi)->format('Y-m-d H:i:s'),
                 'metode_bayar' => $row->metode_bayar,
-                'rekening' => $row->rekening ? [
-                    'id_rekening' => $row->rekening->id_rekening,
-                    'nama_bank' => $row->rekening->nama_bank ?? null,
-                    'nomor_rekening' => $row->rekening->nomor_rekening ?? null,
-                ] : null,
                 'pendaftar' => $row->pendaftarPpdb ? [
                     'id_pendaftaran' => $row->pendaftarPpdb->id_pendaftaran,
                     'nama_calon' => $row->pendaftarPpdb->nama_calon,
@@ -119,111 +115,150 @@ class PembayaranController extends Controller
         $perPage = (int) $request->query('per_page', 20);
         $perPage = max(1, min($perPage, 100));
         $page = max(1, (int) $request->query('page', 1));
+        $keyword = trim((string) $request->query('q'));
 
-        $rows = PembayaranSpp::query()
-            ->with(['santri.kelas.unit', 'pendaftarPpdb', 'setting'])
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $keyword = trim((string) $request->q);
-                $q->where(function ($sub) use ($keyword) {
-                    $sub->whereHas('santri', function ($santriQuery) use ($keyword) {
-                        $santriQuery->where('nama_lengkap_santri', 'like', "%{$keyword}%")
-                            ->orWhere('nomor_induk', 'like', "%{$keyword}%");
-                    })->orWhereHas('pendaftarPpdb', function ($ppdbQuery) use ($keyword) {
-                        $ppdbQuery->where('nama_calon', 'like', "%{$keyword}%")
-                            ->orWhere('no_pendaftaran', 'like', "%{$keyword}%")
-                            ->orWhere('no_pendaftaran_final', 'like', "%{$keyword}%");
-                    });
-                });
+        // 1. Get all active Santri
+        $santriQuery = DataSantri::query()
+            ->with(['kelas.unit'])
+            ->when($keyword, function ($q) use ($keyword) {
+                $q->where('nama_lengkap_santri', 'like', "%{$keyword}%")
+                  ->orWhere('nomor_induk', 'like', "%{$keyword}%");
+            });
+
+        // 2. Get all Pendaftar PPDB (especially those not yet santri or recently accepted)
+        $ppdbQuery = PpdbPendaftar::query()
+            ->when($keyword, function ($q) use ($keyword) {
+                $q->where('nama_calon', 'like', "%{$keyword}%")
+                  ->orWhere('no_pendaftaran', 'like', "%{$keyword}%")
+                  ->orWhere('no_pendaftaran_final', 'like', "%{$keyword}%");
+            });
+
+        $allSantri = $santriQuery->get();
+        $allPendaftar = $ppdbQuery->get();
+
+        // 3. Get all relevant payments
+        $santriIds = $allSantri->pluck('id_santri')->filter()->values();
+        $pendaftarIds = $allPendaftar->pluck('id_pendaftaran')->filter()->values();
+
+        $payments = PembayaranSpp::query()
+            ->where(function ($q) use ($santriIds, $pendaftarIds) {
+                $q->whereIn('id_santri', $santriIds)
+                  ->orWhereIn('id_pendaftaran', $pendaftarIds);
             })
-            ->orderByDesc('id_pembayaran')
-            ->get();
+            ->get()
+            ->groupBy(function ($p) {
+                return $p->id_santri ? 'santri:' . $p->id_santri : 'ppdb:' . $p->id_pendaftaran;
+            });
 
-        $grouped = $rows->groupBy(function (PembayaranSpp $row) {
-            // If the payment has an id_santri (either SPP bill or integrated PPDB bill), group by santri
-            if (!empty($row->id_santri)) {
-                return 'santri:' . $row->id_santri;
+        // 4. Combine into a unified list
+        $combined = collect();
+
+        // Add Santri
+        foreach ($allSantri as $s) {
+            $sItems = $payments->get('santri:' . $s->id_santri) ?? collect();
+            
+            // Also check if there are PPDB payments linked to this santri but not yet updated with id_santri
+            // This is a safety net for old data
+            $ppdbItems = collect();
+            $pendaftar = $allPendaftar->where('id_santri', $s->id_santri)->first();
+            if ($pendaftar) {
+                $ppdbItems = $payments->get('ppdb:' . $pendaftar->id_pendaftaran) ?? collect();
             }
+            
+            $items = $sItems->merge($ppdbItems)->unique('id_pembayaran');
+            $combined->push($this->transformGroupToRow($s, $pendaftar, $items));
+        }
 
-            // Pure PPDB payment (not yet integrated into a santri)
-            // But if the related pendaftar has an id_santri, use that for grouping
-            $linkedSantriId = $row->pendaftarPpdb?->id_santri ?? null;
-            if ($linkedSantriId) {
-                return 'santri:' . $linkedSantriId;
+        // Add Pendaftar who are NOT yet santri
+        foreach ($allPendaftar as $p) {
+            if ($p->id_santri && $allSantri->where('id_santri', $p->id_santri)->isNotEmpty()) {
+                continue; // Already added as santri
             }
+            
+            $items = $payments->get('ppdb:' . $p->id_pendaftaran) ?? collect();
+            $combined->push($this->transformGroupToRow(null, $p, $items));
+        }
 
-            return 'ppdb:' . (int) $row->id_pendaftaran;
-        });
+        // 5. Apply filters from request (e.g. status)
+        if ($request->filled('status')) {
+            $statusTarget = $this->normalizeStatusForFrontend((string) $request->status);
+            $combined = $combined->filter(fn($row) => $row['status'] === $statusTarget);
+        }
 
-        $data = $grouped->map(function (Collection $items) {
-            // Resolve santri: scan all items to find one with id_santri set
-            // (SPP bills have id_santri; PPDB bills have id_santri after integration fix)
-            $santri = $items->map(fn ($item) => $item->santri)->filter()->first();
+        if ($request->filled('sumber')) {
+            $sumberTarget = strtolower((string) $request->sumber);
+            $combined = $combined->filter(fn($row) => $row['sumber_data'] === $sumberTarget || ($sumberTarget === 'santri' && $row['sumber_data'] === 'master_data_santri'));
+        }
 
-            $pendaftar = $items->map(fn ($item) => $item->pendaftarPpdb)->filter()->first();
+        // 6. Sorting
+        $combined = $combined->sortByDesc(fn($row) => $row['id']);
 
-            // Determine primary id for detail link: prefer santri id, fallback to pendaftaran id
-            $linkedSantriId = $santri?->id_santri;
-            $primaryId       = $linkedSantriId ?? $pendaftar?->id_pendaftaran;
-
-            if (empty($primaryId)) {
-                return null;
-            }
-
-            $namaUnit = $santri?->kelas?->unit?->nama_unit
-                ?? $santri?->kelas?->kode_unit
-                ?? strtoupper((string) ($pendaftar?->jenjang ?: $pendaftar?->program_pendaftaran ?: '-'));
-
-            $nomorInduk = $santri?->nomor_induk
-                ?? $pendaftar?->nomor_induk_generated
-                ?? $pendaftar?->no_pendaftaran_final
-                ?? $pendaftar?->no_pendaftaran
-                ?? '-';
-
-            $totalTagihan = (float) $items
-                ->reject(fn (PembayaranSpp $item) => $this->isCanceledStatus((string) $item->status))
-                ->sum('nominal_bayar');
-
-            $totalDibayar = (float) $items
-                ->filter(fn (PembayaranSpp $item) => $this->isPaidStatus((string) $item->status))
-                ->sum('nominal_bayar');
-
-            $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
-
-            $statusSantri = $santri?->status;
-            if (!$statusSantri && $pendaftar) {
-                $statusSantri = (string) ($pendaftar->status_verifikasi ?: 'calon_santri');
-            }
-
-            return [
-                'id'             => $primaryId,
-                'nama_unit'      => $namaUnit,
-                'nomor_induk'    => $nomorInduk,
-                'nama_lengkap'   => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon ?? '-',
-                'kelas_saat_ini' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-',
-                'kelas_sekarang' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-',
-                'tahun_ajaran'   => $santri?->kelas?->tahun_ajaran ?? '-',
-                'status'         => $statusSantri,
-                'total_tagihan'  => $totalTagihan,
-                'total_dibayar'  => $totalDibayar,
-                'total_tunggakan' => $totalTunggakan,
-                'jumlah_invoice' => $items->count(),
-                'sumber_data'    => $santri ? 'master_data_santri' : 'ppdb',
-                'id_santri'      => $linkedSantriId,
-                'id_pendaftaran' => $pendaftar?->id_pendaftaran,
-            ];
-        })->filter()->values();
-
-        $paged = $data->forPage($page, $perPage)->values();
+        $total = $combined->count();
+        $paged = $combined->forPage($page, $perPage)->values();
 
         return response()->json([
             'data' => $paged,
             'meta' => [
                 'current_page' => $page,
                 'per_page' => $perPage,
-                'total' => $data->count(),
-                'last_page' => (int) ceil(max($data->count(), 1) / $perPage),
+                'total' => $total,
+                'last_page' => (int) ceil(max($total, 1) / $perPage),
             ],
         ]);
+    }
+
+    /**
+     * Helper to transform a person + their payments into a row.
+     */
+    private function transformGroupToRow($santri, $pendaftar, $items)
+    {
+        $totalTagihan = (float) $items
+            ->reject(fn ($item) => $this->isCanceledStatus((string) $item->status))
+            ->sum('nominal_bayar');
+
+        $totalDibayar = (float) $items
+            ->filter(fn ($item) => $this->isPaidStatus((string) $item->status))
+            ->sum('nominal_bayar');
+
+        $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
+
+        // Calculate a meaningful payment status
+        $status = 'menunggu_pembayaran';
+        if ($totalTagihan > 0) {
+            if ($totalTunggakan <= 0) {
+                $status = 'lunas';
+            } elseif ($items->contains(fn($i) => $this->normalizeStatusForFrontend($i->status) === 'menunggu_konfirmasi')) {
+                $status = 'menunggu_konfirmasi';
+            }
+        }
+
+        $namaUnit = $santri?->kelas?->unit?->nama_unit
+            ?? $santri?->kelas?->kode_unit
+            ?? strtoupper((string) ($pendaftar?->jenjang ?: $pendaftar?->program_pendaftaran ?: '-'));
+
+        $nomorInduk = $santri?->nomor_induk
+            ?? $pendaftar?->nomor_induk_generated
+            ?? $pendaftar?->no_pendaftaran_final
+            ?? $pendaftar?->no_pendaftaran
+            ?? '-';
+
+        return [
+            'id'             => $santri?->id_santri ?? $pendaftar?->id_pendaftaran,
+            'nama_unit'      => $namaUnit,
+            'nomor_induk'    => $nomorInduk,
+            'nama_lengkap'   => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon ?? '-',
+            'kelas_saat_ini' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-',
+            'kelas_sekarang' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-',
+            'tahun_ajaran'   => $santri?->kelas?->tahun_ajaran ?? '-',
+            'status'         => $status,
+            'total_tagihan'  => $totalTagihan,
+            'total_dibayar'  => $totalDibayar,
+            'total_tunggakan' => $totalTunggakan,
+            'jumlah_invoice' => $items->count(),
+            'sumber_data'    => $santri ? 'master_data_santri' : 'ppdb',
+            'id_santri'      => $santri?->id_santri,
+            'id_pendaftaran' => $pendaftar?->id_pendaftaran,
+        ];
     }
 
     /**

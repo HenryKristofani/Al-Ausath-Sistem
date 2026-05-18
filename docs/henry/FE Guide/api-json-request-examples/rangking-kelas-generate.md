@@ -2,9 +2,17 @@
 
 Auth: `sanctum`
 
-Endpoint ini dipakai untuk generate ulang ranking kelas berdasarkan data raport semester berjalan.
+Endpoint ini dipakai untuk generate ulang ranking kelas berdasarkan data raport semester berjalan. Sistem akan mengurutkan santri berdasarkan kriteria skor, kemudian update database secara atomik.
 
-## Contoh request body
+## Validasi Parameter
+
+| Parameter | Tipe | Validasi | Keterangan |
+|-----------|------|----------|-----------|
+| `kode_kelas` | string | required, max:10, exists:data_kelas | Kode kelas harus ada di tabel `data_kelas` |
+| `tahun_ajaran` | string | required, max:20 | Format: "2025/2026" |
+| `semester` | integer | required, in:1,2 | Semester 1 atau 2 |
+
+## Contoh Request
 
 ```json
 {
@@ -14,7 +22,7 @@ Endpoint ini dipakai untuk generate ulang ranking kelas berdasarkan data raport 
 }
 ```
 
-## Contoh response sukses
+## Contoh Response Sukses (HTTP 200)
 
 ```json
 {
@@ -24,7 +32,7 @@ Endpoint ini dipakai untuk generate ulang ranking kelas berdasarkan data raport 
     "tahun_ajaran": "2025/2026",
     "semester": 1,
     "total_siswa": 3,
-    "generated_at": "2026-04-21 14:30:00",
+    "generated_at": "2026-05-18 14:30:00",
     "ranking": [
       {
         "peringkat_kelas": 1,
@@ -55,7 +63,7 @@ Endpoint ini dipakai untuk generate ulang ranking kelas berdasarkan data raport 
 }
 ```
 
-## Contoh response validasi gagal
+## Contoh Response Data Tidak Ditemukan (HTTP 422)
 
 ```json
 {
@@ -63,8 +71,19 @@ Endpoint ini dipakai untuk generate ulang ranking kelas berdasarkan data raport 
 }
 ```
 
-## Catatan
+## Algoritma Pengurutan
 
-- `kode_kelas` wajib ada di tabel `data_kelas`.
-- Backend akan mengurutkan data berdasarkan `rata_rata`, lalu `jumlah_nilai`, lalu nama santri.
-- Response `ranking` sudah mencerminkan urutan yang dipakai saat update `peringkat_kelas`.
+Backend mengurutkan santri menggunakan prioritas berikut (dari tertinggi ke terendah):
+
+1. **`rata_rata`** (skor rata-rata) - descending (nilai terbesar ke terkecil)
+2. **`jumlah_nilai`** (total poin) - descending (nilai terbesar ke terkecil)
+3. **`nama_lengkap_santri`** (nama santri) - ascending (A-Z, case-insensitive)
+4. **`nomor_induk`** (nomor induk santri) - ascending
+
+Urutan yang dihasilkan langsung di-update ke field `peringkat_kelas` dan `total_siswa_kelas` di database.
+
+## Catatan Teknis
+
+- Database update menggunakan batch VALUES query untuk performance dan atomicity
+- Field `updated_at` pada tabel `data_raport` akan di-update secara otomatis
+- Jika tabel `data_kelas` tidak memiliki `kode_kelas` yang diminta, request akan gagal validasi (HTTP 422)

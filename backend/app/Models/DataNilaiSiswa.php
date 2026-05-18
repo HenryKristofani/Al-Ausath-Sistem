@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Observers\DataNilaiSiswaObserver;
 use Illuminate\Database\Eloquent\Model;
 
 class DataNilaiSiswa extends Model
@@ -25,4 +26,13 @@ class DataNilaiSiswa extends Model
         'keterangan',
         'id_petugas_input',
     ];
+
+    /**
+     * Boot method to register observer.
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::observe(DataNilaiSiswaObserver::class);
+    }
 }

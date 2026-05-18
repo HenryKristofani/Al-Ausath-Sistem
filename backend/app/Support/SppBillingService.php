@@ -12,15 +12,25 @@ class SppBillingService
 {
     /**
      * Provision tagihan SPP untuk santri aktif secara idempotent.
+     * 
+     * LOGIC:
+     * - Hanya process santri yang aktif dan tidak deleted
+     * - Match SppSetting berdasarkan priority (santri > kelas > unit > jenjang > golongan)
+     * - Hanya create PembayaranSpp jika belum ada (idempotent)
+     * - Status default: 'menunggu_pembayaran'
+     * - Nominal diambil dari SppSetting.jumlah
      */
     public function provisionBillingForActiveSantri(DataSantri $santri): void
     {
+        // Early exit: skip if santri inactive
         if ($santri->is_deleted || strtoupper((string) $santri->status) !== 'AKTIF') {
+            Log::debug("Skipping santri {$santri->id_santri}: deleted={$santri->is_deleted}, status={$santri->status}");
             return;
         }
 
         $santri->loadMissing(['kelas.unit']);
 
+        // Get active academic year
         $activeYear = DataTahunAjaran::query()
             ->whereRaw('UPPER(status) = ?', ['AKTIF'])
             ->where('is_deleted', false)
@@ -36,14 +46,28 @@ class SppBillingService
             ->unique()
             ->values();
 
+        // Match SppSetting dengan priority
         $settings = SppSetting::query()
+            ->where('aktif', true) // CRITICAL: Only process aktif settings
             ->where(function ($query) use ($santri) {
-                $query->where('kode_kelas', $santri->kode_kelas);
+                // Priority 1: Spesifik santri
+                $query->where('id_santri', $santri->id_santri);
 
+                // Priority 2: Spesifik kelas
+                $query->orWhere('kode_kelas', $santri->kode_kelas);
+
+                // Priority 3: Spesifik unit
                 if ($santri->kelas?->unit?->id_unit) {
                     $query->orWhere('id_unit', $santri->kelas->unit->id_unit);
                 }
 
+                // Priority 4: By jenjang (derived from unit or class)
+                $jenjang = strtoupper(trim((string) ($santri->kelas?->unit?->nama_unit ?? $santri->kelas?->unit?->kode_unit ?? '')));
+                if ($jenjang) {
+                    $query->orWhere('jenjang', $jenjang);
+                }
+
+                // Priority 5: SPP golongan
                 if (!empty($santri->id_golongan_spp)) {
                     $query->orWhere('id_golongan_spp', $santri->id_golongan_spp);
                 }
@@ -51,16 +75,26 @@ class SppBillingService
             ->when($periodCandidates->isNotEmpty(), function ($query) use ($periodCandidates) {
                 $query->where(function ($periodQuery) use ($periodCandidates) {
                     foreach ($periodCandidates as $period) {
-                        $periodQuery->orWhereRaw('UPPER(periode) = ?', [$period]);
+                        $periodQuery->orWhere('periode', $period);
+                        
+                        // Handle year-only matches
+                        if (preg_match('/\d{4}/', $period, $matches)) {
+                            $year = $matches[0];
+                            $periodQuery->orWhere('periode', 'like', "%{$year}%");
+                        }
                     }
                 });
             })
             ->get();
 
-        Log::info("Provisioning SPP for santri {$santri->id_santri}. Found " . $settings->count() . " settings for periods: " . $periodCandidates->implode(', '));
+        Log::info("Provisioning SPP for santri {$santri->id_santri}. Found " 
+            . $settings->count() . " active settings. Period candidates: " 
+            . $periodCandidates->implode(', '));
 
+        // Create PembayaranSpp records (idempotent via firstOrCreate)
+        $createdCount = 0;
         foreach ($settings as $setting) {
-            PembayaranSpp::firstOrCreate(
+            $created = PembayaranSpp::firstOrCreate(
                 [
                     'id_santri' => $santri->id_santri,
                     'id_setting' => $setting->id_setting,
@@ -73,6 +107,13 @@ class SppBillingService
                     'status' => 'menunggu_pembayaran',
                 ]
             );
+            
+            if ($created->wasRecentlyCreated) {
+                $createdCount++;
+            }
         }
+
+        Log::info("Provisioning completed for santri {$santri->id_santri}. Created {$createdCount} new bills, skipped " 
+            . ($settings->count() - $createdCount) . " existing bills.");
     }
 }

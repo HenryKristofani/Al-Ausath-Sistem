@@ -10,6 +10,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use App\Models\DataSantri;
+use App\Support\SppBillingService;
 
 class SppSettingController extends Controller
 {
@@ -147,6 +149,75 @@ class SppSettingController extends Controller
 
         return response()->json([
             'message' => 'Setting SPP berhasil dihapus.',
+        ]);
+    }
+
+    /**
+     * Provision SPP bills untuk santri aktif.
+     * 
+     * Endpoint ini memungkinkan admin untuk manually trigger provisioning bills
+     * tanpa menunggu scheduled job. Berguna untuk immediate effect setelah setup SPP settings.
+     * 
+     * Query Parameters:
+     * - id_santri: provision hanya untuk santri tertentu
+     * - id_setting: provision hanya dari setting tertentu
+     * - id_unit: provision untuk semua santri di unit
+     * 
+     * Response: statistik jumlah santri yang diproses
+     */
+    public function provisionBills(Request $request, SppBillingService $billingService): JsonResponse
+    {
+        $idSantri = $request->query('id_santri');
+        $idSetting = $request->query('id_setting');
+        $idUnit = $request->query('id_unit');
+
+        // Scope 1: Specific santri
+        if ($idSantri) {
+            $santri = DataSantri::find($idSantri);
+            if (!$santri) {
+                return response()->json([
+                    'message' => 'Santri tidak ditemukan.',
+                ], 404);
+            }
+            
+            $billingService->provisionBillingForActiveSantri($santri);
+            
+            return response()->json([
+                'message' => 'Bills berhasil diprovision untuk santri.',
+                'data' => [
+                    'santri_processed' => 1,
+                    'id_santri' => $idSantri,
+                ],
+            ]);
+        }
+
+        // Scope 2-4: Multiple santri based on filter
+        $query = DataSantri::query()
+            ->where('is_deleted', false)
+            ->whereRaw('UPPER(status) = ?', ['AKTIF']);
+
+        if ($idUnit) {
+            $query->whereHas('kelas', fn ($q) => $q->where('id_unit', $idUnit));
+        }
+
+        $santriList = $query->get();
+        $processedCount = 0;
+
+        foreach ($santriList as $santri) {
+            try {
+                $billingService->provisionBillingForActiveSantri($santri);
+                $processedCount++;
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error("Failed to provision bills for santri {$santri->id_santri}: " . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'message' => "Bills berhasil diprovision untuk {$processedCount} santri aktif.",
+            'data' => [
+                'santri_processed' => $processedCount,
+                'total_active_santri' => $santriList->count(),
+            ],
         ]);
     }
 

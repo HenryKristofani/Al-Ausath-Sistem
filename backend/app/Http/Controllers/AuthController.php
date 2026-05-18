@@ -903,6 +903,7 @@ class AuthController extends Controller
         } else {
             $user = DataAkunSantri::where('nama_akun', $request->username)
                 ->orWhere('nomor_induk', $request->username)
+                ->orWhere('alamat_email', $request->username)
                 ->first();
             $guard = 'santri';
         }
@@ -932,6 +933,7 @@ class AuthController extends Controller
             'nama_lengkap' => $user->nama_lengkap ?? $user->nama,
             'email' => $user->alamat_email ?? $user->email,
             'nomor_induk' => $user->nomor_induk ?? null,
+            'id_santri' => $guard === 'santri' ? ($user->santri->id_santri ?? null) : null,
             'peran_akun' => $user->peran_akun ?? null,
             'pilihan_unit' => $user->pilihan_unit ?? null,
         ];
@@ -1334,6 +1336,22 @@ class AuthController extends Controller
                 'id_pendaftaran' => $pendaftar->id_pendaftaran,
                 'pendaftaran_aktif' => $pendaftar,
                 'flow' => $this->buildPpdbFlowState($pendaftar),
+            ]);
+        }
+
+        if ($guard === 'santri' && $user instanceof DataAkunSantri) {
+            return response()->json([
+                'user' => [
+                    'id' => $user->getKey(),
+                    'id_santri' => $user->santri->id_santri ?? null,
+                    'nama_lengkap' => $user->nama_lengkap,
+                    'email' => $user->alamat_email,
+                    'nomor_induk' => $user->nomor_induk,
+                    'nama_unit' => $user->nama_unit,
+                    'nama_kelas' => $user->nama_kelas,
+                    'tahun_ajaran' => $user->tahun_ajaran,
+                ],
+                'role' => $guard
             ]);
         }
 
