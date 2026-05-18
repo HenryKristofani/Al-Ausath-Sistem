@@ -45,16 +45,27 @@ class RangkingKelasController extends Controller
         $sorted = $this->sortRankingRows($raportRows);
         $total = $sorted->count();
 
-        DB::transaction(function () use ($sorted, $total): void {
-            foreach ($sorted as $index => $row) {
-                DataRaport::query()
-                    ->where('id_raport', (int) $row->id_raport)
-                    ->update([
-                        'peringkat_kelas' => $index + 1,
-                        'total_siswa_kelas' => $total,
-                    ]);
-            }
-        });
+        // Build a single batch UPDATE to avoid SQLSTATE[25P02] on PostgreSQL.
+        // When one statement fails inside a transaction loop, PostgreSQL aborts
+        // the entire block and rejects all subsequent queries. A single VALUES-based
+        // UPDATE sidesteps this entirely and is also far more efficient.
+        $values = $sorted->map(function ($row, $index) use ($total): string {
+            return sprintf(
+                '(%d, %d, %d)',
+                (int) $row->id_raport,
+                $index + 1,
+                $total,
+            );
+        })->implode(', ');
+
+        DB::statement("
+            UPDATE data_raport
+            SET peringkat_kelas   = batch.peringkat,
+                total_siswa_kelas = batch.total,
+                updated_at        = NOW()
+            FROM (VALUES {$values}) AS batch(id_raport, peringkat, total)
+            WHERE data_raport.id_raport = batch.id_raport
+        ");
 
         return response()->json([
             'message' => 'Ranking kelas berhasil digenerate ulang dari data raport terbaru.',
