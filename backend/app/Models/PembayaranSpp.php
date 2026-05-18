@@ -18,7 +18,6 @@ class PembayaranSpp extends Model
         'nominal_bayar',
         'tanggal_bayar',
         'metode_bayar',
-        'id_rekening',
         'status',
         'bukti_bayar_path',
         'catatan_bayar',
@@ -47,11 +46,6 @@ class PembayaranSpp extends Model
     public function setting()
     {
         return $this->belongsTo(SppSetting::class, 'id_setting', 'id_setting');
-    }
-
-    public function rekening()
-    {
-        return $this->belongsTo(DataRekeningBank::class, 'id_rekening', 'id_rekening');
     }
 
     public function kwitansi()

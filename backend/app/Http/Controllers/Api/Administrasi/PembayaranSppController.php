@@ -36,7 +36,7 @@ class PembayaranSppController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = PembayaranSpp::query()
-            ->with(['santri', 'setting', 'rekening', 'pendaftarPpdb', 'kwitansi'])
+            ->with(['santri', 'setting', 'pendaftarPpdb', 'kwitansi'])
             ->when($request->filled('id_pendaftaran'), fn ($q) => $q->where('id_pendaftaran', $request->id_pendaftaran))
             ->when($request->filled('id_santri'), fn ($q) => $q->where('id_santri', $request->id_santri))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
@@ -61,7 +61,6 @@ class PembayaranSppController extends Controller
             'nominal_bayar' => ['nullable', 'numeric'],
             'tanggal_bayar' => ['nullable', 'date'],
             'metode_bayar' => ['nullable', 'string', 'max:50'],
-            'id_rekening' => ['nullable', 'integer', 'exists:data_rekening_bank,id_rekening'],
             'status' => ['nullable', 'string', 'max:30'],
         ]);
 
@@ -111,7 +110,7 @@ class PembayaranSppController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = PembayaranSpp::with(['santri', 'setting', 'rekening'])->findOrFail($id);
+        $data = PembayaranSpp::with(['santri', 'setting'])->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -131,7 +130,6 @@ class PembayaranSppController extends Controller
             'nominal_bayar' => ['nullable', 'numeric'],
             'tanggal_bayar' => ['nullable', 'date'],
             'metode_bayar' => ['nullable', 'string', 'max:50'],
-            'id_rekening' => ['nullable', 'integer', 'exists:data_rekening_bank,id_rekening'],
             'status' => ['nullable', 'string', 'max:30'],
             'tanggal_verifikasi' => ['nullable', 'date'],
             'id_petugas_verifikator' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
@@ -167,7 +165,7 @@ class PembayaranSppController extends Controller
 
         return response()->json([
             'message' => 'Pembayaran SPP berhasil diperbarui.',
-            'data' => $pembayaran->fresh(['santri', 'setting', 'rekening', 'pendaftarPpdb', 'kwitansi']),
+            'data' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
         ]);
     }
 
@@ -223,7 +221,7 @@ class PembayaranSppController extends Controller
             }
 
             return [
-                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'rekening', 'pendaftarPpdb', 'kwitansi']),
+                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
                 'kwitansi' => $kwitansi,
                 'integrasi_ppdb' => $integrasi,
             ];

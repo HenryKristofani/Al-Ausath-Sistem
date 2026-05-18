@@ -83,11 +83,6 @@ class PembayaranController extends Controller
                 'tanggal_bayar' => optional($row->tanggal_bayar)->format('Y-m-d H:i:s'),
                 'tanggal_verifikasi' => optional($row->tanggal_verifikasi)->format('Y-m-d H:i:s'),
                 'metode_bayar' => $row->metode_bayar,
-                'rekening' => $row->rekening ? [
-                    'id_rekening' => $row->rekening->id_rekening,
-                    'nama_bank' => $row->rekening->nama_bank ?? null,
-                    'nomor_rekening' => $row->rekening->nomor_rekening ?? null,
-                ] : null,
                 'pendaftar' => $row->pendaftarPpdb ? [
                     'id_pendaftaran' => $row->pendaftarPpdb->id_pendaftaran,
                     'nama_calon' => $row->pendaftarPpdb->nama_calon,
