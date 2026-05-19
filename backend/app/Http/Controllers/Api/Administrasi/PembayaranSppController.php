@@ -11,11 +11,14 @@ use App\Models\PembayaranSpp;
 use App\Models\PpdbPendaftar;
 use App\Models\SppSetting;
 use App\Support\KwitansiPdfGenerator;
+use App\Support\KwitansiPdfGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Support\PpdbRegistrationNumberService;
 
 class PembayaranSppController extends Controller
@@ -239,6 +242,44 @@ class PembayaranSppController extends Controller
     public function updateStatusVerifikasi(Request $request, int $id): JsonResponse
     {
         return $this->verifikasiPembayaran($request, $id);
+    }
+
+    /**
+     * Download kwitansi PDF.
+     */
+    public function downloadKwitansi(int $id)
+    {
+        $pembayaran = PembayaranSpp::with(['santri.kelas', 'pendaftarPpdb', 'kwitansi'])->findOrFail($id);
+        
+        $kwitansi = $pembayaran->kwitansi;
+        
+        if (!$kwitansi) {
+            // Generate jika belum ada tapi status sudah terverifikasi
+            if ($pembayaran->status === 'terverifikasi') {
+                $kwitansi = KwitansiPdf::firstOrCreate(
+                    ['id_pembayaran' => $pembayaran->id_pembayaran],
+                    [
+                        'id_petugas' => $pembayaran->id_petugas_verifikator,
+                        'jenis' => $pembayaran->id_pendaftaran ? 'PPDB' : 'SPP',
+                        'jumlah' => $pembayaran->nominal_bayar,
+                        'file_path_pdf' => 'kwitansi/spp/' . $pembayaran->id_pembayaran . '/kwitansi-' . $pembayaran->id_pembayaran . '.pdf',
+                    ]
+                );
+            } else {
+                return response()->json(['message' => 'Kwitansi belum tersedia. Pembayaran harus diverifikasi terlebih dahulu.'], 404);
+            }
+        }
+
+        $this->ensureKwitansiPdf($kwitansi, $pembayaran, $kwitansi->id_petugas);
+
+        $disk = Storage::disk('public');
+        $path = $kwitansi->file_path_pdf;
+
+        if (!$disk->exists($path)) {
+            return response()->json(['message' => 'File kwitansi tidak ditemukan.'], 404);
+        }
+
+        return response()->download($disk->path($path), 'Kwitansi-' . $this->buildNomorInvoice($pembayaran->id_pembayaran) . '.pdf');
     }
 
     /**

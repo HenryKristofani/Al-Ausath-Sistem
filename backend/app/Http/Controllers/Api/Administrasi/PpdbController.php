@@ -154,31 +154,35 @@ class PpdbController extends Controller
         }
 
         $headers = [
-            'id_pendaftaran',
-            'waktu_pendaftaran',
-            'no_pendaftaran',
-            'no_pendaftaran_final',
-            'nomor_induk_generated',
-            'nama_calon',
-            'program_pendaftaran',
-            'jenjang',
-            'jenis_kelamin',
-            'tempat_lahir',
-            'tanggal_lahir',
-            'nik_calon_santri',
-            'alamat_lengkap',
-            'nama_ayah',
-            'no_hp_calon',
-            'nama_ibu',
-            'no_hp_ibu',
-            'status_verifikasi',
-            'tanggal_daftar',
-            'tanggal_pengumuman',
-            'tanggal_diterima',
+            'ID Pendaftaran',
+            'Waktu Pendaftaran',
+            'No Pendaftaran',
+            'No Pendaftaran Final',
+            'Nomor Induk',
+            'Nama Calon',
+            'Program',
+            'Jenjang',
+            'Jenis Kelamin',
+            'Tempat Lahir',
+            'Tanggal Lahir',
+            'NIK',
+            'Alamat Lengkap',
+            'Nama Ayah',
+            'No HP Ayah/Calon',
+            'Nama Ibu',
+            'No HP Ibu',
+            'Status Verifikasi',
+            'Tanggal Daftar',
+            'Tanggal Pengumuman',
+            'Tanggal Diterima',
         ];
 
         return response()->streamDownload(function () use ($query, $headers) {
             $output = fopen('php://output', 'w');
+            
+            // Add UTF-8 BOM for Excel
+            fputs($output, "\xEF\xBB\xBF");
+            
             fputcsv($output, $headers);
 
             $query->orderByDesc('id_pendaftaran')->chunk(500, function ($rows) use ($output) {

@@ -453,6 +453,12 @@ class AuthController extends Controller
 
     public function updateFormPpdb(Request $request)
     {
+        \Illuminate\Support\Facades\Log::info('updateFormPpdb request input: ' . json_encode($request->except(['password'])));
+        \Illuminate\Support\Facades\Log::info('updateFormPpdb request files: ' . json_encode(array_map(fn($f) => [
+            'name' => $f->getClientOriginalName(),
+            'size' => $f->getSize(),
+            'mime' => $f->getMimeType(),
+        ], $request->allFiles())));
         $akun = $this->resolveAuthenticatedPpdbUser();
 
         if (!$akun) {
