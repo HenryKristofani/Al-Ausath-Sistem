@@ -310,6 +310,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/pembayaran/{id}', [PembayaranSppController::class, 'show']);
         Route::put('/pembayaran/{id}', [PembayaranSppController::class, 'update']);
         Route::delete('/pembayaran/{id}', [PembayaranSppController::class, 'destroy']);
+        Route::get('/pembayaran/{id}/kwitansi', [PembayaranSppController::class, 'downloadKwitansi']);
 
         Route::get('/tunggakan-ringkasan', [PembayaranSppController::class, 'tunggakanRingkasan']);
     });
