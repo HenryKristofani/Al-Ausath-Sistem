@@ -124,6 +124,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::post('/{id}/restore', [DataSantriController::class, 'restore']);
             Route::delete('/{id}/force', [DataSantriController::class, 'forceDelete']);
             Route::post('/pindah-kelas', [DataSantriController::class, 'pindahKelas']);
+            Route::post('/bulk-lulus', [DataSantriController::class, 'bulkLulus']);
+            Route::post('/batal-lulus', [DataSantriController::class, 'batalLulus']);
             Route::post('/{id}/buat-akun', [DataSantriController::class, 'buatAkun']);
             Route::post('/import', [DataSantriController::class, 'import']);
             Route::get('/export', [DataSantriController::class, 'export']);

@@ -336,8 +336,68 @@ class DataSantriController extends Controller
     }
 
     /**
-     * Import data santri dari CSV atau Excel (upsert berdasarkan nomor_induk).
+     * Luluskan santri secara massal.
      */
+    public function bulkLulus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids'         => ['required', 'array', 'min:1'],
+            'ids.*'       => [
+                'integer',
+                Rule::exists('data_santri', 'id_santri')->where(fn($q) => $q->where('is_deleted', false)),
+            ],
+            'tahun_lulus' => ['required', 'integer', 'min:2000', 'max:2100'],
+        ]);
+
+        $updated = 0;
+
+        DB::transaction(function () use ($validated, &$updated) {
+            $updated = DataSantri::where('is_deleted', false)
+                ->whereIn('id_santri', $validated['ids'])
+                ->update([
+                    'status'      => 'LULUS',
+                    'tahun_lulus' => $validated['tahun_lulus'],
+                ]);
+        });
+
+        return response()->json([
+            'message' => "Berhasil meluluskan {$updated} santri.",
+            'data'    => ['total_terupdate' => $updated, 'tahun_lulus' => $validated['tahun_lulus']],
+        ]);
+    }
+
+    /**
+     * Batalkan kelulusan santri (kembalikan ke AKTIF, hapus tahun_lulus).
+     */
+    public function batalLulus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1'],
+            'ids.*' => [
+                'integer',
+                Rule::exists('data_santri', 'id_santri')->where(fn($q) => $q->where('is_deleted', false)),
+            ],
+        ]);
+
+        $updated = 0;
+
+        DB::transaction(function () use ($validated, &$updated) {
+            $updated = DataSantri::where('is_deleted', false)
+                ->whereIn('id_santri', $validated['ids'])
+                ->where('status', 'LULUS')
+                ->update([
+                    'status'      => 'AKTIF',
+                    'tahun_lulus' => null,
+                ]);
+        });
+
+        return response()->json([
+            'message' => "Berhasil membatalkan kelulusan {$updated} santri.",
+            'data'    => ['total_terupdate' => $updated],
+        ]);
+    }
+
+
     public function import(Request $request): JsonResponse
     {
         $request->validate([
