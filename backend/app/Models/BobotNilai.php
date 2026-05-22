@@ -43,15 +43,6 @@ class BobotNilai extends Model
             if (round($totalBobot, 2) !== 100.0) {
                 throw new InvalidArgumentException('Total bobot nilai harus 100.');
             }
-
-            $isDefaultClientPolicy =
-                round((float) $bobot->bobot_harian, 2) === 20.0
-                && round((float) $bobot->bobot_uts, 2) === 30.0
-                && round((float) $bobot->bobot_uas, 2) === 50.0;
-
-            if (! $isDefaultClientPolicy) {
-                throw new InvalidArgumentException('Bobot aktif harus mengikuti kebijakan client 20/30/50.');
-            }
         });
     }
 
