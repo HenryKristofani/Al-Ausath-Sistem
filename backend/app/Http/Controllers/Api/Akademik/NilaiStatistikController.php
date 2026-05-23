@@ -33,7 +33,7 @@ class NilaiStatistikController extends Controller
         $query = DataNilaiSiswa::query();
 
         // Apply filters
-        $query->when(!empty($validated['kode_kelas']), fn($q) => $q->where('kode_kelas', $validated['kode_kelas']))
+        $query->when(!empty($validated['kode_kelas']), fn   ($q) => $q->where('kode_kelas', $validated['kode_kelas']))
             ->when(!empty($validated['kode_mapel']), fn($q) => $q->where('kode_mapel', $validated['kode_mapel']))
             ->when(!empty($validated['tahun_ajaran']), fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
             ->when(!empty($validated['semester']), fn($q) => $q->where('semester', $validated['semester']));

@@ -48,6 +48,7 @@ class SppBillingService
 
         // Match SppSetting dengan priority
         $settings = SppSetting::query()
+            ->with(['kategoriTagihan']) // Eager load kategoriTagihan
             ->where('aktif', true) // CRITICAL: Only process aktif settings
             ->where(function ($query) use ($santri) {
                 // Priority 1: Spesifik santri
@@ -93,27 +94,77 @@ class SppBillingService
 
         // Create PembayaranSpp records (idempotent via firstOrCreate)
         $createdCount = 0;
+        $totalProcessedCount = 0;
         foreach ($settings as $setting) {
-            $created = PembayaranSpp::firstOrCreate(
-                [
-                    'id_santri' => $santri->id_santri,
-                    'id_setting' => $setting->id_setting,
-                    'id_pendaftaran' => null,
-                ],
-                [
-                    'nominal_bayar' => (float) ($setting->jumlah ?? 0),
-                    'tanggal_bayar' => null,
-                    'metode_bayar' => null,
-                    'status' => 'menunggu_pembayaran',
-                ]
-            );
-            
-            if ($created->wasRecentlyCreated) {
-                $createdCount++;
+            $isSpp = false;
+            if ($setting->kategoriTagihan) {
+                $namaTagihan = strtolower($setting->kategoriTagihan->nama_tagihan);
+                if (strpos($namaTagihan, 'spp') !== false) {
+                    $isSpp = true;
+                }
+            } else {
+                $keterangan = strtolower($setting->keterangan ?? '');
+                if (strpos($keterangan, 'spp') !== false) {
+                    $isSpp = true;
+                }
+            }
+
+            if ($isSpp) {
+                // If it is SPP, it should be calculated per month (6 months in a semester)
+                $periodUpper = strtoupper($setting->periode ?? '');
+                if (strpos($periodUpper, 'GENAP') !== false) {
+                    $months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'];
+                } else {
+                    // Default to GANJIL / standard first semester
+                    $months = ['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                }
+
+                foreach ($months as $month) {
+                    $totalProcessedCount++;
+                    $created = PembayaranSpp::firstOrCreate(
+                        [
+                            'id_santri' => $santri->id_santri,
+                            'id_setting' => $setting->id_setting,
+                            'id_pendaftaran' => null,
+                            'bulan' => $month,
+                        ],
+                        [
+                            'nominal_bayar' => (float) ($setting->jumlah ?? 0),
+                            'tanggal_bayar' => null,
+                            'metode_bayar' => null,
+                            'status' => 'menunggu_pembayaran',
+                        ]
+                    );
+
+                    if ($created->wasRecentlyCreated) {
+                        $createdCount++;
+                    }
+                }
+            } else {
+                $totalProcessedCount++;
+                // Non-SPP (e.g. one-off fees)
+                $created = PembayaranSpp::firstOrCreate(
+                    [
+                        'id_santri' => $santri->id_santri,
+                        'id_setting' => $setting->id_setting,
+                        'id_pendaftaran' => null,
+                        'bulan' => null,
+                    ],
+                    [
+                        'nominal_bayar' => (float) ($setting->jumlah ?? 0),
+                        'tanggal_bayar' => null,
+                        'metode_bayar' => null,
+                        'status' => 'menunggu_pembayaran',
+                    ]
+                );
+
+                if ($created->wasRecentlyCreated) {
+                    $createdCount++;
+                }
             }
         }
 
         Log::info("Provisioning completed for santri {$santri->id_santri}. Created {$createdCount} new bills, skipped " 
-            . ($settings->count() - $createdCount) . " existing bills.");
+            . ($totalProcessedCount - $createdCount) . " existing bills.");
     }
 }

@@ -117,16 +117,26 @@ class PembayaranController extends Controller
         $page = max(1, (int) $request->query('page', 1));
         $keyword = trim((string) $request->query('q'));
 
-        // 1. Get all active Santri
+        $nomorInduk = trim((string) $request->query('nomor_induk'));
+
+        // 1. Get active Santri (filtered by nomor_induk if provided for performance)
         $santriQuery = DataSantri::query()
             ->with(['kelas.unit'])
+            ->when($nomorInduk, fn ($q) => $q->where('nomor_induk', $nomorInduk))
             ->when($keyword, function ($q) use ($keyword) {
                 $q->where('nama_lengkap_santri', 'like', "%{$keyword}%")
                   ->orWhere('nomor_induk', 'like', "%{$keyword}%");
             });
 
-        // 2. Get all Pendaftar PPDB (especially those not yet santri or recently accepted)
+        // 2. Get Pendaftar PPDB (especially those not yet santri or recently accepted)
         $ppdbQuery = PpdbPendaftar::query()
+            ->when($nomorInduk, function ($q) use ($nomorInduk) {
+                $q->where(function ($sub) use ($nomorInduk) {
+                    $sub->where('nomor_induk_generated', $nomorInduk)
+                        ->orWhere('no_pendaftaran_final', $nomorInduk)
+                        ->orWhere('no_pendaftaran', $nomorInduk);
+                });
+            })
             ->when($keyword, function ($q) use ($keyword) {
                 $q->where('nama_calon', 'like', "%{$keyword}%")
                   ->orWhere('no_pendaftaran', 'like', "%{$keyword}%")
@@ -340,7 +350,7 @@ class PembayaranController extends Controller
                     'id_pembayaran'   => $item->id_pembayaran,
                     'nomor_invoice'   => $this->buildNomorInvoice($item->id_pembayaran),
                     'periode_tagihan' => $item->setting?->periode,
-                    'rincian_tagihan' => $item->setting?->kategoriTagihan?->nama_tagihan,
+                    'rincian_tagihan' => $item->bulan ? (($item->setting?->kategoriTagihan?->nama_tagihan ?: 'SPP') . ' - ' . $item->bulan) : $item->setting?->kategoriTagihan?->nama_tagihan,
                     'jenis_tagihan'   => empty($item->id_pendaftaran) ? 'SPP' : 'PPDB',
                     'jumlah_tagihan'  => (float) ($item->nominal_bayar ?? 0),
                     'jumlah_dibayar'  => $this->isPaidStatus((string) $item->status) ? (float) ($item->nominal_bayar ?? 0) : 0,
@@ -397,7 +407,7 @@ class PembayaranController extends Controller
                     'id_pembayaran' => $row->id_pembayaran,
                     'nomor_invoice' => $this->buildNomorInvoice($row->id_pembayaran),
                     'periode_tagihan' => $row->setting?->periode,
-                    'rincian_tagihan' => $row->setting?->kategoriTagihan?->nama_tagihan,
+                    'rincian_tagihan' => $row->bulan ? (($row->setting?->kategoriTagihan?->nama_tagihan ?: 'SPP') . ' - ' . $row->bulan) : $row->setting?->kategoriTagihan?->nama_tagihan,
                     'jumlah_tagihan' => (float) ($row->nominal_bayar ?? 0),
                     'jumlah_dibayar' => $this->isPaidStatus((string) $row->status) ? (float) ($row->nominal_bayar ?? 0) : 0,
                     'jumlah_tunggakan' => $this->isPaidStatus((string) $row->status) ? 0 : (float) ($row->nominal_bayar ?? 0),
@@ -487,7 +497,7 @@ class PembayaranController extends Controller
                 'total_pembayaran' => (float) ($row->nominal_bayar ?? 0),
                 'jenis_transaksi' => $isPpdb
                     ? 'Administrasi PPDB'
-                    : ($row->setting?->kategoriTagihan?->nama_tagihan ?: 'Tagihan'),
+                    : ($row->bulan ? (($row->setting?->kategoriTagihan?->nama_tagihan ?: 'SPP') . ' - ' . $row->bulan) : ($row->setting?->kategoriTagihan?->nama_tagihan ?: 'Tagihan')),
                 'status_pembayaran' => $this->normalizeStatusForFrontend((string) $row->status),
                 'status_label' => $this->buildStatusLabel((string) $row->status),
                 'waktu_invoice' => optional($row->tanggal_bayar)->format('Y-m-d H:i:s'),
@@ -523,7 +533,7 @@ class PembayaranController extends Controller
                 'status' => $this->normalizeStatusForFrontend((string) $row->status),
                 'status_label' => $this->buildStatusLabel((string) $row->status),
                 'tanggal_bayar' => optional($row->tanggal_bayar)->format('Y-m-d H:i:s'),
-                'jenis_tagihan' => $row->setting?->kategoriTagihan?->nama_tagihan,
+                'jenis_tagihan' => $row->bulan ? (($row->setting?->kategoriTagihan?->nama_tagihan ?: 'SPP') . ' - ' . $row->bulan) : $row->setting?->kategoriTagihan?->nama_tagihan,
             ])
             ->values();
 

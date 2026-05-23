@@ -221,6 +221,113 @@ class SppSettingController extends Controller
         ]);
     }
 
+    /**
+     * Generate monthly tagihan SPP for a date range (periode).
+     */
+    public function generateTagihanPeriode(Request $request, int $id): JsonResponse
+    {
+        $setting = SppSetting::findOrFail($id);
+
+        $validated = $request->validate([
+            'bulan_mulai'   => ['required', 'integer', 'min:1', 'max:12'],
+            'tahun_mulai'   => ['required', 'integer'],
+            'bulan_selesai' => ['required', 'integer', 'min:1', 'max:12'],
+            'tahun_selesai' => ['required', 'integer'],
+        ]);
+
+        $startYear = (int) $validated['tahun_mulai'];
+        $startMonth = (int) $validated['bulan_mulai'];
+        $endYear = (int) $validated['tahun_selesai'];
+        $endMonth = (int) $validated['bulan_selesai'];
+
+        $monthNames = [
+            1 => 'Januari',
+            2 => 'Februari',
+            3 => 'Maret',
+            4 => 'April',
+            5 => 'Mei',
+            6 => 'Juni',
+            7 => 'Juli',
+            8 => 'Agustus',
+            9 => 'September',
+            10 => 'Oktober',
+            11 => 'November',
+            12 => 'Desember',
+        ];
+
+        $startDate = new \DateTime("{$startYear}-{$startMonth}-01");
+        $endDate = new \DateTime("{$endYear}-{$endMonth}-01");
+
+        $interval = new \DateInterval('P1M');
+        $period = new \DatePeriod($startDate, $interval, $endDate->modify('+1 month'));
+
+        $selectedMonths = [];
+        foreach ($period as $dt) {
+            $mNum = (int) $dt->format('n');
+            $selectedMonths[] = $monthNames[$mNum];
+        }
+
+        // Determine santri match query based on setting properties priority
+        if (!empty($setting->id_santri)) {
+            $santriQuery = DataSantri::query()->where('id_santri', $setting->id_santri);
+        } elseif (!empty($setting->kode_kelas)) {
+            $santriQuery = DataSantri::query()->where('kode_kelas', $setting->kode_kelas);
+        } elseif (!empty($setting->id_unit)) {
+            $santriQuery = DataSantri::query()->whereHas('kelas.unit', fn($q) => $q->where('id_unit', $setting->id_unit));
+        } elseif (!empty($setting->jenjang)) {
+            $jenjang = strtoupper(trim((string) $setting->jenjang));
+            $santriQuery = DataSantri::query()->whereHas('kelas.unit', function ($q) use ($jenjang) {
+                $q->whereRaw('UPPER(nama_unit) = ?', [$jenjang])
+                  ->orWhereRaw('UPPER(kode_unit) = ?', [$jenjang]);
+            });
+        } elseif (!empty($setting->id_golongan_spp)) {
+            $santriQuery = DataSantri::query()->where('id_golongan_spp', $setting->id_golongan_spp);
+        } else {
+            $santriQuery = DataSantri::query();
+        }
+
+        $santris = $santriQuery
+            ->where('is_deleted', false)
+            ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+            ->get();
+
+        $createdCount = 0;
+        $totalMonthsCount = count($selectedMonths);
+
+        foreach ($santris as $santri) {
+            foreach ($selectedMonths as $month) {
+                $created = \App\Models\PembayaranSpp::firstOrCreate(
+                    [
+                        'id_santri' => $santri->id_santri,
+                        'id_setting' => $setting->id_setting,
+                        'id_pendaftaran' => null,
+                        'bulan' => $month,
+                    ],
+                    [
+                        'nominal_bayar' => (float) ($setting->jumlah ?? 0),
+                        'tanggal_bayar' => null,
+                        'metode_bayar' => null,
+                        'status' => 'menunggu_pembayaran',
+                    ]
+                );
+
+                if ($created->wasRecentlyCreated) {
+                    $createdCount++;
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => 'Tagihan SPP berhasil digenerate.',
+            'data' => [
+                'jumlah_tagihan_baru' => $createdCount,
+                'jumlah_santri' => $santris->count(),
+                'jumlah_periode' => $totalMonthsCount,
+                'periode' => $selectedMonths,
+            ],
+        ]);
+    }
+
     private function hydrateSettingPayload(array $validated): array
     {
         // Sinkronkan kelas → kode_kelas
