@@ -11,7 +11,6 @@ use App\Models\PembayaranSpp;
 use App\Models\PpdbPendaftar;
 use App\Models\SppSetting;
 use App\Support\KwitansiPdfGenerator;
-use App\Support\KwitansiPdfGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -312,10 +311,13 @@ class PembayaranSppController extends Controller
                     'rincian' => $items->map(fn ($row) => [
                         'id_pembayaran' => $row->id_pembayaran,
                         'id_setting' => $row->id_setting,
+                        'bulan' => $row->bulan,
                         'nominal_bayar' => $row->nominal_bayar,
                         'tanggal_bayar' => $row->tanggal_bayar,
                         'status' => $row->status,
-                        'kategori' => $row->setting?->kategoriTagihan?->nama_tagihan,
+                        'kategori' => $row->bulan
+                            ? (($row->setting?->kategoriTagihan?->nama_tagihan ?: 'SPP') . ' - ' . $row->bulan)
+                            : $row->setting?->kategoriTagihan?->nama_tagihan,
                     ])->values(),
                 ];
             })
@@ -611,7 +613,7 @@ class PembayaranSppController extends Controller
             'metode' => $pembayaran->metode_bayar ?? '-',
             'status' => $this->buildStatusLabel((string) $pembayaran->status),
             'nominal' => 'Rp ' . number_format((float) ($pembayaran->nominal_bayar ?? 0), 0, ',', '.'),
-            'keterangan' => $pembayaran->catatan_bayar ?: 'Pembayaran telah diverifikasi oleh petugas.',
+            'keterangan' => $pembayaran->catatan_bayar ?: ('Pembayaran telah diverifikasi oleh petugas.' . ($pembayaran->bulan ? ' (Bulan: ' . $pembayaran->bulan . ')' : '')),
             'footer_left' => $idPetugas ? 'Petugas verifikator #' . $idPetugas : 'Dicetak otomatis dari sistem.',
             'footer_right' => 'Dokumen ini sah sebagai bukti pembayaran.',
         ];
