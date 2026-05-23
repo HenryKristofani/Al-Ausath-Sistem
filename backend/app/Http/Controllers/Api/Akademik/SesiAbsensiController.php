@@ -63,6 +63,51 @@ class SesiAbsensiController extends Controller
         return response()->json($query->paginate($perPage));
     }
 
+    /**
+     * Riwayat kehadiran seorang santri berdasarkan nomor_induk.
+     * Dipakai oleh santri yang login untuk melihat rekap absensinya sendiri.
+     */
+    public function riwayatSantri(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'nomor_induk'    => ['required', 'string', 'max:20'],
+            'per_page'       => ['nullable', 'integer', 'min:1', 'max:200'],
+            'status_kehadiran' => ['nullable', 'string', 'in:HADIR,SAKIT,IZIN,ALFA'],
+            'tanggal_mulai'  => ['nullable', 'date'],
+            'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 25);
+
+        $query = \App\Models\AbsensiSantri::query()
+            ->with([
+                'sesi.jadwal.kelasMapel.mataPelajaran',
+                'sesi.jadwal.kelasMapel.kelas',
+            ])
+            ->where('nomor_induk', $validated['nomor_induk'])
+            ->when(!empty($validated['status_kehadiran']), fn ($q) => $q->where('status_kehadiran', $validated['status_kehadiran']))
+            ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereHas('sesi', fn ($sq) => $sq->whereDate('tanggal', '>=', $validated['tanggal_mulai'])))
+            ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereHas('sesi', fn ($sq) => $sq->whereDate('tanggal', '<=', $validated['tanggal_selesai'])))
+            ->orderByDesc('id_absensi');
+
+        $paginated = $query->paginate($perPage);
+
+        $paginated->getCollection()->transform(function ($item) {
+            return [
+                'id_absensi'      => $item->id_absensi,
+                'nomor_induk'     => $item->nomor_induk,
+                'status_kehadiran'=> $item->status_kehadiran,
+                'keterangan'      => $item->keterangan,
+                'tanggal'         => optional($item->sesi)->tanggal,
+                'nama_mapel'      => optional(optional(optional(optional($item->sesi)->jadwal)->kelasMapel)->mataPelajaran)->nama_mapel,
+                'nama_kelas'      => optional(optional(optional(optional($item->sesi)->jadwal)->kelasMapel)->kelas)->nama_kelas,
+                'id_sesi'         => $item->id_sesi,
+            ];
+        });
+
+        return response()->json($paginated);
+    }
+
     public function show(int $id): JsonResponse
     {
         return response()->json(['data' => $this->loadSesi($id)]);

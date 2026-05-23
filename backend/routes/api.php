@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\Administrasi\SppGolonganController;
 use App\Http\Controllers\Api\Akademik\SesiAbsensiController;
 use App\Http\Controllers\Api\Akademik\AdminSesiAbsensiController;
 use App\Http\Controllers\Api\Akademik\RekapAbsensiController;
+use App\Http\Controllers\Api\Akademik\DashboardPresensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
 use App\Http\Controllers\Api\Administrasi\PengumumanController;
 use App\Http\Controllers\Api\Administrasi\PembayaranController;
@@ -228,6 +229,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/rekap/kelas/export', [RekapAbsensiController::class, 'exportKelas']);
             Route::get('/rekap/petugas', [RekapAbsensiController::class, 'rekapPetugas']);
             Route::get('/rekap/petugas/export', [RekapAbsensiController::class, 'exportPetugas']);
+            Route::get('/riwayat-santri', [SesiAbsensiController::class, 'riwayatSantri']);
             
             Route::post('/mulai', [SesiAbsensiController::class, 'mulai']);
             Route::post('/{id}/set-pengganti', [SesiAbsensiController::class, 'setPengganti']);
@@ -243,6 +245,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::post('/{id}/selesai', [SesiAbsensiController::class, 'selesai']);
             Route::get('/{id}', [SesiAbsensiController::class, 'show']);
         });
+
+        Route::get('/presensi/overview', [DashboardPresensiController::class, 'overviewHarian']);
 
         Route::prefix('tahun-ajaran')->group(function () {
             Route::get('/', [DataTahunAjaranController::class, 'index']);
