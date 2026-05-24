@@ -20,6 +20,8 @@ class DataJadwalPembelajaranController extends Controller
 {
     /**
      * List data jadwal pembelajaran.
+     *
+     * @queryParam nomor_induk string Filter jadwal berdasarkan nomor induk santri. Example: 12345
      */
     public function index(Request $request): JsonResponse
     {
@@ -28,6 +30,53 @@ class DataJadwalPembelajaranController extends Controller
         $query = JadwalPembelajaran::query()
             ->with(['kelasMapel.kelas', 'kelasMapel.mataPelajaran', 'kelasMapel.petugas'])
             ->when($request->filled('id_kelas_mapel'), fn ($q) => $q->where('id_kelas_mapel', (int) $request->id_kelas_mapel))
+            ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', trim((string) $request->tahun_ajaran)))
+            ->when($request->filled('hari'), fn ($q) => $q->where('hari', strtoupper(trim((string) $request->hari))))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper(trim((string) $request->status))))
+            ->when($request->filled('nomor_induk'), function ($q) use ($request) {
+                $nomorInduk = trim((string) $request->nomor_induk);
+                $q->whereHas('kelasMapel.kelas.santri', function ($subQuery) use ($nomorInduk) {
+                    $subQuery->where('nomor_induk', $nomorInduk);
+                });
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('tahun_ajaran', 'like', "%{$keyword}%")
+                        ->orWhere('hari', 'like', "%{$keyword}%")
+                        ->orWhere('ruangan', 'like', "%{$keyword}%")
+                        ->orWhere('jam_mulai', 'like', "%{$keyword}%")
+                        ->orWhere('jam_selesai', 'like', "%{$keyword}%");
+                });
+            })
+            ->orderBy('tahun_ajaran')
+            ->orderBy('hari')
+            ->orderBy('jam_mulai');
+
+        return response()->json($query->paginate($perPage));
+    }
+
+    /**
+     * List data jadwal pembelajaran berdasarkan nomor induk santri.
+     *
+     * @urlParam nomor_induk string required Nomor induk santri. Example: 12345
+     * @queryParam per_page integer Jumlah data per halaman. Example: 10
+     * @queryParam tahun_ajaran string Filter tahun ajaran. Example: 2024/2025
+     * @queryParam hari string Filter hari. Example: SENIN
+     * @queryParam status string Filter status. Example: AKTIF
+     * @queryParam q string Kata kunci pencarian.
+     */
+    public function byNomorInduk(Request $request, string $nomorInduk): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+        $nomorInduk = trim($nomorInduk);
+
+        $query = JadwalPembelajaran::query()
+            ->with(['kelasMapel.kelas', 'kelasMapel.mataPelajaran', 'kelasMapel.petugas'])
+            ->whereHas('kelasMapel.kelas.santri', function ($subQuery) use ($nomorInduk) {
+                $subQuery->where('nomor_induk', $nomorInduk);
+            })
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', trim((string) $request->tahun_ajaran)))
             ->when($request->filled('hari'), fn ($q) => $q->where('hari', strtoupper(trim((string) $request->hari))))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper(trim((string) $request->status))))
