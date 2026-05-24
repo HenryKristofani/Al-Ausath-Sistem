@@ -212,6 +212,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         Route::prefix('jadwal-pembelajaran')->group(function () {
             Route::get('/', [DataJadwalPembelajaranController::class, 'index']);
+            Route::get('/by-nomor-induk/{nomor_induk}', [DataJadwalPembelajaranController::class, 'byNomorInduk']);
             Route::post('/', [DataJadwalPembelajaranController::class, 'store']);
             Route::post('/import', [DataJadwalPembelajaranController::class, 'import']);
             Route::get('/export', [DataJadwalPembelajaranController::class, 'export']);

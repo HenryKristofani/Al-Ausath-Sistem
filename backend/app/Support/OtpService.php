@@ -9,15 +9,9 @@ class OtpService
 {
     protected int $ttlMinutes = 5;
     protected int $length = 6;
-    protected WhatsAppGatewayService $whatsapp;
-
-    public function __construct(WhatsAppGatewayService $whatsapp)
-    {
-        $this->whatsapp = $whatsapp;
-    }
 
     /**
-     * Generate OTP baru dan kirim via WhatsApp.
+     * Generate OTP baru dan simpan.
      * Invalidate OTP lama yang belum digunakan.
      */
     public function generateAndSend(string $identifier, string $guard, string $phoneOrEmail): bool
@@ -40,14 +34,9 @@ class OtpService
 
         Log::info("[OTP] Kode OTP dibuat untuk {$identifier} (guard: {$guard}).");
 
-        // Kirim via WhatsApp jika nomor valid (bukan email)
-        if (filter_var($phoneOrEmail, FILTER_VALIDATE_EMAIL)) {
-            // TODO: kirim via email jika diperlukan
-            Log::debug("[OTP] Identifier adalah email, pengiriman email belum dikonfigurasi.");
-            return true; // Tetap return true agar flow tidak terputus
-        }
-
-        return $this->whatsapp->sendOtp($phoneOrEmail, $kode);
+        // TODO: kirim via email/SMS jika diperlukan
+        Log::debug("[OTP] Pengiriman OTP belum dikonfigurasi.");
+        return true; // Tetap return true agar flow tidak terputus
     }
 
     /**

@@ -12,7 +12,6 @@ use App\Models\PembayaranSpp;
 use App\Models\PpdbPendaftar;
 use App\Models\SppSetting;
 use App\Support\KwitansiPdfGenerator;
-use App\Support\WhatsAppGatewayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -222,22 +221,6 @@ class PembayaranSppController extends Controller
                 );
 
                 $this->ensureKwitansiPdf($kwitansi, $pembayaran, $validated['id_petugas_verifikator'] ?? null);
-
-                // Kirim notifikasi WhatsApp konfirmasi pembayaran
-                try {
-                    $waService = app(WhatsAppGatewayService::class);
-                    $namaPenerima = $pembayaran->santri?->nama_lengkap_santri
-                        ?? $pembayaran->pendaftarPpdb?->nama_calon
-                        ?? 'Santri';
-                    $jenis = $pembayaran->id_pendaftaran ? 'PPDB' : 'SPP' . ($pembayaran->bulan ? ' Bulan ' . $pembayaran->bulan : '');
-                    $phone = $pembayaran->santri?->nomor_telepon
-                        ?? $pembayaran->pendaftarPpdb?->akun?->phone;
-                    if ($phone) {
-                        $waService->sendKonfirmasiPembayaran($phone, $namaPenerima, $jenis, (float) $pembayaran->nominal_bayar);
-                    }
-                } catch (\Throwable $waEx) {
-                    \Illuminate\Support\Facades\Log::warning('[WA] Gagal kirim notifikasi pembayaran: ' . $waEx->getMessage());
-                }
             }
 
             return [
