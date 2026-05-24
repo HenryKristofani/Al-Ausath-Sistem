@@ -36,6 +36,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Register SppSetting observer for instant provisioning
         SppSetting::observe(\App\Observers\SppSettingObserver::class);
+        \App\Models\SppGolongan::observe(\App\Observers\SppGolonganObserver::class);
+        \App\Models\DataSantri::observe(\App\Observers\DataSantriObserver::class);
     }
 
     /**

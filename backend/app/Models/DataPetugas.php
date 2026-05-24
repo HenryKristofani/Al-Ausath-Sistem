@@ -14,6 +14,7 @@ class DataPetugas extends Authenticatable
         'Petugas Admin',
         'Petugas Tata Usaha',
         'Petugas PPDB',
+        'Petugas SPP',
         'Staf Pengajar',
     ];
 

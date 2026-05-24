@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Aktifkan OTP login via .env: OTP_ENABLED=true
+    'otp_enabled' => (bool) env('OTP_ENABLED', false),
+
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

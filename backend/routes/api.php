@@ -35,9 +35,12 @@ use App\Http\Controllers\Api\Akademik\DashboardPresensiController;
 use App\Http\Controllers\Api\Administrasi\SppSettingController;
 use App\Http\Controllers\Api\Administrasi\PengumumanController;
 use App\Http\Controllers\Api\Administrasi\PembayaranController;
+use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
+Route::post('/otp/verify', [AuthController::class, 'verifyOtp']);
+
 Route::prefix('ppdb')->group(function () {
     Route::post('/login', [AuthController::class, 'loginPpdb']);
     Route::post('/register', [AuthController::class, 'registerPpdb']);
@@ -319,6 +322,16 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/pembayaran/{id}/kwitansi', [PembayaranSppController::class, 'downloadKwitansi']);
 
         Route::get('/tunggakan-ringkasan', [PembayaranSppController::class, 'tunggakanRingkasan']);
+    });
+
+    Route::prefix('bebas')->group(function () {
+        Route::get('/', [AdministrasiBebasController::class, 'index']);
+        Route::post('/', [AdministrasiBebasController::class, 'store']);
+        Route::get('/{id}', [AdministrasiBebasController::class, 'show']);
+        Route::put('/{id}', [AdministrasiBebasController::class, 'update']);
+        Route::delete('/{id}', [AdministrasiBebasController::class, 'destroy']);
+        Route::post('/{id}/pembayaran', [AdministrasiBebasController::class, 'storePembayaran']);
+        Route::get('/kwitansi/{idKwitansi}', [AdministrasiBebasController::class, 'downloadKwitansi']);
     });
 
     Route::prefix('pembayaran')->group(function () {

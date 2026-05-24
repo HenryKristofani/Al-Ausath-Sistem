@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api\Administrasi;
 use App\Http\Controllers\Controller;
 use App\Models\DataAkunSantri;
 use App\Models\DataKelas;
+use App\Models\DataPetugas;
 use App\Models\DataSantri;
 use App\Models\KwitansiPdf;
 use App\Models\PembayaranSpp;
 use App\Models\PpdbPendaftar;
 use App\Models\SppSetting;
 use App\Support\KwitansiPdfGenerator;
+use App\Support\WhatsAppGatewayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -220,6 +222,22 @@ class PembayaranSppController extends Controller
                 );
 
                 $this->ensureKwitansiPdf($kwitansi, $pembayaran, $validated['id_petugas_verifikator'] ?? null);
+
+                // Kirim notifikasi WhatsApp konfirmasi pembayaran
+                try {
+                    $waService = app(WhatsAppGatewayService::class);
+                    $namaPenerima = $pembayaran->santri?->nama_lengkap_santri
+                        ?? $pembayaran->pendaftarPpdb?->nama_calon
+                        ?? 'Santri';
+                    $jenis = $pembayaran->id_pendaftaran ? 'PPDB' : 'SPP' . ($pembayaran->bulan ? ' Bulan ' . $pembayaran->bulan : '');
+                    $phone = $pembayaran->santri?->nomor_telepon
+                        ?? $pembayaran->pendaftarPpdb?->akun?->phone;
+                    if ($phone) {
+                        $waService->sendKonfirmasiPembayaran($phone, $namaPenerima, $jenis, (float) $pembayaran->nominal_bayar);
+                    }
+                } catch (\Throwable $waEx) {
+                    \Illuminate\Support\Facades\Log::warning('[WA] Gagal kirim notifikasi pembayaran: ' . $waEx->getMessage());
+                }
             }
 
             return [
@@ -598,24 +616,43 @@ class PembayaranSppController extends Controller
             ?? strtoupper((string) ($pembayaran->pendaftarPpdb?->jenjang ?: $pembayaran->pendaftarPpdb?->program_pendaftaran ?: '-'));
         $kelas = $pembayaran->santri?->kelas?->nama_kelas ?? $pembayaran->pendaftarPpdb?->kode_kelas_diterima ?? '-';
 
+        // Lookup petugas name
+        $namaPetugas = 'Petugas Keuangan';
+        if ($idPetugas) {
+            $petugas = DataPetugas::find($idPetugas);
+            if ($petugas) {
+                $namaPetugas = $petugas->nama_lengkap;
+            }
+        }
+
+        // Build clean rincian for the receipt
+        $namaTagihan = $pembayaran->setting?->kategoriTagihan?->nama_tagihan ?? 'SPP';
+        $bulan       = $pembayaran->bulan ?? '';
+        $periode     = $pembayaran->setting?->periode ?? '';
+        $rincian     = trim($namaTagihan . ($bulan ? ' - ' . $bulan : ''));
+        if (empty($rincian)) {
+            $rincian = $pembayaran->catatan_bayar ?: 'Pembayaran ' . ($isPpdb ? 'PPDB' : 'SPP');
+        }
+
         return [
-            'title' => 'Kwitansi Pembayaran',
-            'judul' => 'Kwitansi Pembayaran',
-            'subtitle' => 'Bukti pembayaran resmi dari sistem',
-            'jenis' => $isPpdb ? 'PPDB' : 'SPP',
-            'nomor_kwitansi' => '#' . str_pad((string) $kwitansi->id_kwitansi, 8, '0', STR_PAD_LEFT),
-            'nomor_invoice' => $this->buildNomorInvoice($pembayaran->id_pembayaran),
-            'tanggal' => optional($pembayaran->tanggal_verifikasi ?? $pembayaran->tanggal_konfirmasi ?? $pembayaran->tanggal_bayar)->format('d-m-Y H:i'),
-            'nama' => $nama,
-            'nomor_induk' => $nomorInduk,
-            'unit' => $unit,
-            'kelas' => $kelas,
-            'metode' => $pembayaran->metode_bayar ?? '-',
-            'status' => $this->buildStatusLabel((string) $pembayaran->status),
-            'nominal' => 'Rp ' . number_format((float) ($pembayaran->nominal_bayar ?? 0), 0, ',', '.'),
-            'keterangan' => $pembayaran->catatan_bayar ?: ('Pembayaran telah diverifikasi oleh petugas.' . ($pembayaran->bulan ? ' (Bulan: ' . $pembayaran->bulan . ')' : '')),
-            'footer_left' => $idPetugas ? 'Petugas verifikator #' . $idPetugas : 'Dicetak otomatis dari sistem.',
-            'footer_right' => 'Dokumen ini sah sebagai bukti pembayaran.',
+            'title'          => 'Kwitansi Pembayaran',
+            'jenis'          => $isPpdb ? 'PPDB' : 'SPP',
+            'nomor_kwitansi' => str_pad((string) $kwitansi->id_kwitansi, 5, '0', STR_PAD_LEFT),
+            'nomor_invoice'  => $this->buildNomorInvoice($pembayaran->id_pembayaran),
+            'tanggal'        => optional($pembayaran->tanggal_verifikasi ?? $pembayaran->tanggal_konfirmasi ?? $pembayaran->tanggal_bayar)->format('d/m/Y H:i'),
+            'nama'           => $nama,
+            'nomor_induk'    => $nomorInduk,
+            'unit'           => $unit,
+            'kelas'          => $kelas,
+            'bulan'          => $bulan,
+            'periode'        => $periode,
+            'rincian'        => $rincian,
+            'metode'         => $pembayaran->metode_bayar ?? 'Tunai',
+            'status'         => $this->buildStatusLabel((string) $pembayaran->status),
+            'nominal'        => 'Rp ' . number_format((float) ($pembayaran->nominal_bayar ?? 0), 0, ',', '.'),
+            'nominal_raw'    => (float) ($pembayaran->nominal_bayar ?? 0),
+            'sisa_tagihan'   => 'Rp 0',
+            'nama_petugas'   => $namaPetugas,
         ];
     }
 }

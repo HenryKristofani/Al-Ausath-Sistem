@@ -361,6 +361,9 @@ class PembayaranController extends Controller
                     'waktu_invoice'   => optional($item->tanggal_bayar)->format('Y-m-d H:i:s'),
                     'kwitansi_tersedia' => (bool) $item->kwitansi,
                     'kwitansi_url'    => $item->kwitansi?->file_path_pdf ? Storage::url($item->kwitansi->file_path_pdf) : null,
+                    'bukti_bayar_path' => $item->bukti_bayar_path,
+                    'bukti_bayar_url'  => $item->bukti_bayar_path ? Storage::disk('public')->url($item->bukti_bayar_path) : null,
+                    'catatan_bayar'    => $item->catatan_bayar,
                 ])->values(),
             ],
         ]);

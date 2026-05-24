@@ -898,16 +898,16 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'role' => 'required|in:petugas,santri',
+            'role'     => 'required|in:petugas,santri',
             'username' => 'required',
             'password' => 'required',
         ]);
 
         if ($request->role === 'petugas') {
-            $user = DataPetugas::where('alamat_email', $request->username)->first();
+            $user  = DataPetugas::where('alamat_email', $request->username)->first();
             $guard = 'petugas';
         } else {
-            $user = DataAkunSantri::where('nama_akun', $request->username)
+            $user  = DataAkunSantri::where('nama_akun', $request->username)
                 ->orWhere('nomor_induk', $request->username)
                 ->orWhere('alamat_email', $request->username)
                 ->first();
@@ -922,32 +922,119 @@ class AuthController extends Controller
 
         if (in_array($guard, ['petugas', 'santri'], true) && strtolower((string) $user->status) !== 'aktif') {
             return response()->json([
-                'message' => 'Akun Anda tidak aktif. Hubungi administrator.'
+                'message' => 'Akun Anda tidak aktif. Hubungi administrator.',
             ], 403);
         }
 
-        Auth::guard($guard)->login($user);
+        // ── OTP Step ────────────────────────────────────────────────────────────
+        // Aktifkan via .env: OTP_ENABLED=true
+        $otpEnabled = (bool) config('app.otp_enabled', false);
+        $phone = $user->nomor_telepon ?? null;
 
+        if ($otpEnabled && $phone) {
+            $identifier = (string) $user->getKey();
+            /** @var \App\Support\OtpService $otpService */
+            $otpService = app(\App\Support\OtpService::class);
+            $otpService->generateAndSend($identifier, $guard, $phone);
+
+            return response()->json([
+                'message'      => 'OTP telah dikirim ke WhatsApp Anda. Masukkan kode untuk melanjutkan.',
+                'otp_required' => true,
+                'otp_context'  => [
+                    'identifier' => $identifier,
+                    'guard'      => $guard,
+                ],
+            ]);
+        }
+        // ── End OTP Step ────────────────────────────────────────────────────────
+
+        Auth::guard($guard)->login($user);
         $request->session()->regenerate();
 
         if (in_array($guard, ['petugas', 'santri'], true)) {
             $user->update(['last_login' => now()]);
         }
 
+        // Issue Sanctum API token
+        $user->tokens()->delete();
+        $accessToken = $user->createToken("{$guard}-api")->plainTextToken;
+
         $userPayload = [
-            'id' => $user->getKey(),
-            'nama_lengkap' => $user->nama_lengkap ?? $user->nama,
-            'email' => $user->alamat_email ?? $user->email,
+            'id'          => $user->getKey(),
+            'nama_lengkap'=> $user->nama_lengkap ?? $user->nama,
+            'email'       => $user->alamat_email ?? $user->email,
             'nomor_induk' => $user->nomor_induk ?? null,
-            'id_santri' => $guard === 'santri' ? ($user->santri->id_santri ?? null) : null,
-            'peran_akun' => $user->peran_akun ?? null,
-            'pilihan_unit' => $user->pilihan_unit ?? null,
+            'id_santri'   => $guard === 'santri' ? ($user->santri->id_santri ?? null) : null,
+            'peran_akun'  => $user->peran_akun ?? null,
+            'pilihan_unit'=> $user->pilihan_unit ?? null,
         ];
 
         return response()->json([
-            'message' => 'Login Berhasil!',
-            'role' => $guard,
-            'user' => $userPayload,
+            'message'      => 'Login Berhasil!',
+            'role'         => $guard,
+            'token_type'   => 'Bearer',
+            'access_token' => $accessToken,
+            'user'         => $userPayload,
+        ]);
+    }
+
+    /**
+     * Verifikasi OTP setelah login — issue token Sanctum jika kode valid.
+     * POST /api/otp/verify
+     */
+    public function verifyOtp(Request $request)
+    {
+        $validated = $request->validate([
+            'identifier' => 'required|string',
+            'guard'      => 'required|in:petugas,santri',
+            'kode'       => 'required|string|size:6',
+        ]);
+
+        /** @var \App\Support\OtpService $otpService */
+        $otpService = app(\App\Support\OtpService::class);
+        $valid = $otpService->verify(
+            $validated['identifier'],
+            $validated['guard'],
+            $validated['kode']
+        );
+
+        if (!$valid) {
+            return response()->json([
+                'message' => 'Kode OTP tidak valid atau sudah kadaluarsa.',
+            ], 422);
+        }
+
+        // Ambil user & issue token
+        $guard = $validated['guard'];
+        if ($guard === 'petugas') {
+            $user = DataPetugas::findOrFail($validated['identifier']);
+        } else {
+            $user = DataAkunSantri::findOrFail($validated['identifier']);
+        }
+
+        $user->tokens()->delete();
+        $accessToken = $user->createToken("{$guard}-api")->plainTextToken;
+
+        if (in_array($guard, ['petugas', 'santri'], true)) {
+            $user->update(['last_login' => now()]);
+        }
+
+        $userPayload = [
+            'id'          => $user->getKey(),
+            'nama_lengkap'=> $user->nama_lengkap ?? $user->nama,
+            'email'       => $user->alamat_email ?? $user->email,
+            'nomor_induk' => $user->nomor_induk ?? null,
+            'id_santri'   => $guard === 'santri' ? ($user->santri->id_santri ?? null) : null,
+            'peran_akun'  => $user->peran_akun ?? null,
+            'pilihan_unit'=> $user->pilihan_unit ?? null,
+        ];
+
+        return response()->json([
+            'message'      => 'Login Berhasil!',
+            'role'         => $guard,
+            'token_type'   => 'Bearer',
+            'access_token' => $accessToken,
+            'user'         => $userPayload,
         ]);
     }
 

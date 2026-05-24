@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'whatsapp' => [
+        'provider' => env('WHATSAPP_GATEWAY_PROVIDER', 'disabled'), // fonnte | disabled
+        'token'    => env('WHATSAPP_GATEWAY_TOKEN', ''),
+    ],
+
 ];

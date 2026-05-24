@@ -12,6 +12,15 @@ class KwitansiPdfGenerator
         $disk = Storage::disk('public');
 
         if (! $disk->exists($filePath)) {
+            // Load and encode logo
+            $logoPath = public_path('logo.png');
+            $logoBase64 = '';
+            if (file_exists($logoPath)) {
+                $logoData = file_get_contents($logoPath);
+                $logoBase64 = base64_encode($logoData);
+            }
+            $payload['logo_base64'] = $logoBase64;
+
             $pdf = Pdf::loadView('pdf.kwitansi', $payload)->setPaper('a5', 'portrait');
             $disk->put($filePath, $pdf->output());
         }
