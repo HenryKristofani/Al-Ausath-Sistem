@@ -11,17 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('akun_pendaftar', function (Blueprint $table) {
-        $table->integer('id_akun', true)->primary();
-            $table->string('nama', 200);
-            $table->string('email', 150)->nullable();
-            $table->string('phone', 30)->nullable();
-            $table->string('password_hash', 255)->nullable();
-            $table->timestamp('created_at')->useCurrent();
-            $table->timestamp('updated_at')->nullable();
-            
-            $table->index('email');
-        });
+        if (! Schema::hasTable('akun_pendaftar')) {
+            Schema::create('akun_pendaftar', function (Blueprint $table) {
+                $table->integer('id_akun', true)->primary();
+                $table->string('nama', 200);
+                $table->string('email', 150)->nullable();
+                $table->string('phone', 30)->nullable();
+                $table->string('password_hash', 255)->nullable();
+                $table->timestamp('created_at')->useCurrent();
+                $table->timestamp('updated_at')->nullable();
+
+                $table->index('email');
+            });
+        }
     }
 
     /**

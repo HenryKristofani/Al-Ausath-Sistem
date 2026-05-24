@@ -56,6 +56,10 @@ Route::get('/pengumuman/{id}', [PengumumanController::class, 'showPublic']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    // Notifications
+    Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+    Route::patch('/notifications/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [\App\Http\Controllers\Api\NotificationController::class, 'readAll']);
     Route::prefix('ppdb')->group(function () {
         Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);

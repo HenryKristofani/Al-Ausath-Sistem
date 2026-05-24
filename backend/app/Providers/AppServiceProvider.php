@@ -38,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         SppSetting::observe(\App\Observers\SppSettingObserver::class);
         \App\Models\SppGolongan::observe(\App\Observers\SppGolonganObserver::class);
         \App\Models\DataSantri::observe(\App\Observers\DataSantriObserver::class);
+        \App\Models\JadwalPembelajaran::observe(\App\Observers\JadwalPembelajaranObserver::class);
     }
 
     /**
