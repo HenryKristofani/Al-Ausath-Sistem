@@ -135,6 +135,17 @@ class DataTahunAjaranController extends Controller
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
+            if ($validated['status'] === 'NONAKTIF') {
+                $hasActiveKelas = \App\Models\DataKelas::where('tahun_ajaran', $tahun->kode_tahun)
+                    ->where('is_deleted', false)
+                    ->where('status', 'AKTIF')
+                    ->exists();
+                if ($hasActiveKelas) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan tahun ajaran karena masih digunakan oleh kelas aktif.',
+                    ], 422);
+                }
+            }
         }
 
         $tahun->update($validated);
@@ -150,13 +161,26 @@ class DataTahunAjaranController extends Controller
     }
 
     /**
-     * Hapus data tahun ajaran dari database.
+     * Hapus data tahun ajaran dari database (soft delete).
      */
     public function destroy(int $id): JsonResponse
     {
         $tahun = DataTahunAjaran::where('is_deleted', false)->findOrFail($id);
 
-        $tahun->delete();
+        $hasKelas = \App\Models\DataKelas::where('tahun_ajaran', $tahun->kode_tahun)
+            ->where('is_deleted', false)
+            ->exists();
+            
+        if ($hasKelas) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus tahun ajaran karena masih digunakan oleh data kelas.',
+            ], 422);
+        }
+
+        $tahun->update([
+            'is_deleted' => true,
+            'deleted_at' => now(),
+        ]);
 
         return response()->json([
             'message' => 'Data tahun ajaran berhasil dihapus.',

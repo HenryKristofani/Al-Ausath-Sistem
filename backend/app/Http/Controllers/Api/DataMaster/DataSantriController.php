@@ -244,10 +244,15 @@ class DataSantriController extends Controller
         $santri = DataSantri::where('is_deleted', false)->findOrFail($id);
 
         try {
-            $santri->update([
-                'is_deleted' => true,
-                'deleted_at' => now(),
-            ]);
+            DB::transaction(function () use ($santri) {
+                $santri->update([
+                    'is_deleted' => true,
+                    'deleted_at' => now(),
+                ]);
+
+                // Hapus akun santri jika ada
+                DataAkunSantri::where('nomor_induk', $santri->nomor_induk)->delete();
+            });
         } catch (QueryException $exception) {
             return response()->json([
                 'message' => 'Data santri tidak dapat dihapus karena masih dipakai pada data pembayaran SPP atau data terkait lainnya.',
@@ -255,7 +260,7 @@ class DataSantriController extends Controller
         }
 
         return response()->json([
-            'message' => 'Data santri berhasil dihapus.',
+            'message' => 'Data santri dan akun terkait berhasil dihapus.',
         ]);
     }
 

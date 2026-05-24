@@ -222,6 +222,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/', [SesiAbsensiController::class, 'index']);
             Route::get('/aktif', [SesiAbsensiController::class, 'aktif']);
             Route::post('/admin/buka-sesi', [AdminSesiAbsensiController::class, 'bukaSesi']);
+            Route::get('/admin/belum-diabsen', [AdminSesiAbsensiController::class, 'belumDiabsen']);
             
             Route::get('/rekap/santri', [RekapAbsensiController::class, 'rekapSantri']);
             Route::get('/rekap/santri/export', [RekapAbsensiController::class, 'exportSantri']);

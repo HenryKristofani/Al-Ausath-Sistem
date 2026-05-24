@@ -200,6 +200,25 @@ class DataKelasController extends Controller
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
+            if ($validated['status'] === 'NONAKTIF') {
+                $hasActiveSantri = \App\Models\DataSantri::where('kode_kelas', $kelas->kode_kelas)
+                    ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->exists();
+                if ($hasActiveSantri) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan kelas karena masih memiliki santri aktif.',
+                    ], 422);
+                }
+
+                $hasActiveMapel = \App\Models\DataKelasMapel::where('kode_kelas', $kelas->kode_kelas)
+                    ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->exists();
+                if ($hasActiveMapel) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan kelas karena masih memiliki mata pelajaran kelas aktif.',
+                    ], 422);
+                }
+            }
         }
 
         if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
@@ -222,11 +241,25 @@ class DataKelasController extends Controller
     }
 
     /**
-     * Hapus data kelas.
+     * Hapus data kelas (soft delete).
      */
     public function destroy(int $id): JsonResponse
     {
         $kelas = DataKelas::where('is_deleted', false)->findOrFail($id);
+
+        $hasSantri = \App\Models\DataSantri::where('kode_kelas', $kelas->kode_kelas)->exists();
+        if ($hasSantri) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus kelas karena masih digunakan oleh data santri.',
+            ], 422);
+        }
+
+        $hasMapel = \App\Models\DataKelasMapel::where('kode_kelas', $kelas->kode_kelas)->exists();
+        if ($hasMapel) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus kelas karena masih memiliki data mata pelajaran kelas.',
+            ], 422);
+        }
 
         $kelas->update([
             'is_deleted' => true,

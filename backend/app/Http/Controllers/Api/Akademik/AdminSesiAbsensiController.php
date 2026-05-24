@@ -29,7 +29,7 @@ class AdminSesiAbsensiController extends Controller
             'id_jadwal' => ['required', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
             'tanggal' => ['nullable', 'string'],
             'id_petugas_hadir' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
-            'status_kehadiran' => ['nullable', 'string', Rule::in(['HADIR', 'IZIN', 'SAKIT'])],
+            'status_kehadiran' => ['nullable', 'string', Rule::in(['HADIR', 'IZIN', 'SAKIT', 'ALFA'])],
             'menit_terlambat' => ['nullable', 'integer', 'min:0'],
             'catat_absensi_pengajar' => ['nullable', 'boolean'],
             'status_sesi' => ['nullable', 'string', Rule::in(['BERLANGSUNG', 'SELESAI', 'BATAL'])],
@@ -145,7 +145,7 @@ class AdminSesiAbsensiController extends Controller
 
         $validated = $request->validate([
             'id_petugas' => ['required', 'integer', 'exists:data_petugas,id_petugas'],
-            'status_kehadiran' => ['required', 'string', Rule::in(['HADIR', 'IZIN', 'SAKIT'])],
+            'status_kehadiran' => ['required', 'string', Rule::in(['HADIR', 'IZIN', 'SAKIT', 'ALFA'])],
             'menit_terlambat' => ['nullable', 'integer', 'min:0'],
             'keterangan' => ['nullable', 'string'],
         ]);
@@ -308,6 +308,68 @@ class AdminSesiAbsensiController extends Controller
 
         return response()->json([
             'message' => 'Absensi santri berhasil dihapus oleh admin.',
+        ]);
+    }
+
+    public function belumDiabsen(Request $request): JsonResponse
+    {
+        $admin = $this->resolveCurrentPetugas($request);
+        $this->authorizeAdmin($admin);
+
+        $tanggal = $this->resolveTanggalSesi($request->tanggal ?? null);
+        $hari = $this->resolveHariIndonesia($tanggal);
+
+        // Get all schedules for the specified day that are active
+        $jadwalQuery = JadwalPembelajaran::with([
+            'kelasMapel.kelas',
+            'kelasMapel.mataPelajaran',
+            'kelasMapel.petugas'
+        ])
+        ->where('hari', $hari)
+        ->where('status', 'AKTIF');
+
+        if ($request->filled('kode_unit')) {
+            $jadwalQuery->whereHas('kelasMapel.kelas', function($q) use ($request) {
+                $q->where('kode_unit', strtoupper($request->kode_unit));
+            });
+        }
+
+        if ($request->filled('kode_kelas')) {
+            $jadwalQuery->whereHas('kelasMapel', function($q) use ($request) {
+                $q->where('kode_kelas', strtoupper($request->kode_kelas));
+            });
+        }
+
+        $semuaJadwal = $jadwalQuery->get();
+
+        // Get all sessions already created for this date
+        $sesiHariIni = SesiAbsensi::whereDate('tanggal', $tanggal)->pluck('id_jadwal')->toArray();
+
+        // Filter schedules that don't have a session yet
+        $belumDiabsen = $semuaJadwal->filter(function($jadwal) use ($sesiHariIni) {
+            return !in_array($jadwal->id_jadwal, $sesiHariIni);
+        })->values();
+
+        // Format the response similarly to SesiAbsensiApiItem for easy frontend use
+        $formatted = $belumDiabsen->map(function($jadwal) use ($tanggal) {
+            return [
+                'id_jadwal' => $jadwal->id_jadwal,
+                'tanggal' => $tanggal,
+                'hari' => $jadwal->hari,
+                'jam_mulai' => $jadwal->jam_mulai,
+                'jam_selesai' => $jadwal->jam_selesai,
+                'mapel' => $jadwal->kelasMapel?->mataPelajaran?->nama_mapel ?? null,
+                'kelas' => $jadwal->kelasMapel?->kelas?->nama_kelas ?? null,
+                'id_petugas_hadir' => $jadwal->kelasMapel?->id_petugas ?? null,
+                'petugas_hadir' => [
+                    'nama_lengkap' => $jadwal->kelasMapel?->petugas?->nama_lengkap ?? null,
+                ],
+                'jadwal' => $jadwal
+            ];
+        });
+
+        return response()->json([
+            'data' => $formatted
         ]);
     }
 }

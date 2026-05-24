@@ -33,6 +33,7 @@ class SesiAbsensiController extends Controller
                 'jadwal.kelasMapel.petugas',
                 'petugasHadir',
                 'petugasPengganti',
+                'absensiPengajar',
             ])
             ->withCount('absensiSantri')
             ->when($request->filled('id_jadwal'), fn ($q) => $q->where('id_jadwal', (int) $request->id_jadwal))
@@ -55,6 +56,16 @@ class SesiAbsensiController extends Controller
                                 ->where('kode_mapel', 'like', "%{$keyword}%")
                                 ->orWhere('nama_mapel', 'like', "%{$keyword}%");
                         });
+                });
+            })
+            ->when($request->filled('kode_kelas'), function ($q) use ($request) {
+                $q->whereHas('jadwal.kelasMapel', function ($kmQuery) use ($request) {
+                    $kmQuery->where('kode_kelas', $request->kode_kelas);
+                });
+            })
+            ->when($request->filled('kode_unit'), function ($q) use ($request) {
+                $q->whereHas('jadwal.kelasMapel.kelas.unit', function ($uQuery) use ($request) {
+                    $uQuery->where('kode_unit', $request->kode_unit);
                 });
             })
             ->orderByDesc('tanggal')
@@ -392,6 +403,15 @@ class SesiAbsensiController extends Controller
 
         $santri = DataSantri::query()
             ->where('kode_kelas', $kodeKelas)
+            ->where('is_deleted', false)
+            ->where(function ($q) use ($sesi) {
+                $q->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->orWhereIn('nomor_induk', function ($subQuery) use ($sesi) {
+                        $subQuery->select('nomor_induk')
+                            ->from('absensi_santri')
+                            ->where('id_sesi', $sesi->id_sesi);
+                    });
+            })
             ->orderBy('nama_lengkap_santri')
             ->get(['id_santri', 'nomor_induk', 'nama_lengkap_santri', 'kode_kelas'])
             ->map(function ($item) use ($absensiPerSantri) {
@@ -446,6 +466,15 @@ class SesiAbsensiController extends Controller
 
         $nomorIndukValid = DataSantri::query()
             ->where('kode_kelas', $kodeKelas)
+            ->where('is_deleted', false)
+            ->where(function ($q) use ($sesi) {
+                $q->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->orWhereIn('nomor_induk', function ($subQuery) use ($sesi) {
+                        $subQuery->select('nomor_induk')
+                            ->from('absensi_santri')
+                            ->where('id_sesi', $sesi->id_sesi);
+                    });
+            })
             ->pluck('nomor_induk')
             ->flip();
 

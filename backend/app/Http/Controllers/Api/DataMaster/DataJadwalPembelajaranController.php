@@ -124,6 +124,9 @@ class DataJadwalPembelajaranController extends Controller
             'tahun_ajaran' => $validated['tahun_ajaran'] ?? $jadwal->tahun_ajaran,
             'hari' => $validated['hari'] ?? $jadwal->hari,
             'jam_mulai' => $validated['jam_mulai'] ?? $jadwal->jam_mulai,
+            'jam_selesai' => $validated['jam_selesai'] ?? $jadwal->jam_selesai,
+            'ruangan' => array_key_exists('ruangan', $validated) ? $validated['ruangan'] : $jadwal->ruangan,
+            'status' => $validated['status'] ?? $jadwal->status,
         ];
 
         $this->validateUniqueCombination($merged, $jadwal->id_jadwal);
@@ -381,20 +384,85 @@ class DataJadwalPembelajaranController extends Controller
 
     private function validateUniqueCombination(array $payload, ?int $ignoreId): void
     {
-        $query = JadwalPembelajaran::query()
-            ->where('id_kelas_mapel', $payload['id_kelas_mapel'])
-            ->where('tahun_ajaran', $payload['tahun_ajaran'])
-            ->where('hari', $payload['hari'])
-            ->where('jam_mulai', $payload['jam_mulai']);
-
-        if ($ignoreId !== null) {
-            $query->where('id_jadwal', '!=', $ignoreId);
+        if (array_key_exists('status', $payload) && $payload['status'] !== null && strtoupper($payload['status']) === 'NONAKTIF') {
+            return;
         }
 
-        if ($query->exists()) {
+        $kelasMapel = \App\Models\DataKelasMapel::findOrFail($payload['id_kelas_mapel']);
+        $kodeKelas = $kelasMapel->kode_kelas;
+        $idPetugas = $kelasMapel->id_petugas;
+        $hari = $payload['hari'];
+        $jamMulai = $payload['jam_mulai'];
+        $jamSelesai = $payload['jam_selesai'];
+
+        // 1. Cek bentrok kelas
+        $bentrokKelas = JadwalPembelajaran::query()
+            ->where('tahun_ajaran', $payload['tahun_ajaran'])
+            ->where('hari', $hari)
+            ->where('status', 'AKTIF')
+            ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                $q->where('jam_mulai', '<', $jamSelesai)
+                  ->where('jam_selesai', '>', $jamMulai);
+            })
+            ->whereHas('kelasMapel', function ($sub) use ($kodeKelas) {
+                $sub->where('kode_kelas', $kodeKelas);
+            })
+            ->when($ignoreId !== null, fn($q) => $q->where('id_jadwal', '!=', $ignoreId))
+            ->first();
+
+        if ($bentrokKelas) {
+            $namaKelas = optional($bentrokKelas->kelasMapel?->kelas)->nama_kelas ?? $kodeKelas;
+            $namaMapel = optional($bentrokKelas->kelasMapel?->mataPelajaran)->nama_mapel ?? '';
             throw ValidationException::withMessages([
-                'id_kelas_mapel' => ['Kombinasi jadwal sudah ada untuk kelas mapel, tahun ajaran, hari, dan jam mulai yang sama.'],
+                'jam_mulai' => ["Jadwal bentrok dengan kelas {$namaKelas} untuk mata pelajaran {$namaMapel} ({$bentrokKelas->jam_mulai} - {$bentrokKelas->jam_selesai})."],
             ]);
+        }
+
+        // 2. Cek bentrok pengajar/guru
+        if ($idPetugas) {
+            $bentrokGuru = JadwalPembelajaran::query()
+                ->where('tahun_ajaran', $payload['tahun_ajaran'])
+                ->where('hari', $hari)
+                ->where('status', 'AKTIF')
+                ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                    $q->where('jam_mulai', '<', $jamSelesai)
+                      ->where('jam_selesai', '>', $jamMulai);
+                })
+                ->whereHas('kelasMapel', function ($sub) use ($idPetugas) {
+                    $sub->where('id_petugas', $idPetugas);
+                })
+                ->when($ignoreId !== null, fn($q) => $q->where('id_jadwal', '!=', $ignoreId))
+                ->first();
+
+            if ($bentrokGuru) {
+                $namaGuru = optional($bentrokGuru->kelasMapel?->petugas)->nama_lengkap ?? 'Petugas';
+                $namaMapel = optional($bentrokGuru->kelasMapel?->mataPelajaran)->nama_mapel ?? '';
+                throw ValidationException::withMessages([
+                    'jam_mulai' => ["Jadwal bentrok bagi pengajar {$namaGuru} pada mata pelajaran {$namaMapel} ({$bentrokGuru->jam_mulai} - {$bentrokGuru->jam_selesai})."],
+                ]);
+            }
+        }
+
+        // 3. Cek bentrok ruangan
+        if (!empty($payload['ruangan'])) {
+            $bentrokRuangan = JadwalPembelajaran::query()
+                ->where('tahun_ajaran', $payload['tahun_ajaran'])
+                ->where('hari', $hari)
+                ->where('status', 'AKTIF')
+                ->whereRaw('UPPER(ruangan) = ?', [strtoupper(trim($payload['ruangan']))])
+                ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                    $q->where('jam_mulai', '<', $jamSelesai)
+                      ->where('jam_selesai', '>', $jamMulai);
+                })
+                ->when($ignoreId !== null, fn($q) => $q->where('id_jadwal', '!=', $ignoreId))
+                ->first();
+
+            if ($bentrokRuangan) {
+                $namaMapel = optional($bentrokRuangan->kelasMapel?->mataPelajaran)->nama_mapel ?? '';
+                throw ValidationException::withMessages([
+                    'ruangan' => ["Ruangan {$payload['ruangan']} sudah digunakan oleh mata pelajaran {$namaMapel} ({$bentrokRuangan->jam_mulai} - {$bentrokRuangan->jam_selesai})."],
+                ]);
+            }
         }
     }
 }

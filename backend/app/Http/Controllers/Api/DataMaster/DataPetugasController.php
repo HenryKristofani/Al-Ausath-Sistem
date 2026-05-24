@@ -116,6 +116,16 @@ class DataPetugasController extends Controller
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
+            if ($validated['status'] === 'NONAKTIF') {
+                $hasActiveKelasMapel = \App\Models\DataKelasMapel::where('id_petugas', $petugas->id_petugas)
+                    ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->exists();
+                if ($hasActiveKelasMapel) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan petugas karena masih aktif mengajar mata pelajaran kelas.',
+                    ], 422);
+                }
+            }
         }
 
         if (!empty($validated['password'])) {
@@ -138,6 +148,20 @@ class DataPetugasController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $petugas = DataPetugas::findOrFail($id);
+
+        $hasKelasMapel = \App\Models\DataKelasMapel::where('id_petugas', $petugas->id_petugas)->exists();
+        if ($hasKelasMapel) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus petugas karena masih terdaftar mengajar kelas.',
+            ], 422);
+        }
+
+        $hasSesi = \App\Models\SesiAbsensi::where('id_petugas_hadir', $petugas->id_petugas)->exists();
+        if ($hasSesi) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus petugas karena memiliki riwayat sesi absensi.',
+            ], 422);
+        }
 
         try {
             $petugas->delete();

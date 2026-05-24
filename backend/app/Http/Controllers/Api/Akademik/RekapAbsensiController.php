@@ -87,6 +87,7 @@ class RekapAbsensiController extends Controller
         $validated = $request->validate([
             'tanggal_mulai' => ['nullable', 'date'],
             'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'kode_unit' => ['nullable', 'string', 'max:10'],
             'kode_kelas' => ['nullable', 'string', 'max:20'],
             'nomor_induk' => ['nullable', 'string', 'max:20'],
             'id_jadwal' => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
@@ -100,6 +101,7 @@ class RekapAbsensiController extends Controller
             ->leftJoin('data_kelas as k', 'k.kode_kelas', '=', 'ds.kode_kelas')
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereDate('s.tanggal', '>=', $validated['tanggal_mulai']))
             ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereDate('s.tanggal', '<=', $validated['tanggal_selesai']))
+            ->when(!empty($validated['kode_unit']), fn ($q) => $q->where('k.kode_unit', $validated['kode_unit']))
             ->when(!empty($validated['kode_kelas']), fn ($q) => $q->where('ds.kode_kelas', $validated['kode_kelas']))
             ->when(!empty($validated['nomor_induk']), fn ($q) => $q->where('ds.nomor_induk', $validated['nomor_induk']))
             ->when(!empty($validated['id_jadwal']), fn ($q) => $q->where('s.id_jadwal', (int) $validated['id_jadwal']))

@@ -106,6 +106,19 @@ class DataMataPelajaranController extends Controller
 
         $validated = $this->normalizeMapelInput($validated);
 
+        if (array_key_exists('status', $validated) && $validated['status'] !== null) {
+            if ($validated['status'] === 'NONAKTIF') {
+                $hasActiveKelasMapel = \App\Models\DataKelasMapel::where('kode_mapel', $mapel->kode_mapel)
+                    ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->exists();
+                if ($hasActiveKelasMapel) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan mata pelajaran karena masih digunakan aktif di kelas mapel.',
+                    ], 422);
+                }
+            }
+        }
+
         $mapel->update($validated);
 
         return response()->json([
@@ -120,6 +133,13 @@ class DataMataPelajaranController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $mapel = DataMataPelajaran::findOrFail($id);
+
+        $hasKelasMapel = \App\Models\DataKelasMapel::where('kode_mapel', $mapel->kode_mapel)->exists();
+        if ($hasKelasMapel) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus mata pelajaran karena masih digunakan oleh data kelas mapel.',
+            ], 422);
+        }
 
         try {
             $mapel->delete();

@@ -122,6 +122,17 @@ class DataUnitController extends Controller
 
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
+            if ($validated['status'] === 'NONAKTIF') {
+                $hasActiveKelas = \App\Models\DataKelas::where('kode_unit', $unit->kode_unit)
+                    ->where('is_deleted', false)
+                    ->where('status', 'AKTIF')
+                    ->exists();
+                if ($hasActiveKelas) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan unit karena masih digunakan oleh kelas aktif.',
+                    ], 422);
+                }
+            }
         }
 
         if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
@@ -146,6 +157,16 @@ class DataUnitController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $unit = DataUnit::findOrFail($id);
+
+        $hasKelas = \App\Models\DataKelas::where('kode_unit', $unit->kode_unit)
+            ->where('is_deleted', false)
+            ->exists();
+            
+        if ($hasKelas) {
+            return response()->json([
+                'message' => 'Data unit tidak dapat dihapus karena masih digunakan oleh data kelas.',
+            ], 422);
+        }
 
         try {
             $unit->delete();
