@@ -106,20 +106,23 @@ class DataMataPelajaranController extends Controller
 
         $validated = $this->normalizeMapelInput($validated);
 
-        if (array_key_exists('status', $validated) && $validated['status'] !== null) {
-            if ($validated['status'] === 'NONAKTIF') {
-                $hasActiveKelasMapel = \App\Models\DataKelasMapel::where('kode_mapel', $mapel->kode_mapel)
-                    ->whereRaw('UPPER(status) = ?', ['AKTIF'])
-                    ->exists();
-                if ($hasActiveKelasMapel) {
-                    return response()->json([
-                        'message' => 'Tidak dapat menonaktifkan mata pelajaran karena masih digunakan aktif di kelas mapel.',
-                    ], 422);
-                }
-            }
-        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($mapel, $validated) {
+            $mapel->update($validated);
 
-        $mapel->update($validated);
+            if (array_key_exists('status', $validated) && strtoupper($validated['status']) === 'NONAKTIF') {
+                // Get all Kelas Mapel IDs for this subject
+                $kelasMapelIds = \App\Models\DataKelasMapel::where('kode_mapel', $mapel->kode_mapel)
+                    ->pluck('id_kelas_mapel');
+
+                // Update all associated Kelas Mapel to NONAKTIF
+                \App\Models\DataKelasMapel::where('kode_mapel', $mapel->kode_mapel)
+                    ->update(['status' => 'NONAKTIF']);
+
+                // Update all associated Jadwal Pembelajaran to NONAKTIF
+                \App\Models\JadwalPembelajaran::whereIn('id_kelas_mapel', $kelasMapelIds)
+                    ->update(['status' => 'NONAKTIF']);
+            }
+        });
 
         return response()->json([
             'message' => 'Data mata pelajaran berhasil diperbarui.',

@@ -75,6 +75,10 @@ class DataKelasMapelController extends Controller
         $this->validateUnitConsistency($validated['kode_kelas'], $validated['kode_mapel']);
         $this->validateUniqueCombination($validated, null);
 
+        if (!isset($validated['status']) || strtoupper($validated['status']) === 'AKTIF') {
+            $this->validateParentActive($validated['kode_kelas'], $validated['kode_mapel']);
+        }
+
         $data = DataKelasMapel::create($validated);
 
         return response()->json([
@@ -129,7 +133,20 @@ class DataKelasMapelController extends Controller
         $this->validateUnitConsistency($merged['kode_kelas'], $merged['kode_mapel']);
         $this->validateUniqueCombination($merged, $kelasMapel->id_kelas_mapel);
 
-        $kelasMapel->update($validated);
+        $newStatus = $validated['status'] ?? $kelasMapel->status;
+        if (strtoupper($newStatus) === 'AKTIF') {
+            $this->validateParentActive($merged['kode_kelas'], $merged['kode_mapel']);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($kelasMapel, $validated) {
+            $kelasMapel->update($validated);
+
+            if (array_key_exists('status', $validated) && strtoupper($validated['status']) === 'NONAKTIF') {
+                // Update all associated Jadwal Pembelajaran to NONAKTIF
+                \App\Models\JadwalPembelajaran::where('id_kelas_mapel', $kelasMapel->id_kelas_mapel)
+                    ->update(['status' => 'NONAKTIF']);
+            }
+        });
 
         return response()->json([
             'message' => 'Data kelas mapel berhasil diperbarui.',
@@ -449,6 +466,23 @@ class DataKelasMapelController extends Controller
                 'kode_unit' => [
                     "Kode unit pada kelas ({$kelas->kode_unit}) harus sama dengan kode unit pada mata pelajaran ({$mapel->kode_unit}).",
                 ],
+            ]);
+        }
+    }
+
+    private function validateParentActive(string $kodeKelas, string $kodeMapel): void
+    {
+        $kelas = DataKelas::where('kode_kelas', $kodeKelas)->where('is_deleted', false)->first();
+        if ($kelas && strtoupper($kelas->status) === 'NONAKTIF') {
+            throw ValidationException::withMessages([
+                'status' => ["Tidak dapat mengaktifkan kelas mapel karena kelas terkait ({$kelas->nama_kelas}) masih NONAKTIF."],
+            ]);
+        }
+
+        $mapel = DataMataPelajaran::where('kode_mapel', $kodeMapel)->first();
+        if ($mapel && strtoupper($mapel->status) === 'NONAKTIF') {
+            throw ValidationException::withMessages([
+                'status' => ["Tidak dapat mengaktifkan kelas mapel karena mata pelajaran terkait ({$mapel->nama_mapel}) masih NONAKTIF."],
             ]);
         }
     }

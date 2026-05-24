@@ -74,6 +74,10 @@ class DataJadwalPembelajaranController extends Controller
         $validated = $this->normalizeJadwalInput($validated);
         $this->validateUniqueCombination($validated, null);
 
+        if (!isset($validated['status']) || strtoupper($validated['status']) === 'AKTIF') {
+            $this->validateParentActive((int)$validated['id_kelas_mapel']);
+        }
+
         $data = JadwalPembelajaran::create($validated);
 
         return response()->json([
@@ -137,6 +141,11 @@ class DataJadwalPembelajaranController extends Controller
             throw ValidationException::withMessages([
                 'jam_selesai' => ['Jam selesai harus lebih besar dari jam mulai.'],
             ]);
+        }
+
+        $newStatus = $validated['status'] ?? $jadwal->status;
+        if (strtoupper($newStatus) === 'AKTIF') {
+            $this->validateParentActive((int)$merged['id_kelas_mapel']);
         }
 
         $jadwal->update($validated);
@@ -463,6 +472,32 @@ class DataJadwalPembelajaranController extends Controller
                     'ruangan' => ["Ruangan {$payload['ruangan']} sudah digunakan oleh mata pelajaran {$namaMapel} ({$bentrokRuangan->jam_mulai} - {$bentrokRuangan->jam_selesai})."],
                 ]);
             }
+        }
+    }
+
+    private function validateParentActive(int $idKelasMapel): void
+    {
+        $kelasMapel = \App\Models\DataKelasMapel::with(['kelas', 'mataPelajaran'])->find($idKelasMapel);
+        if (!$kelasMapel) {
+            return;
+        }
+
+        if (strtoupper($kelasMapel->status) === 'NONAKTIF') {
+            throw ValidationException::withMessages([
+                'status' => ["Tidak dapat mengaktifkan jadwal karena mata pelajaran kelas terkait masih NONAKTIF."],
+            ]);
+        }
+
+        if ($kelasMapel->kelas && strtoupper($kelasMapel->kelas->status) === 'NONAKTIF') {
+            throw ValidationException::withMessages([
+                'status' => ["Tidak dapat mengaktifkan jadwal karena kelas terkait ({$kelasMapel->kelas->nama_kelas}) masih NONAKTIF."],
+            ]);
+        }
+
+        if ($kelasMapel->mataPelajaran && strtoupper($kelasMapel->mataPelajaran->status) === 'NONAKTIF') {
+            throw ValidationException::withMessages([
+                'status' => ["Tidak dapat mengaktifkan jadwal karena mata pelajaran terkait ({$kelasMapel->mataPelajaran->nama_mapel}) masih NONAKTIF."],
+            ]);
         }
     }
 }
