@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Akademik\KonversiNilaiController;
 use App\Http\Controllers\Api\Akademik\NilaiMapelController;
 use App\Http\Controllers\Api\Akademik\NilaiAkhlakController;
 use App\Http\Controllers\Api\Akademik\NilaiStatistikController;
+use App\Http\Controllers\Api\Akademik\AnalyticsController;
 use App\Http\Controllers\Api\Akademik\RaportCatatanWaliController;
 use App\Http\Controllers\Api\Akademik\RaportGenerateController;
 use App\Http\Controllers\Api\Akademik\RaportPdfController;
@@ -56,6 +57,10 @@ Route::get('/pengumuman/{id}', [PengumumanController::class, 'showPublic']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    // Notifications
+    Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+    Route::patch('/notifications/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [\App\Http\Controllers\Api\NotificationController::class, 'readAll']);
     Route::prefix('ppdb')->group(function () {
         Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
@@ -96,6 +101,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/trend', [NilaiStatistikController::class, 'trendPerSemester']);
             Route::get('/berprestasi', [NilaiStatistikController::class, 'topPerformers']);
             Route::get('/perlu-bimbingan', [NilaiStatistikController::class, 'needsHelp']);
+        });
+
+        Route::prefix('analytics')->group(function () {
+            Route::get('/class-statistics', [AnalyticsController::class, 'classStatistics']);
+            Route::get('/subject-recap', [AnalyticsController::class, 'subjectRecap']);
+            Route::get('/score-distribution', [AnalyticsController::class, 'scoreDistribution']);
         });
 
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
