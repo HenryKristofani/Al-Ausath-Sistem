@@ -58,6 +58,11 @@ class SesiAbsensiController extends Controller
                         });
                 });
             })
+            ->when($request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->whereHas('jadwal.kelasMapel', function ($kmQuery) use ($request) {
+                    $kmQuery->where('tahun_ajaran', $request->tahun_ajaran);
+                });
+            })
             ->when($request->filled('kode_kelas'), function ($q) use ($request) {
                 $q->whereHas('jadwal.kelasMapel', function ($kmQuery) use ($request) {
                     $kmQuery->where('kode_kelas', $request->kode_kelas);
@@ -86,6 +91,7 @@ class SesiAbsensiController extends Controller
             'status_kehadiran' => ['nullable', 'string', 'in:HADIR,SAKIT,IZIN,ALFA'],
             'tanggal_mulai'  => ['nullable', 'date'],
             'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 25);
@@ -99,6 +105,7 @@ class SesiAbsensiController extends Controller
             ->when(!empty($validated['status_kehadiran']), fn ($q) => $q->where('status_kehadiran', $validated['status_kehadiran']))
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereHas('sesi', fn ($sq) => $sq->whereDate('tanggal', '>=', $validated['tanggal_mulai'])))
             ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereHas('sesi', fn ($sq) => $sq->whereDate('tanggal', '<=', $validated['tanggal_selesai'])))
+            ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->whereHas('sesi.jadwal.kelasMapel', fn ($sq) => $sq->where('tahun_ajaran', $validated['tahun_ajaran'])))
             ->orderByDesc('id_absensi');
 
         $paginated = $query->paginate($perPage);

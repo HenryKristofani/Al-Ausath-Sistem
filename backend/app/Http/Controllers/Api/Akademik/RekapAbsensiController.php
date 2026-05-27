@@ -85,13 +85,14 @@ class RekapAbsensiController extends Controller
     public function queryRekapSantri(Request $request)
     {
         $validated = $request->validate([
-            'tanggal_mulai' => ['nullable', 'date'],
-            'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
-            'kode_unit' => ['nullable', 'string', 'max:10'],
-            'kode_kelas' => ['nullable', 'string', 'max:20'],
-            'nomor_induk' => ['nullable', 'string', 'max:20'],
-            'id_jadwal' => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
-            'q' => ['nullable', 'string'],
+            'tanggal_mulai'  => ['nullable', 'date'],
+            'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'kode_unit'      => ['nullable', 'string', 'max:10'],
+            'kode_kelas'     => ['nullable', 'string', 'max:20'],
+            'nomor_induk'    => ['nullable', 'string', 'max:20'],
+            'id_jadwal'      => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
+            'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
+            'q'              => ['nullable', 'string'],
         ]);
 
         return DB::table('absensi_santri as a')
@@ -105,6 +106,7 @@ class RekapAbsensiController extends Controller
             ->when(!empty($validated['kode_kelas']), fn ($q) => $q->where('ds.kode_kelas', $validated['kode_kelas']))
             ->when(!empty($validated['nomor_induk']), fn ($q) => $q->where('ds.nomor_induk', $validated['nomor_induk']))
             ->when(!empty($validated['id_jadwal']), fn ($q) => $q->where('s.id_jadwal', (int) $validated['id_jadwal']))
+            ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->where('k.tahun_ajaran', $validated['tahun_ajaran']))
             ->when(!empty($validated['q']), function ($q) use ($validated) {
                 $keyword = trim((string) $validated['q']);
                 $q->where(function ($subQuery) use ($keyword) {
@@ -190,12 +192,13 @@ class RekapAbsensiController extends Controller
     public function queryRekapPetugas(Request $request)
     {
         $validated = $request->validate([
-            'tanggal_mulai' => ['nullable', 'date'],
-            'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
-            'id_petugas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
-            'kode_kelas' => ['nullable', 'string', 'max:20'],
-            'id_jadwal' => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
-            'q' => ['nullable', 'string'],
+            'tanggal_mulai'  => ['nullable', 'date'],
+            'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'id_petugas'     => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+            'kode_kelas'     => ['nullable', 'string', 'max:20'],
+            'id_jadwal'      => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
+            'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
+            'q'              => ['nullable', 'string'],
         ]);
 
         return DB::table('absensi_pengajar as ap')
@@ -208,6 +211,7 @@ class RekapAbsensiController extends Controller
             ->when(!empty($validated['id_petugas']), fn ($q) => $q->where('ap.id_petugas', (int) $validated['id_petugas']))
             ->when(!empty($validated['kode_kelas']), fn ($q) => $q->where('km.kode_kelas', $validated['kode_kelas']))
             ->when(!empty($validated['id_jadwal']), fn ($q) => $q->where('s.id_jadwal', (int) $validated['id_jadwal']))
+            ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->where('km.tahun_ajaran', $validated['tahun_ajaran']))
             ->when(!empty($validated['q']), function ($q) use ($validated) {
                 $keyword = trim((string) $validated['q']);
                 $q->where(function ($subQuery) use ($keyword) {
