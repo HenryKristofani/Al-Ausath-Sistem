@@ -10,8 +10,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
-use App\Models\DataSantri;
-use App\Support\SppBillingService;
 
 class SppSettingController extends Controller
 {
@@ -66,19 +64,15 @@ class SppSettingController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'nama'               => ['nullable', 'string', 'max:200'],
-            'id_unit'            => ['nullable', 'integer', 'exists:data_unit,id_unit'],
-            'id_golongan_spp'    => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
-            'kode_kelas'         => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
-            'kelas'              => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
-            'jenjang'            => ['required_without_all:id_golongan_spp,kode_kelas,kelas,nama', 'nullable', 'string', 'max:20'],
-            'kategori_tagihan_id'=> ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
-            'jumlah'             => ['nullable', 'numeric'],
-            'nominal'            => ['nullable', 'numeric'],
-            'periode'            => ['nullable', 'string', 'max:20'],
-            'tahun_ajaran'       => ['nullable', 'string', 'max:20'],
-            'aktif'              => ['nullable', 'boolean'],
-            'keterangan'         => ['nullable', 'string'],
+            'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
+            'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
+            'kode_kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'jenjang' => ['required_without_all:id_golongan_spp,kode_kelas,kelas', 'nullable', 'string', 'max:20'],
+            'kategori_tagihan_id' => ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
+            'jumlah' => ['nullable', 'numeric'],
+            'periode' => ['nullable', 'string', 'max:20'],
+            'keterangan' => ['nullable', 'string'],
         ]);
 
         $payload = $this->hydrateSettingPayload($validated);
@@ -108,19 +102,15 @@ class SppSettingController extends Controller
         $setting = SppSetting::findOrFail($id);
 
         $validated = $request->validate([
-            'nama'               => ['nullable', 'string', 'max:200'],
-            'id_unit'            => ['nullable', 'integer', 'exists:data_unit,id_unit'],
-            'id_golongan_spp'    => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
-            'kode_kelas'         => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
-            'kelas'              => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
-            'jenjang'            => ['nullable', 'string', 'max:20'],
-            'kategori_tagihan_id'=> ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
-            'jumlah'             => ['nullable', 'numeric'],
-            'nominal'            => ['nullable', 'numeric'],
-            'periode'            => ['nullable', 'string', 'max:20'],
-            'tahun_ajaran'       => ['nullable', 'string', 'max:20'],
-            'aktif'              => ['nullable', 'boolean'],
-            'keterangan'         => ['nullable', 'string'],
+            'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
+            'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
+            'kode_kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'jenjang' => ['nullable', 'string', 'max:20'],
+            'kategori_tagihan_id' => ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
+            'jumlah' => ['nullable', 'numeric'],
+            'periode' => ['nullable', 'string', 'max:20'],
+            'keterangan' => ['nullable', 'string'],
         ]);
 
         $payload = $this->hydrateSettingPayload($validated);
@@ -152,201 +142,13 @@ class SppSettingController extends Controller
         ]);
     }
 
-    /**
-     * Provision SPP bills untuk santri aktif.
-     * 
-     * Endpoint ini memungkinkan admin untuk manually trigger provisioning bills
-     * tanpa menunggu scheduled job. Berguna untuk immediate effect setelah setup SPP settings.
-     * 
-     * Query Parameters:
-     * - id_santri: provision hanya untuk santri tertentu
-     * - id_setting: provision hanya dari setting tertentu
-     * - id_unit: provision untuk semua santri di unit
-     * 
-     * Response: statistik jumlah santri yang diproses
-     */
-    public function provisionBills(Request $request, SppBillingService $billingService): JsonResponse
-    {
-        $idSantri = $request->query('id_santri');
-        $idSetting = $request->query('id_setting');
-        $idUnit = $request->query('id_unit');
-
-        // Scope 1: Specific santri
-        if ($idSantri) {
-            $santri = DataSantri::find($idSantri);
-            if (!$santri) {
-                return response()->json([
-                    'message' => 'Santri tidak ditemukan.',
-                ], 404);
-            }
-            
-            $billingService->provisionBillingForActiveSantri($santri);
-            
-            return response()->json([
-                'message' => 'Bills berhasil diprovision untuk santri.',
-                'data' => [
-                    'santri_processed' => 1,
-                    'id_santri' => $idSantri,
-                ],
-            ]);
-        }
-
-        // Scope 2-4: Multiple santri based on filter
-        $query = DataSantri::query()
-            ->where('is_deleted', false)
-            ->whereRaw('UPPER(status) = ?', ['AKTIF']);
-
-        if ($idUnit) {
-            $query->whereHas('kelas', fn ($q) => $q->where('id_unit', $idUnit));
-        }
-
-        $santriList = $query->get();
-        $processedCount = 0;
-
-        foreach ($santriList as $santri) {
-            try {
-                $billingService->provisionBillingForActiveSantri($santri);
-                $processedCount++;
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error("Failed to provision bills for santri {$santri->id_santri}: " . $e->getMessage());
-            }
-        }
-
-        return response()->json([
-            'message' => "Bills berhasil diprovision untuk {$processedCount} santri aktif.",
-            'data' => [
-                'santri_processed' => $processedCount,
-                'total_active_santri' => $santriList->count(),
-            ],
-        ]);
-    }
-
-    /**
-     * Generate monthly tagihan SPP for a date range (periode).
-     */
-    public function generateTagihanPeriode(Request $request, int $id): JsonResponse
-    {
-        $setting = SppSetting::findOrFail($id);
-
-        $validated = $request->validate([
-            'bulan_mulai'   => ['required', 'integer', 'min:1', 'max:12'],
-            'tahun_mulai'   => ['required', 'integer'],
-            'bulan_selesai' => ['required', 'integer', 'min:1', 'max:12'],
-            'tahun_selesai' => ['required', 'integer'],
-        ]);
-
-        $startYear = (int) $validated['tahun_mulai'];
-        $startMonth = (int) $validated['bulan_mulai'];
-        $endYear = (int) $validated['tahun_selesai'];
-        $endMonth = (int) $validated['bulan_selesai'];
-
-        $monthNames = [
-            1 => 'Januari',
-            2 => 'Februari',
-            3 => 'Maret',
-            4 => 'April',
-            5 => 'Mei',
-            6 => 'Juni',
-            7 => 'Juli',
-            8 => 'Agustus',
-            9 => 'September',
-            10 => 'Oktober',
-            11 => 'November',
-            12 => 'Desember',
-        ];
-
-        $startDate = new \DateTime("{$startYear}-{$startMonth}-01");
-        $endDate = new \DateTime("{$endYear}-{$endMonth}-01");
-
-        $interval = new \DateInterval('P1M');
-        $period = new \DatePeriod($startDate, $interval, $endDate->modify('+1 month'));
-
-        $selectedMonths = [];
-        foreach ($period as $dt) {
-            $mNum = (int) $dt->format('n');
-            $selectedMonths[] = $monthNames[$mNum];
-        }
-
-        // Determine santri match query based on setting properties priority
-        if (!empty($setting->id_santri)) {
-            $santriQuery = DataSantri::query()->where('id_santri', $setting->id_santri);
-        } elseif (!empty($setting->kode_kelas)) {
-            $santriQuery = DataSantri::query()->where('kode_kelas', $setting->kode_kelas);
-        } elseif (!empty($setting->id_unit)) {
-            $santriQuery = DataSantri::query()->whereHas('kelas.unit', fn($q) => $q->where('id_unit', $setting->id_unit));
-        } elseif (!empty($setting->jenjang)) {
-            $jenjang = strtoupper(trim((string) $setting->jenjang));
-            $santriQuery = DataSantri::query()->whereHas('kelas.unit', function ($q) use ($jenjang) {
-                $q->whereRaw('UPPER(nama_unit) = ?', [$jenjang])
-                  ->orWhereRaw('UPPER(kode_unit) = ?', [$jenjang]);
-            });
-        } elseif (!empty($setting->id_golongan_spp)) {
-            $santriQuery = DataSantri::query()->where('id_golongan_spp', $setting->id_golongan_spp);
-        } else {
-            $santriQuery = DataSantri::query();
-        }
-
-        $santris = $santriQuery
-            ->where('is_deleted', false)
-            ->whereRaw('UPPER(status) = ?', ['AKTIF'])
-            ->get();
-
-        $createdCount = 0;
-        $totalMonthsCount = count($selectedMonths);
-
-        foreach ($santris as $santri) {
-            foreach ($selectedMonths as $month) {
-                $created = \App\Models\PembayaranSpp::firstOrCreate(
-                    [
-                        'id_santri' => $santri->id_santri,
-                        'id_setting' => $setting->id_setting,
-                        'id_pendaftaran' => null,
-                        'bulan' => $month,
-                    ],
-                    [
-                        'nominal_bayar' => (float) ($setting->jumlah ?? 0),
-                        'tanggal_bayar' => null,
-                        'metode_bayar' => null,
-                        'status' => 'menunggu_pembayaran',
-                    ]
-                );
-
-                if ($created->wasRecentlyCreated) {
-                    $createdCount++;
-                }
-            }
-        }
-
-        return response()->json([
-            'message' => 'Tagihan SPP berhasil digenerate.',
-            'data' => [
-                'jumlah_tagihan_baru' => $createdCount,
-                'jumlah_santri' => $santris->count(),
-                'jumlah_periode' => $totalMonthsCount,
-                'periode' => $selectedMonths,
-            ],
-        ]);
-    }
-
     private function hydrateSettingPayload(array $validated): array
     {
-        // Sinkronkan kelas → kode_kelas
         if (!array_key_exists('kode_kelas', $validated) && array_key_exists('kelas', $validated)) {
             $validated['kode_kelas'] = $validated['kelas'];
         }
+
         unset($validated['kelas']);
-
-        // Sinkronkan nominal → jumlah (frontend mengirim 'nominal', DB menyimpan sebagai 'jumlah')
-        if (!empty($validated['nominal']) && !isset($validated['jumlah'])) {
-            $validated['jumlah'] = $validated['nominal'];
-        }
-        unset($validated['nominal']);
-
-        // Sinkronkan tahun_ajaran → periode
-        if (!empty($validated['tahun_ajaran']) && !isset($validated['periode'])) {
-            $validated['periode'] = $validated['tahun_ajaran'];
-        }
-        unset($validated['tahun_ajaran']);
 
         if (array_key_exists('kode_kelas', $validated) && $validated['kode_kelas'] !== null) {
             $validated['kode_kelas'] = strtoupper(trim((string) $validated['kode_kelas']));
