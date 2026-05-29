@@ -11,6 +11,7 @@ use App\Models\PpdbBerkas;
 use App\Models\PpdbPendaftar;
 use App\Models\PpdbTesKonfigurasi;
 use App\Models\PembayaranSpp;
+use App\Models\PpdbPeriod;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -115,6 +116,19 @@ class AuthController extends Controller
 
     public function registerPpdb(Request $request)
     {
+        $activePeriod = PpdbPeriod::sedangBerlangsung()->first();
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'Pendaftaran PPDB saat ini sedang ditutup atau belum dibuka.',
+            ], 422);
+        }
+
+        if ($activePeriod->isKuotaPenuh()) {
+            return response()->json([
+                'message' => 'Kuota pendaftaran untuk gelombang saat ini sudah penuh.',
+            ], 422);
+        }
+
         if (!$request->filled('email_ppdb') && $request->filled('email')) {
             $request->merge(['email_ppdb' => $request->email]);
         }
@@ -308,7 +322,7 @@ class AuthController extends Controller
         }
 
         $this->ensurePpdbAdministrasiTagihan($pendaftar);
-        $pendaftar->load(['tes', 'verifikasi']);
+        $pendaftar->load(['tes', 'verifikasi', 'period']);
 
         return response()->json([
             'message' => 'Dashboard pendaftar berhasil dimuat.',
@@ -350,6 +364,8 @@ class AuthController extends Controller
                     'status_verifikasi' => $pendaftar->status_verifikasi,
                     'tanggal_daftar' => $pendaftar->tanggal_daftar,
                     'tanggal_pengumuman' => $this->resolveTanggalPengumuman($pendaftar),
+                    'nama_gelombang' => $pendaftar->period?->nama_gelombang ?: 'Gelombang Umum',
+                    'tahun_ajaran' => $pendaftar->period?->tahun_ajaran ?: '2026/2027',
                 ],
                 'flow' => $this->buildPpdbFlowState($pendaftar),
             ],
@@ -1169,8 +1185,11 @@ class AuthController extends Controller
             $namaDraft = $email !== '' ? explode('@', $email)[0] : 'Calon Peserta';
         }
 
+        $activePeriod = PpdbPeriod::sedangBerlangsung()->first();
+
         $pendaftar = new PpdbPendaftar([
             'id_akun' => $akun->id_akun,
+            'ppdb_period_id' => $activePeriod ? $activePeriod->id : null,
             'no_pendaftaran' => $noPendaftaran,
             'no_pendaftaran_final' => $noPendaftaranFinal,
             'nama_calon' => $namaDraft,
@@ -1451,6 +1470,57 @@ class AuthController extends Controller
         return response()->json([
             'user' => $user,
             'role' => $guard
+        ]);
+    }
+
+    public function forgotPasswordPpdb(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:akun_pendaftar,email',
+        ]);
+
+        $user = AkunPendaftar::where('email', $request->email)->firstOrFail();
+
+        $otpService = app(\App\Support\OtpService::class);
+        $otpService->generateAndSend((string) $user->id_akun, 'ppdb_reset', $user->email);
+
+        $otp = \App\Models\OtpToken::where('identifier', (string) $user->id_akun)
+            ->where('guard', 'ppdb_reset')
+            ->where('sudah_digunakan', false)
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json([
+            'message' => 'Kode reset kata sandi telah dikirim.',
+            'otp_code' => $otp ? $otp->kode : null,
+        ]);
+    }
+
+    public function resetPasswordPpdb(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:akun_pendaftar,email',
+            'otp' => 'required|string|size:6',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user = AkunPendaftar::where('email', $request->email)->firstOrFail();
+
+        $otpService = app(\App\Support\OtpService::class);
+        $valid = $otpService->verify((string) $user->id_akun, 'ppdb_reset', $request->otp);
+
+        if (!$valid) {
+            return response()->json([
+                'message' => 'Kode OTP tidak valid atau sudah kadaluarsa.',
+            ], 422);
+        }
+
+        $user->update([
+            'password_hash' => Hash::make($request->password),
+        ]);
+
+        return response()->json([
+            'message' => 'Kata sandi berhasil diperbarui. Silakan login kembali.',
         ]);
     }
 }

@@ -41,6 +41,7 @@ class DataSantriController extends Controller
             ->where('is_deleted', false)
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('jenis_kelamin'), fn($q) => $q->where('jenis_kelamin', strtoupper($request->jenis_kelamin)))
             ->when($request->filled('kode_unit') || $request->filled('tahun_ajaran'), function ($q) use ($request) {
                 $q->whereHas('kelas', function ($kelasQuery) use ($request) {
                     $kelasQuery
