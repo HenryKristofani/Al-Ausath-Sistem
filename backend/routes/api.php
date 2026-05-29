@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\Administrasi\SppSettingController;
 use App\Http\Controllers\Api\Administrasi\PengumumanController;
 use App\Http\Controllers\Api\Administrasi\PembayaranController;
 use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
+use App\Http\Controllers\Api\Administrasi\PpdbPeriodController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -49,6 +50,9 @@ Route::prefix('ppdb')->group(function () {
     Route::post('/pendaftaran/create-identitas', [AuthController::class, 'createIdentitasPendaftaranPpdb']);
     Route::get('/nomor/preview', [AuthController::class, 'previewNoPendaftaran']);
     Route::get('/pengumuman/rekap', [AuthController::class, 'rekapPengumumanPpdb']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPasswordPpdb']);
+    Route::post('/reset-password', [AuthController::class, 'resetPasswordPpdb']);
+    Route::get('/period/check-open', [\App\Http\Controllers\Api\Administrasi\PpdbPeriodController::class, 'checkPpdbOpen']);
 });
 
 // Public route untuk landing page — tanpa auth
@@ -304,6 +308,13 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
 
         Route::get('/tes/konfigurasi', [PpdbTesKonfigurasiController::class, 'index']);
         Route::put('/tes/konfigurasi/{jenjang}', [PpdbTesKonfigurasiController::class, 'update']);
+
+        Route::get('/periods/statistik', [PpdbPeriodController::class, 'statistik']);
+        Route::get('/periods', [PpdbPeriodController::class, 'index']);
+        Route::post('/periods', [PpdbPeriodController::class, 'store']);
+        Route::get('/periods/{id}', [PpdbPeriodController::class, 'show']);
+        Route::put('/periods/{id}', [PpdbPeriodController::class, 'update']);
+        Route::delete('/periods/{id}', [PpdbPeriodController::class, 'destroy']);
     });
 
     Route::prefix('pengumuman')->group(function () {

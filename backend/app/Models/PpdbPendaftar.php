@@ -13,6 +13,7 @@ class PpdbPendaftar extends Model
 
         protected $fillable = [
         'id_akun',
+        'ppdb_period_id',
         'id_santri',
         'no_pendaftaran',
         'no_pendaftaran_final',
@@ -57,6 +58,11 @@ class PpdbPendaftar extends Model
         'is_luar_kota' => 'boolean',
         'surat_pernyataan_setuju' => 'boolean',
     ];
+
+    public function period()
+    {
+        return $this->belongsTo(PpdbPeriod::class, 'ppdb_period_id');
+    }
 
     public function akun()
     {
