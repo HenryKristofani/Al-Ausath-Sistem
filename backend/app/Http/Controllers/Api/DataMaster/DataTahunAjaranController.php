@@ -136,14 +136,39 @@ class DataTahunAjaranController extends Controller
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
             if ($validated['status'] === 'NONAKTIF') {
-                $hasActiveKelas = \App\Models\DataKelas::where('tahun_ajaran', $tahun->kode_tahun)
+                $activeKelasIds = \App\Models\DataKelas::where('tahun_ajaran', $tahun->kode_tahun)
                     ->where('is_deleted', false)
                     ->where('status', 'AKTIF')
-                    ->exists();
-                if ($hasActiveKelas) {
-                    return response()->json([
-                        'message' => 'Tidak dapat menonaktifkan tahun ajaran karena masih digunakan oleh kelas aktif.',
-                    ], 422);
+                    ->pluck('kode_kelas');
+
+                if ($activeKelasIds->isNotEmpty()) {
+                    // Cek apakah ada santri aktif di kelas-kelas tersebut
+                    $hasActiveSantri = \App\Models\DataSantri::whereIn('kode_kelas', $activeKelasIds)
+                        ->where('is_deleted', false)
+                        ->where('status', 'AKTIF')
+                        ->exists();
+
+                    if ($hasActiveSantri) {
+                        return response()->json([
+                            'message' => 'Tidak dapat menonaktifkan tahun ajaran karena ada kelas yang masih memiliki santri aktif.',
+                        ], 422);
+                    }
+
+                    // Jika tidak ada santri aktif, auto-nonaktifkan kelas-kelas tersebut
+                    \App\Models\DataKelas::whereIn('kode_kelas', $activeKelasIds)
+                        ->update(['status' => 'NONAKTIF']);
+
+                    // Cascading ke Kelas Mapel dan Jadwal Pembelajaran
+                    $kelasMapelIds = \App\Models\DataKelasMapel::whereIn('kode_kelas', $activeKelasIds)
+                        ->pluck('id_kelas_mapel');
+
+                    if ($kelasMapelIds->isNotEmpty()) {
+                        \App\Models\DataKelasMapel::whereIn('id_kelas_mapel', $kelasMapelIds)
+                            ->update(['status' => 'NONAKTIF']);
+
+                        \App\Models\JadwalPembelajaran::whereIn('id_kelas_mapel', $kelasMapelIds)
+                            ->update(['status' => 'NONAKTIF']);
+                    }
                 }
             }
         }

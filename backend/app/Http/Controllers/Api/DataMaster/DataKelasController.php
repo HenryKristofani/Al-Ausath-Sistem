@@ -100,6 +100,16 @@ class DataKelasController extends Controller
         if (array_key_exists('status', $validated) && $validated['status'] !== null) {
             $validated['status'] = strtoupper($validated['status']);
         }
+        
+        $statusToCheck = $validated['status'] ?? 'AKTIF';
+        if ($statusToCheck === 'AKTIF') {
+            $tahunAjaran = \App\Models\DataTahunAjaran::where('kode_tahun', $validated['tahun_ajaran'])->first();
+            if ($tahunAjaran && strtoupper($tahunAjaran->status) === 'NONAKTIF') {
+                return response()->json([
+                    'message' => 'Tidak dapat membuat atau mengaktifkan kelas karena Tahun Ajaran yang dipilih berstatus NONAKTIF.',
+                ], 422);
+            }
+        }
 
         if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
             $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
@@ -215,6 +225,18 @@ class DataKelasController extends Controller
 
         if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
             $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
+        }
+
+        $finalStatus = $validated['status'] ?? $kelas->status;
+        $finalTahunAjaran = $validated['tahun_ajaran'] ?? $kelas->tahun_ajaran;
+        
+        if (strtoupper($finalStatus) === 'AKTIF') {
+            $tahunAjaranObj = \App\Models\DataTahunAjaran::where('kode_tahun', $finalTahunAjaran)->first();
+            if ($tahunAjaranObj && strtoupper($tahunAjaranObj->status) === 'NONAKTIF') {
+                return response()->json([
+                    'message' => 'Tidak dapat mengaktifkan kelas atau memindahkan kelas ke Tahun Ajaran yang berstatus NONAKTIF.',
+                ], 422);
+            }
         }
 
         DB::transaction(function () use ($kelas, $validated) {

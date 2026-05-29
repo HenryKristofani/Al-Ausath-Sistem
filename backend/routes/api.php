@@ -131,6 +131,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/raport/self', [RaportPdfController::class, 'selfShow']);
         Route::get('/raport/self/pdf', [RaportPdfController::class, 'selfDownload']);
 
+        Route::prefix('data-master')->group(function () {
+            Route::get('/init', [\App\Http\Controllers\Api\DataMaster\DataMasterInitController::class, 'initOptions']);
+        });
+
         Route::prefix('santri')->group(function () {
             Route::get('/', [DataSantriController::class, 'index']);
             Route::post('/', [DataSantriController::class, 'store']);
@@ -238,6 +242,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/aktif', [SesiAbsensiController::class, 'aktif']);
             Route::post('/admin/buka-sesi', [AdminSesiAbsensiController::class, 'bukaSesi']);
             Route::get('/admin/belum-diabsen', [AdminSesiAbsensiController::class, 'belumDiabsen']);
+            Route::get('/admin/log-aktivitas', [AdminSesiAbsensiController::class, 'getLogAktivitas']);
+            Route::get('/admin/presensi-guru/init', [AdminSesiAbsensiController::class, 'presensiGuruInit']);
+            Route::get('/admin/presensi-santri/init', [AdminSesiAbsensiController::class, 'presensiSantriInit']);
+            Route::get('/guru-panel/init', [AdminSesiAbsensiController::class, 'guruPanelInit']);
             
             Route::get('/rekap/santri', [RekapAbsensiController::class, 'rekapSantri']);
             Route::get('/rekap/santri/export', [RekapAbsensiController::class, 'exportSantri']);
