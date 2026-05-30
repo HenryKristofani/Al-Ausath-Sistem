@@ -146,6 +146,21 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/init', [\App\Http\Controllers\Api\DataMaster\DataMasterInitController::class, 'initOptions']);
         });
 
+        Route::prefix('ekskul')->group(function () {
+            Route::post('/pendaftaran', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'storePendaftaran']);
+            Route::put('/pendaftaran/{id}', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'updatePendaftaran']);
+            Route::delete('/pendaftaran/{id}', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'destroyPendaftaran']);
+
+            Route::get('/rekap', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'rekap']);
+            Route::get('/pilihan-saya', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'pilihanSaya']);
+            Route::post('/daftar', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'daftar']);
+            Route::delete('/batal', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'batal']);
+            Route::get('/', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'index']);
+            Route::post('/', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'store']);
+            Route::put('/{id}', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'update']);
+            Route::delete('/{id}', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'destroy']);
+        });
+
         Route::prefix('santri')->group(function () {
             Route::get('/', [DataSantriController::class, 'index']);
             Route::post('/', [DataSantriController::class, 'store']);
