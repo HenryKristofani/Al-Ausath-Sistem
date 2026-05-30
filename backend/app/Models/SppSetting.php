@@ -11,22 +11,20 @@ class SppSetting extends Model
 
     public $timestamps = false;
 
-    protected $fillable = [
+        protected $fillable = [
         'id_unit',
         'id_santri',
-        'id_golongan_spp',
+            'id_golongan_spp',
         'kode_kelas',
         'jenjang',
         'kategori_tagihan_id',
         'jumlah',
         'periode',
         'keterangan',
-        'aktif', // Add this to fillables
     ];
 
-    protected $casts = [
+        protected $casts = [
         'jumlah' => 'decimal:2',
-        'aktif' => 'boolean',  // Add this cast
     ];
 
     public function unit()
