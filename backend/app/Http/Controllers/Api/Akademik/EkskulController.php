@@ -345,15 +345,17 @@ class EkskulController extends Controller
             return response()->json(['message' => 'Kuota ekskul ini sudah penuh.'], 422);
         }
 
-        // Cek apakah santri sudah punya pilihan (akan di-replace)
-        $existing = PendaftaranEkskul::where('id_santri', $idSantri)->first();
+        // Cek apakah santri sudah punya pilihan — HARUS batalkan dulu
+        $existing = PendaftaranEkskul::with('ekskul:id_ekskul,nama_ekskul')
+            ->where('id_santri', $idSantri)->first();
 
         if ($existing) {
-            // Santri mengganti pilihan — hapus yang lama dulu
-            if ($existing->id_ekskul === $request->id_ekskul) {
+            if ($existing->id_ekskul === (int) $request->id_ekskul) {
                 return response()->json(['message' => 'Kamu sudah terdaftar di ekskul ini.'], 422);
             }
-            $existing->delete();
+            return response()->json([
+                'message' => "Kamu sudah terdaftar di ekskul \"{$existing->ekskul?->nama_ekskul}\". Batalkan pilihan tersebut terlebih dahulu sebelum memilih ekskul lain.",
+            ], 422);
         }
 
         $pendaftaran = PendaftaranEkskul::create([
@@ -373,7 +375,7 @@ class EkskulController extends Controller
     }
 
     /**
-     * DELETE /api/akademik/ekskul/batal
+     * POST /api/akademik/ekskul/batal
      * Santri membatalkan pilihan ekskul.
      */
     public function batal(Request $request): JsonResponse
@@ -385,15 +387,11 @@ class EkskulController extends Controller
             return response()->json(['message' => 'Akun santri tidak ditemukan.'], 403);
         }
 
-        $pendaftaran = PendaftaranEkskul::with('ekskul:id_ekskul,status_pendaftaran,nama_ekskul')
+        $pendaftaran = PendaftaranEkskul::with('ekskul:id_ekskul,nama_ekskul')
             ->where('id_santri', $idSantri)->first();
 
         if (!$pendaftaran) {
             return response()->json(['message' => 'Kamu belum terdaftar di ekskul manapun.'], 404);
-        }
-
-        if (strtoupper($pendaftaran->ekskul->status_pendaftaran ?? '') !== 'BUKA') {
-            return response()->json(['message' => 'Tidak dapat membatalkan pilihan karena pendaftaran sudah ditutup.'], 422);
         }
 
         $namaEkskul = $pendaftaran->ekskul->nama_ekskul;

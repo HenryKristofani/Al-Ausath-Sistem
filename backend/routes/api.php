@@ -154,7 +154,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/rekap', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'rekap']);
             Route::get('/pilihan-saya', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'pilihanSaya']);
             Route::post('/daftar', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'daftar']);
-            Route::delete('/batal', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'batal']);
+            Route::post('/batal', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'batal']);
             Route::get('/', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'index']);
             Route::post('/', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'store']);
             Route::put('/{id}', [\App\Http\Controllers\Api\Akademik\EkskulController::class, 'update']);
