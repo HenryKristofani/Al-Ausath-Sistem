@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\Administrasi\PengumumanController;
 use App\Http\Controllers\Api\Administrasi\PembayaranController;
 use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
 use App\Http\Controllers\Api\Administrasi\PpdbPeriodController;
+use App\Http\Controllers\Api\ProfileController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -62,6 +63,10 @@ Route::get('/pengumuman/{id}', [PengumumanController::class, 'showPublic']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    
+    // Profile
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
+    Route::put('/profile/biodata', [ProfileController::class, 'updateBiodata']);
     // Notifications
     Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
     Route::patch('/notifications/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);

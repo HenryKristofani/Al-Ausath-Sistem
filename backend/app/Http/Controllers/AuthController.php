@@ -1458,10 +1458,12 @@ class AuthController extends Controller
                     'id_santri' => $user->santri->id_santri ?? null,
                     'nama_lengkap' => $user->nama_lengkap,
                     'email' => $user->alamat_email,
+                    'nomor_telepon' => $user->nomor_telepon,
                     'nomor_induk' => $user->nomor_induk,
                     'nama_unit' => $user->nama_unit,
-                    'nama_kelas' => $user->nama_kelas,
+                    'nama_kelas' => $user->santri?->kelas?->nama_kelas ?? $user->nama_kelas,
                     'tahun_ajaran' => $user->tahun_ajaran,
+                    'jenis_kelamin' => $user->santri->jenis_kelamin ?? null,
                 ],
                 'role' => $guard
             ]);
