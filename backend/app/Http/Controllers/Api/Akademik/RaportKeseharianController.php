@@ -34,6 +34,10 @@ class RaportKeseharianController extends Controller
                 'kebersihan' => $raport?->keseharian_kebersihan,
                 'kerapian' => $raport?->keseharian_kerapian,
                 'keterampilan' => $raport?->keseharian_keterampilan,
+                'kelakuan' => $raport?->keseharian_kelakuan,
+                'kerajinan' => $raport?->keseharian_kerajinan,
+                'kedisiplinan' => $raport?->keseharian_kedisiplinan,
+                'ketaatan' => $raport?->keseharian_ketaatan,
             ],
         ]);
     }
@@ -51,6 +55,10 @@ class RaportKeseharianController extends Controller
             'kebersihan' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
             'kerapian' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
             'keterampilan' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
+            'kelakuan' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
+            'kerajinan' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
+            'kedisiplinan' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
+            'ketaatan' => ['required', 'string', 'size:1', 'in:A,B,C,D'],
             'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
         ]);
 
@@ -65,6 +73,10 @@ class RaportKeseharianController extends Controller
                 'keseharian_kebersihan' => strtoupper($validated['kebersihan']),
                 'keseharian_kerapian' => strtoupper($validated['kerapian']),
                 'keseharian_keterampilan' => strtoupper($validated['keterampilan']),
+                'keseharian_kelakuan' => strtoupper($validated['kelakuan']),
+                'keseharian_kerajinan' => strtoupper($validated['kerajinan']),
+                'keseharian_kedisiplinan' => strtoupper($validated['kedisiplinan']),
+                'keseharian_ketaatan' => strtoupper($validated['ketaatan']),
                 'id_wali_kelas' => $validated['id_wali_kelas'] ?? null,
             ]
         );
