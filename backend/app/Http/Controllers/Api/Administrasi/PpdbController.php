@@ -125,7 +125,13 @@ class PpdbController extends Controller
         $statusFilter = mb_strtolower(trim((string) $request->query('status_verifikasi', 'diterima')));
 
         $query = PpdbPendaftar::query()
-            ->when($request->filled('jenjang'), fn ($q) => $q->where('jenjang', $request->query('jenjang')))
+            ->when($request->filled('jenjang'), function ($q) use ($request) {
+                $jenjang = $request->query('jenjang');
+                $q->where(function ($sub) use ($jenjang) {
+                    $sub->where('jenjang', $jenjang)
+                        ->orWhere('program_pendaftaran', $jenjang);
+                });
+            })
             ->when($request->filled('tahun_masuk'), function ($q) use ($request) {
                 $tahunMasuk = (int) $request->query('tahun_masuk');
                 if ($tahunMasuk > 0) {
@@ -154,27 +160,14 @@ class PpdbController extends Controller
         }
 
         $headers = [
-            'ID Pendaftaran',
-            'Waktu Pendaftaran',
-            'No Pendaftaran',
-            'No Pendaftaran Final',
             'Nomor Induk',
-            'Nama Calon',
-            'Program',
-            'Jenjang',
+            'Nama Lengkap',
             'Jenis Kelamin',
             'Tempat Lahir',
             'Tanggal Lahir',
-            'NIK',
             'Alamat Lengkap',
-            'Nama Ayah',
-            'No HP Ayah/Calon',
-            'Nama Ibu',
-            'No HP Ibu',
-            'Status Verifikasi',
-            'Tanggal Daftar',
-            'Tanggal Pengumuman',
-            'Tanggal Diterima',
+            'Asal Sekolah',
+            'Jenjang',
         ];
 
         return response()->streamDownload(function () use ($query, $headers) {
@@ -185,34 +178,23 @@ class PpdbController extends Controller
             
             fputcsv($output, $headers);
 
-            $query->orderByDesc('id_pendaftaran')->chunk(500, function ($rows) use ($output) {
-                foreach ($rows as $row) {
-                    fputcsv($output, [
-                        $row->id_pendaftaran,
-                        optional($row->waktu_pendaftaran)->format('Y-m-d H:i:s')
-                            ?? optional($row->created_at)->format('Y-m-d H:i:s'),
-                        $row->no_pendaftaran,
-                        $row->no_pendaftaran_final,
-                        $row->nomor_induk_generated,
-                        $row->nama_calon,
-                        $row->program_pendaftaran,
-                        $row->jenjang,
-                        $row->jenis_kelamin,
-                        $row->tempat_lahir,
-                        optional($row->tanggal_lahir)->format('Y-m-d'),
-                        $row->nik_calon_santri,
-                        $row->alamat_lengkap,
-                        $row->nama_ayah,
-                        $row->no_hp_calon,
-                        $row->nama_ibu,
-                        $row->no_hp_ibu,
-                        $row->status_verifikasi,
-                        optional($row->tanggal_daftar)->format('Y-m-d'),
-                        optional($row->tanggal_pengumuman)->format('Y-m-d'),
-                        optional($row->tanggal_diterima)->format('Y-m-d'),
-                    ]);
-                }
-            });
+            $query->orderBy('jenjang')
+                ->orderBy('nomor_induk_generated')
+                ->orderBy('nama_calon')
+                ->chunk(500, function ($rows) use ($output) {
+                    foreach ($rows as $row) {
+                        fputcsv($output, [
+                            $row->nomor_induk_generated,
+                            $row->nama_calon,
+                            $row->jenis_kelamin,
+                            $row->tempat_lahir,
+                            optional($row->tanggal_lahir)->format('Y-m-d'),
+                            $row->alamat_lengkap,
+                            $row->asal_kota,
+                            $row->jenjang ?: $row->program_pendaftaran,
+                        ]);
+                    }
+                });
 
             fclose($output);
         }, 'ppdb-' . $statusLabel . '-' . now()->format('Ymd_His') . '.csv', [

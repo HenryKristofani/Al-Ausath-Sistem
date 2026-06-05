@@ -86,28 +86,8 @@ class PpdbRegistrationNumberService
 
     public function generateNomorIndukFromPendaftaran(PpdbPendaftar $pendaftar): string
     {
-        $tanggal = $pendaftar->tanggal_daftar
-            ? Carbon::parse($pendaftar->tanggal_daftar)
-            : now();
-
-        $counterPart = $this->extractCounterFromRegistration($pendaftar->no_pendaftaran);
-        $suffixPart = $this->extractSuffixFromFinalRegistration($pendaftar->no_pendaftaran_final);
-
-        $base = 'NIS'
-            . $tanggal->format('ymd')
-            . str_pad((string) $counterPart, 4, '0', STR_PAD_LEFT)
-            . $suffixPart;
-
-        $candidate = mb_substr($base, 0, 20);
-        $attempt = 0;
-
-        while ($this->isNomorIndukUsed($candidate, $pendaftar->id_pendaftaran)) {
-            $attempt++;
-            $tail = str_pad((string) $attempt, 2, '0', STR_PAD_LEFT);
-            $candidate = mb_substr($base, 0, max(20 - mb_strlen($tail), 1)) . $tail;
-        }
-
-        return $candidate;
+        $tahun = (int) ($pendaftar->tanggal_daftar ? Carbon::parse($pendaftar->tanggal_daftar)->format('Y') : now()->format('Y'));
+        return $this->generateNomorIndukAfterPayment($pendaftar, $tahun);
     }
 
     public function generateNomorIndukAfterPayment(PpdbPendaftar $pendaftar, ?int $tahunMasuk = null): string
@@ -115,13 +95,12 @@ class PpdbRegistrationNumberService
         $tahun = $tahunMasuk
             ?: (int) ($pendaftar->tanggal_daftar ? Carbon::parse($pendaftar->tanggal_daftar)->format('Y') : now()->format('Y'));
 
-        $segmentJenjang = $this->normalizeJenjangSegment($pendaftar->jenjang ?: $pendaftar->program_pendaftaran);
-        $prefix = $segmentJenjang . '/' . $tahun;
+        $kodeJenjang = $this->jenjangToKode($pendaftar->jenjang ?: $pendaftar->program_pendaftaran);
+        $tahunStr = (string) $tahun;   // 4 digit, e.g. 2026
 
         $counter = 1;
-
-        while ($counter <= 9999) {
-            $candidate = $prefix . '/' . str_pad((string) $counter, 3, '0', STR_PAD_LEFT);
+        while ($counter <= 999) {
+            $candidate = $kodeJenjang . $tahunStr . str_pad((string) $counter, 2, '0', STR_PAD_LEFT);
 
             if (!$this->isNomorIndukUsed($candidate, $pendaftar->id_pendaftaran)) {
                 return $candidate;
@@ -200,8 +179,14 @@ class PpdbRegistrationNumberService
             'paud5' => 'PAUD5',
             'paud 5' => 'PAUD5',
             'sd' => 'SD',
+            'mi' => 'MI',
+            'madrasah ibtidaiyah' => 'MI',
             'smp' => 'SMP',
+            'mts' => 'MTS',
+            'madrasah tsanawiyah' => 'MTS',
             'sma' => 'SMA',
+            'ma' => 'MA',
+            'madrasah aliyah' => 'MA',
         ];
 
         if (isset($map[$raw])) {
@@ -231,5 +216,42 @@ class PpdbRegistrationNumberService
             ->where('nomor_induk_generated', $nomorInduk)
             ->when($idPendaftaran, fn ($q) => $q->where('id_pendaftaran', '!=', $idPendaftaran))
             ->exists();
+    }
+
+    /**
+     * Map jenjang name → single-digit numeric code for NIS prefix.
+     * Format: {kode}{YYYY}{NN}  e.g. 2202601 = TK / 2026 / 01
+     *   1 = PAUD
+     *   2 = TK
+     *   3 = SD / MI
+     *   4 = SMP / MTs
+     *   5 = SMA / MA
+     */
+    private function jenjangToKode(?string $jenjang): string
+    {
+        $raw = mb_strtolower(trim((string) $jenjang));
+
+        $map = [
+            'paud'                  => '1',
+            'paud1'                 => '1',
+            'paud2'                 => '1',
+            'paud3'                 => '1',
+            'paud4'                 => '1',
+            'paud5'                 => '1',
+            'tk'                    => '2',
+            'taman kanak-kanak'     => '2',
+            'taman kanak kanak'     => '2',
+            'sd'                    => '3',
+            'mi'                    => '3',
+            'madrasah ibtidaiyah'   => '3',
+            'smp'                   => '4',
+            'mts'                   => '4',
+            'madrasah tsanawiyah'   => '4',
+            'sma'                   => '5',
+            'ma'                    => '5',
+            'madrasah aliyah'       => '5',
+        ];
+
+        return $map[$raw] ?? '0';
     }
 }

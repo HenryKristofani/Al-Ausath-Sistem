@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Support\PpdbRegistrationNumberService;
+use App\Support\KwitansiPdfGenerator;
 
 class PembayaranSppController extends Controller
 {
@@ -35,7 +36,7 @@ class PembayaranSppController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = PembayaranSpp::query()
-            ->with(['santri', 'setting', 'rekening', 'pendaftarPpdb', 'kwitansi'])
+            ->with(['santri', 'setting', 'pendaftarPpdb', 'kwitansi'])
             ->when($request->filled('id_pendaftaran'), fn ($q) => $q->where('id_pendaftaran', $request->id_pendaftaran))
             ->when($request->filled('id_santri'), fn ($q) => $q->where('id_santri', $request->id_santri))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
@@ -110,7 +111,7 @@ class PembayaranSppController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = PembayaranSpp::with(['santri', 'setting', 'rekening'])->findOrFail($id);
+        $data = PembayaranSpp::with(['santri', 'setting'])->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -166,7 +167,7 @@ class PembayaranSppController extends Controller
 
         return response()->json([
             'message' => 'Pembayaran SPP berhasil diperbarui.',
-            'data' => $pembayaran->fresh(['santri', 'setting', 'rekening', 'pendaftarPpdb', 'kwitansi']),
+            'data' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
         ]);
     }
 
@@ -209,10 +210,12 @@ class PembayaranSppController extends Controller
                         'file_path_pdf' => 'kwitansi/spp/' . $pembayaran->id_pembayaran . '/kwitansi-' . $pembayaran->id_pembayaran . '.pdf',
                     ]
                 );
+
+                $this->ensureKwitansiPdfFile($pembayaran, $kwitansi);
             }
 
             return [
-                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'rekening', 'pendaftarPpdb', 'kwitansi']),
+                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
                 'kwitansi' => $kwitansi,
                 'integrasi_ppdb' => $integrasi,
             ];
@@ -449,5 +452,187 @@ class PembayaranSppController extends Controller
                 'password_default' => $passwordDefault,
             ],
         ];
+    }
+
+    /**
+     * Update status verifikasi pembayaran (untuk unified endpoint PUT /api/administrasi/pembayaran/{id}/status).
+     */
+    public function updateStatusVerifikasi(Request $request, int $id): JsonResponse
+    {
+        $pembayaran = PembayaranSpp::findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => ['required', 'string'],
+            'keterangan' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $statusMapped = match (strtolower(trim($validated['status']))) {
+            'lunas', 'terverifikasi' => 'terverifikasi',
+            'dibatalkan', 'ditolak', 'batal' => 'ditolak',
+            'menunggu_konfirmasi', 'menunggu_verifikasi' => 'menunggu_verifikasi',
+            'menunggu_pembayaran', 'pending' => 'menunggu_pembayaran',
+            default => $validated['status'],
+        };
+
+        $result = DB::transaction(function () use ($pembayaran, $statusMapped, $validated) {
+            $user = auth()->user();
+            $idPetugas = ($user instanceof \App\Models\DataPetugas) ? $user->id_petugas : null;
+            
+            $pembayaran->update([
+                'status' => $statusMapped,
+                'id_petugas_verifikator' => $idPetugas ?? $pembayaran->id_petugas_verifikator,
+                'tanggal_verifikasi' => now(),
+                'catatan_bayar' => $validated['keterangan'] ?? $pembayaran->catatan_bayar,
+            ]);
+
+            $integrasi = null;
+            $kwitansi = $pembayaran->kwitansi;
+
+            if ($statusMapped === 'terverifikasi') {
+                $integrasi = $this->integrasikanPembayaranTerverifikasi($pembayaran);
+
+                $kwitansi = KwitansiPdf::firstOrCreate(
+                    ['id_pembayaran' => $pembayaran->id_pembayaran],
+                    [
+                        'id_petugas' => $idPetugas ?? null,
+                        'jenis' => 'spp',
+                        'jumlah' => $pembayaran->nominal_bayar,
+                        'file_path_pdf' => 'kwitansi/spp/' . $pembayaran->id_pembayaran . '/kwitansi-' . $pembayaran->id_pembayaran . '.pdf',
+                    ]
+                );
+
+                $this->ensureKwitansiPdfFile($pembayaran, $kwitansi);
+            }
+
+            return [
+                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
+                'kwitansi' => $kwitansi,
+                'integrasi_ppdb' => $integrasi,
+            ];
+        });
+
+        // Map status for frontend
+        $statusFE = match ($result['pembayaran']->status) {
+            'menunggu_verifikasi' => 'menunggu_konfirmasi',
+            'terverifikasi' => 'lunas',
+            'ditolak' => 'dibatalkan',
+            default => $result['pembayaran']->status,
+        };
+
+        $statusLabel = match ($statusFE) {
+            'menunggu_pembayaran' => 'Menunggu Pembayaran',
+            'menunggu_konfirmasi' => 'Menunggu Konfirmasi',
+            'dibatalkan' => 'Dibatalkan',
+            'lunas' => 'Lunas',
+            default => ucfirst(str_replace('_', ' ', $result['pembayaran']->status)),
+        };
+
+        return response()->json([
+            'message' => 'Status pembayaran berhasil diperbarui.',
+            'data' => [
+                'id_pembayaran' => $result['pembayaran']->id_pembayaran,
+                'status' => $statusFE,
+                'status_label' => $statusLabel,
+                'pembayaran' => $result['pembayaran'],
+                'integrasi_ppdb' => $result['integrasi_ppdb'],
+            ]
+        ]);
+    }
+
+    /**
+     * Download PDF Kwitansi Pembayaran SPP/PPDB.
+     */
+    public function downloadKwitansi(int $id): mixed
+    {
+        $pembayaran = PembayaranSpp::with(['santri.kelas.unit', 'pendaftarPpdb.akun', 'setting', 'kwitansi'])->findOrFail($id);
+
+        $kwitansi = $pembayaran->kwitansi;
+
+        if (!$kwitansi) {
+            $user = auth()->user();
+            $idPetugas = ($user instanceof \App\Models\DataPetugas) ? $user->id_petugas : null;
+            
+            $kwitansi = KwitansiPdf::create([
+                'id_pembayaran' => $pembayaran->id_pembayaran,
+                'id_petugas' => $idPetugas ?? $pembayaran->id_petugas_verifikator ?? null,
+                'jenis' => 'spp',
+                'jumlah' => $pembayaran->nominal_bayar,
+                'file_path_pdf' => 'kwitansi/spp/' . $pembayaran->id_pembayaran . '/kwitansi-' . $pembayaran->id_pembayaran . '.pdf',
+            ]);
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
+        if (!$disk->exists((string) $kwitansi->file_path_pdf)) {
+            $this->ensureKwitansiPdfFile($pembayaran, $kwitansi);
+        }
+
+        return response()->download($disk->path((string) $kwitansi->file_path_pdf));
+    }
+
+    /**
+     * Helper to generate/ensure receipt PDF exists on disk.
+     */
+    private function ensureKwitansiPdfFile(PembayaranSpp $pembayaran, KwitansiPdf $kwitansi): string
+    {
+        $santri = $pembayaran->santri;
+        $pendaftar = $pembayaran->pendaftarPpdb;
+
+        $nama = $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon ?? '-';
+        $nomorInduk = $santri?->nomor_induk
+            ?? $pendaftar?->nomor_induk_generated
+            ?? $pendaftar?->no_pendaftaran_final
+            ?? $pendaftar?->no_pendaftaran
+            ?? '-';
+
+        $kelas = $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima ?? '-';
+        $unit = $santri?->kelas?->unit?->nama_unit
+            ?? $santri?->kelas?->kode_unit
+            ?? strtoupper((string) ($pendaftar?->jenjang ?: $pendaftar?->program_pendaftaran ?: '-'));
+
+        $namaPetugas = 'Petugas Keuangan';
+        if ($kwitansi->id_petugas) {
+            $petugas = \App\Models\DataPetugas::find($kwitansi->id_petugas);
+            if ($petugas) {
+                $namaPetugas = $petugas->nama_lengkap;
+            }
+        }
+
+        // Build rincian & periode
+        $isPpdb = !empty($pembayaran->id_pendaftaran);
+        $setting = $pembayaran->setting;
+        
+        $rincian = $pembayaran->bulan 
+            ? (($setting?->kategoriTagihan?->nama_tagihan ?: $setting?->keterangan ?: 'SPP') . ' - ' . $pembayaran->bulan) 
+            : ($setting?->kategoriTagihan?->nama_tagihan ?: $setting?->keterangan ?: ($isPpdb ? 'Tagihan PPDB' : 'Tagihan SPP'));
+        
+        if ($pembayaran->catatan_bayar) {
+            $rincian .= ' (' . $pembayaran->catatan_bayar . ')';
+        }
+
+        $payload = [
+            'title' => $isPpdb ? 'Kwitansi Pembayaran PPDB' : 'Kwitansi Pembayaran SPP',
+            'jenis' => $isPpdb ? 'PPDB' : 'SPP',
+            'nomor_kwitansi' => str_pad((string) $kwitansi->id_kwitansi, 5, '0', STR_PAD_LEFT),
+            'nomor_invoice' => '#' . str_pad((string) $pembayaran->id_pembayaran, 8, '0', STR_PAD_LEFT),
+            'tanggal' => optional($pembayaran->tanggal_bayar ?? $pembayaran->tanggal_verifikasi ?? now())->format('d/m/Y H:i'),
+            'nama' => $nama,
+            'nomor_induk' => $nomorInduk,
+            'unit' => $unit,
+            'kelas' => $kelas,
+            'bulan' => $pembayaran->bulan ?? '',
+            'periode' => $setting?->periode ?? '',
+            'rincian' => $rincian,
+            'metode' => $pembayaran->metode_bayar ?? 'Tunai',
+            'status' => 'Lunas',
+            'nominal' => 'Rp ' . number_format((float) ($pembayaran->nominal_bayar ?? 0), 0, ',', '.'),
+            'nominal_raw' => (float) ($pembayaran->nominal_bayar ?? 0),
+            'sisa_tagihan' => 'Rp 0',
+            'nama_petugas' => $namaPetugas,
+        ];
+
+        return app(KwitansiPdfGenerator::class)->generate(
+            (string) $kwitansi->file_path_pdf,
+            $payload
+        );
     }
 }
