@@ -33,9 +33,11 @@ class DataRaport extends Model
         'catatan_wali',
         'id_wali_kelas',
         'tanggal_terbit',
+        'ekstrakurikuler',
     ];
 
     protected $casts = [
         'semester' => 'integer',
+        'ekstrakurikuler' => 'array',
     ];
 }

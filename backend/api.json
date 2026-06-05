@@ -20358,6 +20358,21 @@
                                                 },
                                                 "keseharian_keterampilan": {
                                                     "type": "string"
+                                                },
+                                                "keseharian_kelakuan": {
+                                                    "type": "string"
+                                                },
+                                                "keseharian_kerajinan": {
+                                                    "type": "string"
+                                                },
+                                                "keseharian_kedisiplinan": {
+                                                    "type": "string"
+                                                },
+                                                "keseharian_ketaatan": {
+                                                    "type": "string"
+                                                },
+                                                "ekstrakurikuler": {
+                                                    "type": "string"
                                                 }
                                             },
                                             "required": [
@@ -20368,7 +20383,12 @@
                                                 "id_wali_kelas",
                                                 "keseharian_kebersihan",
                                                 "keseharian_kerapian",
-                                                "keseharian_keterampilan"
+                                                "keseharian_keterampilan",
+                                                "keseharian_kelakuan",
+                                                "keseharian_kerajinan",
+                                                "keseharian_kedisiplinan",
+                                                "keseharian_ketaatan",
+                                                "ekstrakurikuler"
                                             ]
                                         }
                                     },
@@ -20448,6 +20468,53 @@
                                             "null"
                                         ],
                                         "maxLength": 1
+                                    },
+                                    "keseharian_kelakuan": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 1
+                                    },
+                                    "keseharian_kerajinan": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 1
+                                    },
+                                    "keseharian_kedisiplinan": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 1
+                                    },
+                                    "keseharian_ketaatan": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 1
+                                    },
+                                    "ekstrakurikuler": {
+                                        "type": [
+                                            "array",
+                                            "null"
+                                        ],
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "nama": {
+                                                    "type": "string",
+                                                    "maxLength": 100
+                                                },
+                                                "nilai": {
+                                                    "type": "string",
+                                                    "maxLength": 10
+                                                }
+                                            }
+                                        }
                                     }
                                 },
                                 "required": [
@@ -24625,6 +24692,13 @@
                             "string",
                             "null"
                         ]
+                    },
+                    "ekstrakurikuler": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {}
                     }
                 },
                 "required": [
@@ -24653,7 +24727,8 @@
                     "keseharian_kelakuan",
                     "keseharian_kerajinan",
                     "keseharian_kedisiplinan",
-                    "keseharian_ketaatan"
+                    "keseharian_ketaatan",
+                    "ekstrakurikuler"
                 ],
                 "title": "DataRaport"
             },

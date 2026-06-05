@@ -36,6 +36,11 @@ class RaportCatatanWaliController extends Controller
                 'keseharian_kebersihan' => $raport?->keseharian_kebersihan,
                 'keseharian_kerapian' => $raport?->keseharian_kerapian,
                 'keseharian_keterampilan' => $raport?->keseharian_keterampilan,
+                'keseharian_kelakuan' => $raport?->keseharian_kelakuan,
+                'keseharian_kerajinan' => $raport?->keseharian_kerajinan,
+                'keseharian_kedisiplinan' => $raport?->keseharian_kedisiplinan,
+                'keseharian_ketaatan' => $raport?->keseharian_ketaatan,
+                'ekstrakurikuler' => $raport?->ekstrakurikuler,
             ],
         ]);
     }
@@ -55,6 +60,13 @@ class RaportCatatanWaliController extends Controller
             'keseharian_kebersihan' => ['nullable', 'string', 'max:1'],
             'keseharian_kerapian' => ['nullable', 'string', 'max:1'],
             'keseharian_keterampilan' => ['nullable', 'string', 'max:1'],
+            'keseharian_kelakuan' => ['nullable', 'string', 'max:1'],
+            'keseharian_kerajinan' => ['nullable', 'string', 'max:1'],
+            'keseharian_kedisiplinan' => ['nullable', 'string', 'max:1'],
+            'keseharian_ketaatan' => ['nullable', 'string', 'max:1'],
+            'ekstrakurikuler' => ['nullable', 'array'],
+            'ekstrakurikuler.*.nama' => ['required_with:ekstrakurikuler', 'string', 'max:100'],
+            'ekstrakurikuler.*.nilai' => ['required_with:ekstrakurikuler', 'string', 'max:10'],
         ]);
 
         $raport = DataRaport::updateOrCreate(
@@ -70,6 +82,11 @@ class RaportCatatanWaliController extends Controller
                 'keseharian_kebersihan' => $validated['keseharian_kebersihan'] ?? null,
                 'keseharian_kerapian' => $validated['keseharian_kerapian'] ?? null,
                 'keseharian_keterampilan' => $validated['keseharian_keterampilan'] ?? null,
+                'keseharian_kelakuan' => $validated['keseharian_kelakuan'] ?? null,
+                'keseharian_kerajinan' => $validated['keseharian_kerajinan'] ?? null,
+                'keseharian_kedisiplinan' => $validated['keseharian_kedisiplinan'] ?? null,
+                'keseharian_ketaatan' => $validated['keseharian_ketaatan'] ?? null,
+                'ekstrakurikuler' => $validated['ekstrakurikuler'] ?? null,
             ]
         );
 
