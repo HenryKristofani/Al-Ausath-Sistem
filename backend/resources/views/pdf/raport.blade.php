@@ -269,6 +269,10 @@
             </table>
         </div>
     </div>
+
+    @if ($raport->semester % 2 != 0)
+        @include('pdf.raport_page2_ganjil')
+    @endif
 </body>
 
 </html>
