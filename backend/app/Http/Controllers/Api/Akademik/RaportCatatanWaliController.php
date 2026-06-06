@@ -69,30 +69,46 @@ class RaportCatatanWaliController extends Controller
             'ekstrakurikuler.*.nilai' => ['required_with:ekstrakurikuler', 'string', 'max:10'],
         ]);
 
-        $raport = DataRaport::updateOrCreate(
+        $raport = DataRaport::query()->firstOrCreate(
             [
                 'nomor_induk' => $validated['nomor_induk'],
                 'tahun_ajaran' => $validated['tahun_ajaran'],
                 'semester' => $validated['semester'],
             ],
-            [
-                'kode_kelas' => $validated['kode_kelas'],
-                'catatan_wali' => $validated['catatan_wali'],
-                'id_wali_kelas' => $validated['id_wali_kelas'] ?? null,
-                'keseharian_kebersihan' => $validated['keseharian_kebersihan'] ?? null,
-                'keseharian_kerapian' => $validated['keseharian_kerapian'] ?? null,
-                'keseharian_keterampilan' => $validated['keseharian_keterampilan'] ?? null,
-                'keseharian_kelakuan' => $validated['keseharian_kelakuan'] ?? null,
-                'keseharian_kerajinan' => $validated['keseharian_kerajinan'] ?? null,
-                'keseharian_kedisiplinan' => $validated['keseharian_kedisiplinan'] ?? null,
-                'keseharian_ketaatan' => $validated['keseharian_ketaatan'] ?? null,
-                'ekstrakurikuler' => $validated['ekstrakurikuler'] ?? null,
-            ]
+            ['kode_kelas' => $validated['kode_kelas']]
         );
+
+        $updatePayload = [
+            'kode_kelas'  => $validated['kode_kelas'],
+            'catatan_wali' => $validated['catatan_wali'],
+            'id_wali_kelas' => $validated['id_wali_kelas'] ?? null,
+        ];
+
+        $keseharianFields = [
+            'keseharian_kebersihan',
+            'keseharian_kerapian',
+            'keseharian_keterampilan',
+            'keseharian_kelakuan',
+            'keseharian_kerajinan',
+            'keseharian_kedisiplinan',
+            'keseharian_ketaatan',
+        ];
+
+        foreach ($keseharianFields as $field) {
+            if ($request->has($field)) {
+                $updatePayload[$field] = $validated[$field] ?? null;
+            }
+        }
+
+        if ($request->has('ekstrakurikuler')) {
+            $updatePayload['ekstrakurikuler'] = $validated['ekstrakurikuler'] ?? null;
+        }
+
+        $raport->update($updatePayload);
 
         return response()->json([
             'message' => 'Catatan wali kelas berhasil disimpan.',
-            'data' => $raport,
+            'data' => $raport->fresh(),
         ]);
     }
 }
