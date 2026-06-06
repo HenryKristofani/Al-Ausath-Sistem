@@ -104,19 +104,28 @@ class AdminSesiAbsensiController extends Controller
                             $statusKehadiran
                         );
 
-                    AbsensiPengajar::query()->updateOrCreate(
-                        [
+                    $ap = AbsensiPengajar::query()
+                        ->where('id_sesi', (int) $sesi->id_sesi)
+                        ->where('id_petugas', (int) $idPetugasHadir)
+                        ->where('tanggal', $tanggal)
+                        ->first();
+
+                    $payload = [
+                        'status_kehadiran' => $statusKehadiran,
+                        'menit_terlambat' => (int) $menitTerlambat,
+                        'keterangan' => $validated['keterangan'] ?? null,
+                        'input_oleh' => (int) $admin->id_petugas,
+                    ];
+
+                    if ($ap) {
+                        $ap->update($payload);
+                    } else {
+                        AbsensiPengajar::create(array_merge([
                             'id_sesi' => (int) $sesi->id_sesi,
                             'id_petugas' => (int) $idPetugasHadir,
                             'tanggal' => $tanggal,
-                        ],
-                        [
-                            'status_kehadiran' => $statusKehadiran,
-                            'menit_terlambat' => (int) $menitTerlambat,
-                            'keterangan' => $validated['keterangan'] ?? null,
-                            'input_oleh' => (int) $admin->id_petugas,
-                        ]
-                    );
+                        ], $payload));
+                    }
                 }
 
                 return $sesi;

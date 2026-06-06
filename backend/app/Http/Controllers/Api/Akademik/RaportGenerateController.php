@@ -415,17 +415,39 @@ class RaportGenerateController extends Controller
             ->where('km.kode_kelas', $kodeKelas)
             ->where('km.tahun_ajaran', $tahunAjaran)
             ->where('km.semester', $semester)
-            ->selectRaw("SUM(CASE WHEN LOWER(a.status_kehadiran) = 'hadir' THEN 1 ELSE 0 END) as hadir")
-            ->selectRaw("SUM(CASE WHEN LOWER(a.status_kehadiran) = 'sakit' THEN 1 ELSE 0 END) as sakit")
-            ->selectRaw("SUM(CASE WHEN LOWER(a.status_kehadiran) IN ('izin','ijin') THEN 1 ELSE 0 END) as izin")
-            ->selectRaw("SUM(CASE WHEN LOWER(a.status_kehadiran) IN ('alpha','alpa','tanpa_keterangan') THEN 1 ELSE 0 END) as alpha")
-            ->first();
+            ->select('s.tanggal', 'a.status_kehadiran')
+            ->get();
+
+        $dailyStatus = [];
+        
+        foreach ($summary as $row) {
+            $date = $row->tanggal;
+            $status = strtoupper((string) $row->status_kehadiran);
+
+            if (!isset($dailyStatus[$date])) {
+                $dailyStatus[$date] = $status;
+                continue;
+            }
+
+            // Priority: ALFA > SAKIT > IZIN > HADIR
+            $current = $dailyStatus[$date];
+            
+            if ($status === 'ALFA' || $status === 'ALPA' || $status === 'TANPA_KETERANGAN') {
+                $dailyStatus[$date] = 'ALPHA';
+            } elseif ($status === 'SAKIT' && $current !== 'ALPHA') {
+                $dailyStatus[$date] = 'SAKIT';
+            } elseif (in_array($status, ['IZIN', 'IJIN']) && $current !== 'ALPHA' && $current !== 'SAKIT') {
+                $dailyStatus[$date] = 'IZIN';
+            }
+        }
+
+        $counts = array_count_values($dailyStatus);
 
         return [
-            'hadir' => (int) ($summary->hadir ?? 0),
-            'sakit' => (int) ($summary->sakit ?? 0),
-            'izin' => (int) ($summary->izin ?? 0),
-            'alpha' => (int) ($summary->alpha ?? 0),
+            'hadir' => $counts['HADIR'] ?? 0,
+            'sakit' => $counts['SAKIT'] ?? 0,
+            'izin'  => $counts['IZIN'] ?? $counts['IJIN'] ?? 0,
+            'alpha' => $counts['ALPHA'] ?? $counts['ALFA'] ?? $counts['ALPA'] ?? $counts['TANPA_KETERANGAN'] ?? 0,
         ];
     }
 

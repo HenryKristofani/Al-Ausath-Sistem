@@ -261,19 +261,28 @@ class SesiAbsensiController extends Controller
                     'HADIR'
                 );
 
-                AbsensiPengajar::query()->updateOrCreate(
-                    [
+                $ap = AbsensiPengajar::query()
+                    ->where('id_sesi', $existingSesi->id_sesi)
+                    ->where('id_petugas', (int) $petugas->id_petugas)
+                    ->where('tanggal', $tanggal)
+                    ->first();
+
+                $payload = [
+                    'status_kehadiran' => 'HADIR',
+                    'menit_terlambat' => $menitTerlambat,
+                    'keterangan' => $validated['keterangan'] ?? null,
+                    'input_oleh' => (int) $petugas->id_petugas,
+                ];
+
+                if ($ap) {
+                    $ap->update($payload);
+                } else {
+                    AbsensiPengajar::create(array_merge([
                         'id_sesi' => $existingSesi->id_sesi,
                         'id_petugas' => (int) $petugas->id_petugas,
                         'tanggal' => $tanggal,
-                    ],
-                    [
-                        'status_kehadiran' => 'HADIR',
-                        'menit_terlambat' => $menitTerlambat,
-                        'keterangan' => $validated['keterangan'] ?? null,
-                        'input_oleh' => (int) $petugas->id_petugas,
-                    ]
-                );
+                    ], $payload));
+                }
 
                 return $existingSesi;
             });
@@ -302,19 +311,28 @@ class SesiAbsensiController extends Controller
                     $statusKehadiran
                 );
 
-                AbsensiPengajar::query()->updateOrCreate(
-                    [
+                $ap = AbsensiPengajar::query()
+                    ->where('id_sesi', $sesi->id_sesi)
+                    ->where('id_petugas', (int) $petugas->id_petugas)
+                    ->where('tanggal', $tanggal)
+                    ->first();
+
+                $payload = [
+                    'status_kehadiran' => $statusKehadiran,
+                    'menit_terlambat' => $menitTerlambat,
+                    'keterangan' => $validated['keterangan'] ?? null,
+                    'input_oleh' => (int) $petugas->id_petugas,
+                ];
+
+                if ($ap) {
+                    $ap->update($payload);
+                } else {
+                    AbsensiPengajar::create(array_merge([
                         'id_sesi' => $sesi->id_sesi,
                         'id_petugas' => (int) $petugas->id_petugas,
                         'tanggal' => $tanggal,
-                    ],
-                    [
-                        'status_kehadiran' => $statusKehadiran,
-                        'menit_terlambat' => $menitTerlambat,
-                        'keterangan' => $validated['keterangan'] ?? null,
-                        'input_oleh' => (int) $petugas->id_petugas,
-                    ]
-                );
+                    ], $payload));
+                }
 
                 return $sesi;
             });
@@ -371,18 +389,27 @@ class SesiAbsensiController extends Controller
             $sesi->save();
 
             if (!empty($validated['status_kehadiran'])) {
-                AbsensiPengajar::query()->updateOrCreate(
-                    [
+                $ap = AbsensiPengajar::query()
+                    ->where('id_sesi', $sesi->id_sesi)
+                    ->where('id_petugas', (int) $petugas->id_petugas)
+                    ->where('tanggal', $sesi->tanggal)
+                    ->first();
+
+                $payload = [
+                    'status_kehadiran' => strtoupper($validated['status_kehadiran']),
+                    'keterangan' => $validated['keterangan'] ?? null,
+                    'input_oleh' => (int) $petugas->id_petugas,
+                ];
+
+                if ($ap) {
+                    $ap->update($payload);
+                } else {
+                    AbsensiPengajar::create(array_merge([
                         'id_sesi' => $sesi->id_sesi,
                         'id_petugas' => (int) $petugas->id_petugas,
                         'tanggal' => $sesi->tanggal,
-                    ],
-                    [
-                        'status_kehadiran' => strtoupper($validated['status_kehadiran']),
-                        'keterangan' => $validated['keterangan'] ?? null,
-                        'input_oleh' => (int) $petugas->id_petugas,
-                    ]
-                );
+                    ], $payload));
+                }
             }
         });
 
