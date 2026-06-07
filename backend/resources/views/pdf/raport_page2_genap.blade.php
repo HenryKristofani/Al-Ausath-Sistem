@@ -113,21 +113,15 @@
         </div>
 
         <div class="signature-wrap" style="margin-top: 10px;">
-            <table style="width: 100%; border: none;">
+            <!-- Top Section: Diberikan & Keputusan -->
+            <table style="width: 100%; border: none; margin-bottom: 20px;">
                 <tr>
-                    <td width="35%" style="border: none; padding-right: 20px;">
+                    <td width="35%" style="border: none; padding-right: 20px; vertical-align: top;">
                         <div style="margin-bottom: 2px;">Diberikan di Karanganyar</div>
                         <div style="margin-bottom: 15px;">Tanggal {{ $tanggalTerbit }}</div>
-
-                        <div class="text-center">
-                            <div>Mengetahui</div>
-                            <div>Orang Tua / Wali</div>
-                            <div class="signature-line" style="margin-top: 30px;"></div>
-                            <div style="margin-top: 5px;">( ................................... )</div>
-                        </div>
                     </td>
-                    <td width="65%" style="border: none;">
-                        <div style="border: 1px solid #111; padding: 6px; margin-bottom: 10px;">
+                    <td width="65%" style="border: none; vertical-align: top;">
+                        <div style="padding: 0; margin-bottom: 10px;">
                             <div style="font-weight: bold; font-size: 11px;">Keputusan :</div>
                             <div style="margin-top: 4px; margin-bottom: 8px;">Dengan memperhatikan hasil yang dicapai pada semester {{ $raport->semester }}, maka santri ini di tetapkan</div>
                             
@@ -142,21 +136,30 @@
                                 </tr>
                             </table>
                         </div>
+                    </td>
+                </tr>
+            </table>
 
-                        <table style="width: 100%; border: none;">
-                            <tr>
-                                <td width="50%" class="text-center" style="border: none; vertical-align: bottom;">
-                                    <div>Wali Kelas</div>
-                                    <div class="signature-line" style="margin-top: 30px;"></div>
-                                    <div style="margin-top: 5px;">( {{ $waliKelasNama }} )</div>
-                                </td>
-                                <td width="50%" class="text-center" style="border: none; vertical-align: bottom;">
-                                    <div>Mudir/ Kepala Sekolah</div>
-                                    <div class="signature-line" style="margin-top: 30px;"></div>
-                                    <div style="margin-top: 5px;">( Muslim Dwi Supriyanto )</div>
-                                </td>
-                            </tr>
-                        </table>
+            <!-- Bottom Section: 3 Signatures Aligned -->
+            <table style="width: 100%; border: none;">
+                <tr>
+                    <td width="33.33%" class="text-center" style="border: none; vertical-align: bottom;">
+                        <div>Mengetahui</div>
+                        <div>Orang Tua / Wali</div>
+                        <div class="signature-line" style="margin-top: 50px;"></div>
+                        <div style="margin-top: 5px;">( ................................... )</div>
+                    </td>
+                    <td width="33.33%" class="text-center" style="border: none; vertical-align: bottom;">
+                        <div>&nbsp;</div>
+                        <div>Wali Kelas</div>
+                        <div class="signature-line" style="margin-top: 50px;"></div>
+                        <div style="margin-top: 5px;">( {{ $waliKelasNama }} )</div>
+                    </td>
+                    <td width="33.33%" class="text-center" style="border: none; vertical-align: bottom;">
+                        <div>&nbsp;</div>
+                        <div>Mudir/ Kepala Sekolah</div>
+                        <div class="signature-line" style="margin-top: 50px;"></div>
+                        <div style="margin-top: 5px;">( Muslim Dwi Supriyanto )</div>
                     </td>
                 </tr>
             </table>
