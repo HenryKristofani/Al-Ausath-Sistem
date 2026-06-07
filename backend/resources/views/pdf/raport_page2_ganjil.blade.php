@@ -26,7 +26,7 @@
                 @for ($i = 0; $i < max($ekskulCount, $minRows); $i++)
                 <tr>
                     <td>{{ $i + 1 }}</td>
-                    <td class="text-left" style="padding-left: 10px;">{{ isset($ekskul[$i]['nama']) ? $ekskul[$i]['nama'] : '' }}</td>
+                    <td style="text-align: left; padding-left: 10px;">{{ isset($ekskul[$i]['nama']) ? $ekskul[$i]['nama'] : '' }}</td>
                     <td>{{ isset($ekskul[$i]['nilai']) ? $ekskul[$i]['nilai'] : '' }}</td>
                 </tr>
                 @endfor
@@ -46,32 +46,32 @@
             <tbody>
                 <tr>
                     <td>1</td>
-                    <td class="text-left" style="padding-left: 10px;">Kelakuan</td>
+                    <td style="text-align: left; padding-left: 10px;">Kelakuan</td>
                     <td>{{ $raport->keseharian_kelakuan ?? '' }}</td>
                 </tr>
                 <tr>
                     <td>2</td>
-                    <td class="text-left" style="padding-left: 10px;">Kerajinan</td>
+                    <td style="text-align: left; padding-left: 10px;">Kerajinan</td>
                     <td>{{ $raport->keseharian_kerajinan ?? '' }}</td>
                 </tr>
                 <tr>
                     <td>3</td>
-                    <td class="text-left" style="padding-left: 10px;">Kerapian</td>
+                    <td style="text-align: left; padding-left: 10px;">Kerapian</td>
                     <td>{{ $raport->keseharian_kerapian ?? '' }}</td>
                 </tr>
                 <tr>
                     <td>4</td>
-                    <td class="text-left" style="padding-left: 10px;">Kebersihan</td>
+                    <td style="text-align: left; padding-left: 10px;">Kebersihan</td>
                     <td>{{ $raport->keseharian_kebersihan ?? '' }}</td>
                 </tr>
                 <tr>
                     <td>5</td>
-                    <td class="text-left" style="padding-left: 10px;">Kedisiplinan</td>
+                    <td style="text-align: left; padding-left: 10px;">Kedisiplinan</td>
                     <td>{{ $raport->keseharian_kedisiplinan ?? '' }}</td>
                 </tr>
                 <tr>
                     <td>6</td>
-                    <td class="text-left" style="padding-left: 10px;">Ketaatan</td>
+                    <td style="text-align: left; padding-left: 10px;">Ketaatan</td>
                     <td>{{ $raport->keseharian_ketaatan ?? '' }}</td>
                 </tr>
             </tbody>
@@ -90,17 +90,17 @@
             <tbody>
                 <tr>
                     <td>1</td>
-                    <td class="text-left" style="padding-left: 10px;">Sakit</td>
+                    <td style="text-align: left; padding-left: 10px;">Sakit</td>
                     <td>{{ $raport->sakit ?? 0 }} hari</td>
                 </tr>
                 <tr>
                     <td>2</td>
-                    <td class="text-left" style="padding-left: 10px;">Izin</td>
+                    <td style="text-align: left; padding-left: 10px;">Izin</td>
                     <td>{{ $raport->izin ?? 0 }} hari</td>
                 </tr>
                 <tr>
                     <td>3</td>
-                    <td class="text-left" style="padding-left: 10px;">Tanpa Keterangan</td>
+                    <td style="text-align: left; padding-left: 10px;">Tanpa Keterangan</td>
                     <td>{{ $raport->alpha ?? 0 }} hari</td>
                 </tr>
             </tbody>
