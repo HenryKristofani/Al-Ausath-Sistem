@@ -272,6 +272,8 @@
 
     @if ($raport->semester % 2 != 0)
         @include('pdf.raport_page2_ganjil')
+    @else
+        @include('pdf.raport_page2_genap')
     @endif
 </body>
 
