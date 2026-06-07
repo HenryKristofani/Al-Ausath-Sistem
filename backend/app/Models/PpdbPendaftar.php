@@ -47,6 +47,15 @@ class PpdbPendaftar extends Model
         'tanggal_daftar',
         'tanggal_pengumuman',
         'tanggal_diterima',
+        'is_anak_guru',
+        'pilihan_uang_gedung',
+        'pilihan_infaq_bulanan',
+        'batas_bayar_uang_pangkal',
+        'batas_bayar_spp',
+        'status_uang_pangkal',
+        'status_spp',
+        'bukti_uang_pangkal_path',
+        'bukti_spp_path',
     ];
 
         protected $casts = [
@@ -54,8 +63,13 @@ class PpdbPendaftar extends Model
         'tanggal_lahir' => 'date',
         'tanggal_pengumuman' => 'date',
         'tanggal_diterima' => 'date',
+        'batas_bayar_uang_pangkal' => 'date',
+        'batas_bayar_spp' => 'date',
         'waktu_pendaftaran' => 'datetime',
         'is_luar_kota' => 'boolean',
+        'is_anak_guru' => 'boolean',
+        'pilihan_uang_gedung' => 'integer',
+        'pilihan_infaq_bulanan' => 'integer',
         'surat_pernyataan_setuju' => 'boolean',
     ];
 

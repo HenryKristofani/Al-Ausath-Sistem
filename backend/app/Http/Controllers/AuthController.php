@@ -528,6 +528,11 @@ class AuthController extends Controller
             'nomor_umi' => 'sometimes|nullable|string|max:50',
             'asal_kota' => 'sometimes|nullable|string|max:100',
             'phone_ppdb' => 'sometimes|nullable|string|max:30',
+            'is_anak_guru' => 'sometimes|nullable|boolean',
+            'pilihan_uang_gedung' => 'sometimes|nullable|integer',
+            'pilihan_infaq_bulanan' => 'sometimes|nullable|integer',
+            'bukti_uang_pangkal_path' => 'sometimes|nullable|string',
+            'bukti_spp_path' => 'sometimes|nullable|string',
         ]);
 
         $jenjangDipakai = mb_strtolower((string) ($validated['jenjang'] ?? $pendaftar->jenjang));
@@ -564,6 +569,11 @@ class AuthController extends Controller
             'surat_pernyataan_file_path',
             'nomor_umi',
             'asal_kota',
+            'is_anak_guru',
+            'pilihan_uang_gedung',
+            'pilihan_infaq_bulanan',
+            'bukti_uang_pangkal_path',
+            'bukti_spp_path',
         ];
 
         $updates = [];
@@ -577,6 +587,13 @@ class AuthController extends Controller
 
         if (array_key_exists('asal_kota', $updates)) {
             $updates['is_luar_kota'] = $this->registrationNumberService()->isLuarKota($updates['asal_kota']);
+        }
+
+        if (array_key_exists('bukti_uang_pangkal_path', $updates) && !empty($updates['bukti_uang_pangkal_path'])) {
+            $updates['status_uang_pangkal'] = 'menunggu_verifikasi';
+        }
+        if (array_key_exists('bukti_spp_path', $updates) && !empty($updates['bukti_spp_path'])) {
+            $updates['status_spp'] = 'menunggu_verifikasi';
         }
 
         if ($updates !== []) {
@@ -606,19 +623,24 @@ class AuthController extends Controller
             return;
         }
 
-        $exists = PembayaranSpp::query()
+        $nominal = $pendaftar->is_anak_guru ? 50000 : 100000;
+
+        $tagihan = PembayaranSpp::query()
             ->where('id_pendaftaran', $pendaftar->id_pendaftaran)
             ->where('metode_bayar', 'administrasi')
-            ->exists();
+            ->first();
 
-        if ($exists) {
+        if ($tagihan) {
+            if ($tagihan->status === 'menunggu_pembayaran' && (int)$tagihan->nominal_bayar !== $nominal) {
+                $tagihan->update(['nominal_bayar' => $nominal]);
+            }
             return;
         }
 
         PembayaranSpp::create([
             'id_pendaftaran' => $pendaftar->id_pendaftaran,
             'id_santri' => $pendaftar->id_santri,
-            'nominal_bayar' => 100000,
+            'nominal_bayar' => $nominal,
             'status' => 'menunggu_pembayaran',
             'metode_bayar' => 'administrasi',
         ]);
@@ -775,6 +797,32 @@ class AuthController extends Controller
             }
         }
 
+        // Normalize is_anak_guru (camelCase alias)
+        if (!$request->has('is_anak_guru') && $request->has('isAnakGuru')) {
+            $rawAnakGuru = $request->input('isAnakGuru');
+            if (is_string($rawAnakGuru)) {
+                $payload['is_anak_guru'] = in_array(mb_strtolower(trim($rawAnakGuru)), ['1', 'true', 'yes', 'y', 'on'], true);
+            } elseif (is_bool($rawAnakGuru)) {
+                $payload['is_anak_guru'] = $rawAnakGuru;
+            }
+        }
+
+        // Normalize pilihan_uang_gedung (camelCase alias)
+        if (!$request->has('pilihan_uang_gedung') && $request->has('pilihanUangGedung')) {
+            $v = (int) $request->input('pilihanUangGedung');
+            if (in_array($v, [1, 2], true)) {
+                $payload['pilihan_uang_gedung'] = $v;
+            }
+        }
+
+        // Normalize pilihan_infaq_bulanan (camelCase alias)
+        if (!$request->has('pilihan_infaq_bulanan') && $request->has('pilihanInfaqBulanan')) {
+            $v = (int) $request->input('pilihanInfaqBulanan');
+            if (in_array($v, [1, 2], true)) {
+                $payload['pilihan_infaq_bulanan'] = $v;
+            }
+        }
+
         return $payload;
     }
 
@@ -837,6 +885,9 @@ class AuthController extends Controller
             ],
             'surat_pernyataan_file_path'
         );
+
+        $storeByAliases(['bukti_uang_pangkal', 'buktiUangPangkal'], 'bukti_uang_pangkal_path');
+        $storeByAliases(['bukti_spp', 'buktiSpp'], 'bukti_spp_path');
 
         return $storedPaths;
     }
@@ -1244,13 +1295,75 @@ class AuthController extends Controller
         $isStatusDiterima = in_array($statusVerifikasi, ['diterima', 'lulus', 'accepted'], true);
         $isPaymentVerified = ($pembayaranPpdb['status'] ?? null) === 'terverifikasi';
 
+        // ── Post-acceptance deadline checks ──────────────────────────────
+        $now = now();
+        $uangPangkalOverdue = false;
+        $sppOverdue = false;
+
+        if ($isStatusDiterima && $pendaftar->batas_bayar_uang_pangkal) {
+            $uangPangkalOverdue = $now->startOfDay()->greaterThan(
+                Carbon::parse($pendaftar->batas_bayar_uang_pangkal)->endOfDay()
+            );
+        }
+
+        if ($isStatusDiterima && $pendaftar->batas_bayar_spp) {
+            $sppOverdue = $now->startOfDay()->greaterThan(
+                Carbon::parse($pendaftar->batas_bayar_spp)->endOfDay()
+            );
+        }
+
+        $statusUangPangkal = $pendaftar->status_uang_pangkal;
+        $statusSpp = $pendaftar->status_spp;
+
+        // Auto-mark as 'gagal' if deadline passed and not yet paid
+        $mustSave = false;
+        if ($uangPangkalOverdue && !in_array($statusUangPangkal, ['dp', 'lunas'], true)) {
+            $statusUangPangkal = 'gagal';
+            if ($pendaftar->status_uang_pangkal !== 'gagal') {
+                $pendaftar->status_uang_pangkal = 'gagal';
+                $mustSave = true;
+            }
+            if ($pendaftar->status_verifikasi !== 'tidak_diterima') {
+                $pendaftar->status_verifikasi = 'tidak_diterima';
+                $mustSave = true;
+            }
+        }
+        if ($sppOverdue && !in_array($statusSpp, ['dp', 'lunas'], true)) {
+            $statusSpp = 'gagal';
+            if ($pendaftar->status_spp !== 'gagal') {
+                $pendaftar->status_spp = 'gagal';
+                $mustSave = true;
+            }
+            if ($pendaftar->status_verifikasi !== 'tidak_diterima') {
+                $pendaftar->status_verifikasi = 'tidak_diterima';
+                $mustSave = true;
+            }
+        }
+        if ($mustSave) {
+            $pendaftar->save();
+            $statusVerifikasi = 'tidak_diterima';
+            $isStatusDiterima = false;
+        }
+
+        // ── Step determination ───────────────────────────────────────────
         $step = 'lengkapi-form';
         if ($showTesPage) {
             $step = 'tes';
         } elseif ($showPembayaranPpdb && !$isPaymentVerified) {
             $step = 'pembayaran-ppdb';
         } elseif ($showPembayaranPpdb && $isStatusDiterima && $isPaymentVerified) {
-            $step = 'siap-menjadi-santri';
+            // Post-acceptance flow: uang pangkal → SPP → siap-menjadi-santri
+            if ($statusUangPangkal === 'gagal') {
+                $step = 'gagal-bayar-uang-pangkal';
+            } elseif (!in_array($statusUangPangkal, ['dp', 'lunas'], true)) {
+                $step = 'pembayaran-uang-pangkal';
+            } elseif ($statusSpp === 'gagal') {
+                $step = 'gagal-bayar-spp';
+            } elseif (!in_array($statusSpp, ['dp', 'lunas'], true)) {
+                $step = 'pembayaran-spp';
+            } else {
+                $step = 'siap-menjadi-santri';
+            }
         } elseif ($pendaftaranSelesai && $isPengumumanDibuka) {
             $step = 'pengumuman';
         } elseif ($pendaftaranSelesai) {
@@ -1278,6 +1391,18 @@ class AuthController extends Controller
             'form_schema' => $formSchema,
             'step' => $step,
             'status_verifikasi' => $pendaftar->status_verifikasi,
+            'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
+            'pilihan_uang_gedung' => $pendaftar->pilihan_uang_gedung ? (int)$pendaftar->pilihan_uang_gedung : null,
+            'pilihan_infaq_bulanan' => $pendaftar->pilihan_infaq_bulanan ? (int)$pendaftar->pilihan_infaq_bulanan : null,
+            'tanggal_diterima' => optional($pendaftar->tanggal_diterima)?->toDateString(),
+            'batas_bayar_uang_pangkal' => optional($pendaftar->batas_bayar_uang_pangkal)?->toDateString(),
+            'batas_bayar_spp' => optional($pendaftar->batas_bayar_spp)?->toDateString(),
+            'status_uang_pangkal' => $statusUangPangkal,
+            'status_spp' => $statusSpp,
+            'bukti_uang_pangkal_url' => $pendaftar->bukti_uang_pangkal_path ? asset('storage/' . $pendaftar->bukti_uang_pangkal_path) : null,
+            'bukti_spp_url' => $pendaftar->bukti_spp_path ? asset('storage/' . $pendaftar->bukti_spp_path) : null,
+            'nomor_induk_generated' => $pendaftar->nomor_induk_generated,
+            'kode_kelas_diterima' => $pendaftar->kode_kelas_diterima,
         ];
     }
 

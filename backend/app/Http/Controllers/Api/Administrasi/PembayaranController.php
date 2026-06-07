@@ -455,8 +455,11 @@ class PembayaranController extends Controller
     {
         $perPage = (int) $request->query('per_page', 20);
         $perPage = max(1, min($perPage, 100));
+        $page = max(1, (int) $request->query('page', 1));
 
-        $santriPage = DataSantri::query()
+        $statusFilter = $request->filled('status') ? $this->normalizeStatusForFrontend((string) $request->status) : null;
+
+        $santriQuery = DataSantri::query()
             ->with(['kelas.unit'])
             ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', (string) $request->kode_kelas))
             ->when($request->filled('kode_unit'), function ($q) use ($request) {
@@ -470,20 +473,48 @@ class PembayaranController extends Controller
                         ->orWhere('nomor_induk', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('nama_lengkap_santri')
-            ->paginate($perPage);
+            ->orderBy('nama_lengkap_santri');
 
-        $idSantri = $santriPage->getCollection()->pluck('id_santri')->filter()->values();
+        // Fetch all matching santri to determine their invoice-based status
+        $allSantri = $santriQuery->get();
+        $idSantriList = $allSantri->pluck('id_santri')->filter()->values();
 
+        // Get SPP invoices for these santri
         $invoiceBySantri = PembayaranSpp::query()
             ->with(['setting.kategoriTagihan', 'kwitansi'])
-            ->whereIn('id_santri', $idSantri)
+            ->whereIn('id_santri', $idSantriList)
             ->orderByDesc('id_pembayaran')
             ->get()
             ->groupBy('id_santri');
 
-        $santriPage->getCollection()->transform(function (DataSantri $santri) use ($invoiceBySantri) {
-            $invoices = ($invoiceBySantri->get($santri->id_santri) ?? collect())->map(function (PembayaranSpp $row) {
+        $filteredSantri = collect();
+        foreach ($allSantri as $santri) {
+            $invoices = $invoiceBySantri->get($santri->id_santri) ?? collect();
+
+            $totalTagihan = (float) $invoices
+                ->reject(fn ($item) => $this->isCanceledStatus((string) $item->status))
+                ->sum('nominal_bayar');
+
+            $totalDibayar = (float) $invoices
+                ->filter(fn ($item) => $this->isPaidStatus((string) $item->status))
+                ->sum('nominal_bayar');
+
+            $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
+
+            $paymentStatus = 'menunggu_pembayaran';
+            if ($totalTagihan > 0) {
+                if ($totalTunggakan <= 0) {
+                    $paymentStatus = 'lunas';
+                } elseif ($invoices->contains(fn($i) => $this->normalizeStatusForFrontend($i->status) === 'menunggu_konfirmasi')) {
+                    $paymentStatus = 'menunggu_konfirmasi';
+                }
+            }
+
+            if ($statusFilter !== null && $paymentStatus !== $statusFilter) {
+                continue;
+            }
+
+            $mappedInvoices = $invoices->map(function (PembayaranSpp $row) {
                 return [
                     'id_pembayaran' => $row->id_pembayaran,
                     'nomor_invoice' => $this->buildNomorInvoice($row->id_pembayaran),
@@ -503,19 +534,33 @@ class PembayaranController extends Controller
                 ];
             })->values();
 
-            return [
+            $filteredSantri->push([
                 'id_santri' => $santri->id_santri,
                 'nama_lengkap' => $santri->nama_lengkap_santri,
                 'jenis_kelamin' => $santri->jenis_kelamin,
                 'nomor_induk' => $santri->nomor_induk,
+                'kode_kelas' => $santri->kode_kelas,
+                'kode_unit' => $santri->kelas?->kode_unit,
                 'unit_sekarang' => $santri->kelas?->unit?->nama_unit ?? $santri->kelas?->kode_unit,
                 'kelas_sekarang' => $santri->kelas?->nama_kelas,
-                'status' => $santri->status,
-                'invoice' => $invoices,
-            ];
-        });
+                'status' => $paymentStatus,
+                'invoice' => $mappedInvoices,
+            ]);
+        }
 
-        return response()->json($santriPage);
+        $total = $filteredSantri->count();
+        $offset = ($page - 1) * $perPage;
+        $paginated = $filteredSantri->slice($offset, $perPage)->values();
+
+        return response()->json([
+            'data' => $paginated,
+            'meta' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max($total, 1) / $perPage),
+            ]
+        ]);
     }
 
     /**

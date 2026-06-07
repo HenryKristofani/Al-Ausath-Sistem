@@ -122,8 +122,6 @@ class PpdbController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
-        $statusFilter = mb_strtolower(trim((string) $request->query('status_verifikasi', 'diterima')));
-
         $query = PpdbPendaftar::query()
             ->when($request->filled('jenjang'), function ($q) use ($request) {
                 $jenjang = $request->query('jenjang');
@@ -151,23 +149,43 @@ class PpdbController extends Controller
                 });
             });
 
-        if ($statusFilter === '' || in_array($statusFilter, ['diterima', 'accepted', 'lulus'], true)) {
+        $statusLabel = 'filtered';
+        if ($request->has('status_verifikasi')) {
+            $statusRaw = trim((string) $request->query('status_verifikasi'));
+            $statusFilter = mb_strtolower($statusRaw);
+            
+            if ($statusFilter !== 'all' && $statusFilter !== '') {
+                if (in_array($statusFilter, ['diterima', 'accepted', 'lulus'], true)) {
+                    $this->applyAcceptedStatusFilter($query);
+                    $statusLabel = 'diterima';
+                } else {
+                    $query->whereRaw('LOWER(status_verifikasi) = ?', [$statusFilter]);
+                    $statusLabel = preg_replace('/[^a-z0-9_-]+/i', '-', $statusFilter) ?: 'filtered';
+                }
+            } else {
+                $statusLabel = 'semua';
+            }
+        } else {
+            // Default to 'diterima' if the query parameter is not present at all
             $this->applyAcceptedStatusFilter($query);
             $statusLabel = 'diterima';
-        } else {
-            $query->whereRaw('LOWER(status_verifikasi) = ?', [$statusFilter]);
-            $statusLabel = preg_replace('/[^a-z0-9_-]+/i', '-', $statusFilter) ?: 'filtered';
         }
 
         $headers = [
-            'Nomor Induk',
+            'No.',
+            'No. Pendaftaran',
+            'Nomor Induk (NIS)',
             'Nama Lengkap',
             'Jenis Kelamin',
             'Tempat Lahir',
             'Tanggal Lahir',
             'Alamat Lengkap',
-            'Asal Sekolah',
+            'Asal Sekolah / Kota',
             'Jenjang',
+            'Nama Orang Tua / Wali',
+            'No. HP',
+            'Status Verifikasi',
+            'Tanggal Daftar',
         ];
 
         return response()->streamDownload(function () use ($query, $headers) {
@@ -176,23 +194,33 @@ class PpdbController extends Controller
             // Add UTF-8 BOM for Excel
             fputs($output, "\xEF\xBB\xBF");
             
-            fputcsv($output, $headers);
+            // Force Excel to use semicolon delimiter
+            fputs($output, "sep=;\n");
+            
+            fputcsv($output, $headers, ';');
 
+            $index = 1;
             $query->orderBy('jenjang')
                 ->orderBy('nomor_induk_generated')
                 ->orderBy('nama_calon')
-                ->chunk(500, function ($rows) use ($output) {
+                ->chunk(500, function ($rows) use ($output, &$index) {
                     foreach ($rows as $row) {
                         fputcsv($output, [
-                            $row->nomor_induk_generated,
+                            $index++,
+                            $row->no_pendaftaran_final ?: $row->no_pendaftaran,
+                            $row->nomor_induk_generated ?: '-',
                             $row->nama_calon,
-                            $row->jenis_kelamin,
-                            $row->tempat_lahir,
-                            optional($row->tanggal_lahir)->format('Y-m-d'),
-                            $row->alamat_lengkap,
-                            $row->asal_kota,
-                            $row->jenjang ?: $row->program_pendaftaran,
-                        ]);
+                            $row->jenis_kelamin === 'L' ? 'Laki-laki' : ($row->jenis_kelamin === 'P' ? 'Perempuan' : '-'),
+                            $row->tempat_lahir ?: '-',
+                            optional($row->tanggal_lahir)->format('d-m-Y') ?: '-',
+                            $row->alamat_lengkap ?: '-',
+                            $row->asal_kota ?: '-',
+                            $row->jenjang ?: $row->program_pendaftaran ?: '-',
+                            $row->nama_ayah ?: $row->nama_ibu ?: '-',
+                            $row->no_hp_ibu ?: $row->no_hp_calon ?: '-',
+                            ucfirst($row->status_verifikasi),
+                            optional($row->tanggal_daftar)->format('d-m-Y') ?: '-',
+                        ], ';');
                     }
                 });
 
@@ -546,6 +574,15 @@ class PpdbController extends Controller
                     $payloadPendaftar['tanggal_pengumuman'] = Carbon::parse($validated['tanggal_verif'])->toDateString();
                 }
 
+                if ($this->isStatusDiterima($validated['hasil'])) {
+                    $tanggalDiterima = Carbon::parse($validated['tanggal_verif'] ?? now());
+                    $payloadPendaftar['tanggal_diterima'] = $tanggalDiterima->toDateString();
+                    $payloadPendaftar['batas_bayar_uang_pangkal'] = $tanggalDiterima->copy()->addMonths(2)->toDateString();
+                    $payloadPendaftar['batas_bayar_spp'] = $tanggalDiterima->copy()->addMonth()->toDateString();
+                    $payloadPendaftar['status_uang_pangkal'] = $pendaftar->status_uang_pangkal ?: 'menunggu';
+                    $payloadPendaftar['status_spp'] = $pendaftar->status_spp ?: 'menunggu';
+                }
+
                 if (!empty($validated['kode_kelas_diterima'])) {
                     $payloadPendaftar['kode_kelas_diterima'] = $validated['kode_kelas_diterima'];
                 }
@@ -828,6 +865,46 @@ class PpdbController extends Controller
                 'password_default' => $passwordDefault,
             ] : null,
         ];
+    }
+
+    public function verifikasiUangPangkal(Request $request, $id)
+    {
+        $pendaftar = $this->resolvePendaftarByIdentifier($id);
+        
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:menunggu,menunggu_verifikasi,dp,lunas,gagal'],
+        ]);
+        
+        $pendaftar->update([
+            'status_uang_pangkal' => $validated['status']
+        ]);
+        
+        return response()->json([
+            'message' => 'Status pembayaran Uang Pangkal berhasil diperbarui',
+            'data' => [
+                'status_uang_pangkal' => $pendaftar->status_uang_pangkal
+            ]
+        ]);
+    }
+
+    public function verifikasiSpp(Request $request, $id)
+    {
+        $pendaftar = $this->resolvePendaftarByIdentifier($id);
+        
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:menunggu,menunggu_verifikasi,lunas,gagal'],
+        ]);
+        
+        $pendaftar->update([
+            'status_spp' => $validated['status']
+        ]);
+        
+        return response()->json([
+            'message' => 'Status pembayaran SPP berhasil diperbarui',
+            'data' => [
+                'status_spp' => $pendaftar->status_spp
+            ]
+        ]);
     }
 
     private function isBisaUploadBerkas(PpdbPendaftar $pendaftar): bool

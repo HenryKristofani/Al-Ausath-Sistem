@@ -331,6 +331,8 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::post('/pendaftar/{id}/berkas', [PpdbController::class, 'storeBerkas']);
         Route::put('/pendaftar/{id}/tes', [PpdbController::class, 'upsertTes']);
         Route::put('/pendaftar/{id}/verifikasi', [PpdbController::class, 'upsertVerifikasi']);
+        Route::put('/pendaftar/{id}/verifikasi-uang-pangkal', [PpdbController::class, 'verifikasiUangPangkal']);
+        Route::put('/pendaftar/{id}/verifikasi-spp', [PpdbController::class, 'verifikasiSpp']);
         Route::post('/pendaftar/{id}/notifikasi', [PpdbController::class, 'storeNotifikasi']);
         Route::post('/pendaftar/{id}/tagihan', [PpdbController::class, 'createTagihanPpdb']);
 
