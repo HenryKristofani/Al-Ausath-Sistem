@@ -431,6 +431,12 @@ class AdminSesiAbsensiController extends Controller
             });
         }
 
+        if ($request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL') {
+            $jadwalQuery->whereHas('kelasMapel', function($q) use ($request) {
+                $q->where('tahun_ajaran', $request->tahun_ajaran);
+            });
+        }
+
         $semuaJadwal = $jadwalQuery->get();
 
         // Get all sessions already created for this date
@@ -476,14 +482,23 @@ class AdminSesiAbsensiController extends Controller
         $today = Carbon::today(config('app.timezone'))->toDateString();
 
         // Query 1: Jadwal aktif — relasi dengan select spesifik (hati-hati: hanya kolom yang ada di tabel)
-        $jadwal = JadwalPembelajaran::with([
+        $jadwalQuery = JadwalPembelajaran::with([
             'kelasMapel:id_kelas_mapel,kode_kelas,kode_mapel,id_petugas,tahun_ajaran',
             'kelasMapel.kelas',          // load semua, tabel kecil (tidak ada kolom jenjang)
             'kelasMapel.mataPelajaran:kode_mapel,nama_mapel',
             'kelasMapel.petugas:id_petugas,nama_lengkap',
         ])
-        ->where('status', 'AKTIF')
-        ->get(['id_jadwal', 'id_kelas_mapel', 'hari', 'jam_mulai', 'jam_selesai', 'ruangan', 'status', 'tahun_ajaran']);
+        ->where('status', 'AKTIF');
+
+        // Filter tahun ajaran jika dikirim dari frontend (header global selector)
+        if ($request->filled('tahun_ajaran')) {
+            $tahunAjaranFilter = $request->input('tahun_ajaran');
+            $jadwalQuery->whereHas('kelasMapel', function ($q) use ($tahunAjaranFilter) {
+                $q->where('tahun_ajaran', $tahunAjaranFilter);
+            });
+        }
+
+        $jadwal = $jadwalQuery->get(['id_jadwal', 'id_kelas_mapel', 'hari', 'jam_mulai', 'jam_selesai', 'ruangan', 'status', 'tahun_ajaran']);
 
         // Query 2: Petugas aktif — hanya field minimal
         $petugas = DataPetugas::where('status', 'AKTIF')
@@ -586,14 +601,15 @@ class AdminSesiAbsensiController extends Controller
         $admin = $this->resolveCurrentPetugas($request);
         $this->authorizeAdmin($admin);
 
-        // Ambil log aktivitas, join dengan data petugas untuk mendapatkan nama lengkap admin yang melakukan aksi
-        $logs = \App\Models\LogAktivitas::query()
+        $logQuery = \App\Models\LogAktivitas::query()
+            ->where('modul', 'ABSENSI')
             ->leftJoin('data_petugas', 'log_aktivitas.id_petugas', '=', 'data_petugas.id_petugas')
             ->select('log_aktivitas.*', 'data_petugas.nama_lengkap as nama_admin')
             ->orderByDesc('log_aktivitas.created_at')
-            ->orderByDesc('log_aktivitas.id_log_aktivitas')
-            ->limit(100)
-            ->get();
+            ->orderByDesc('log_aktivitas.id_log_aktivitas');
+
+        $limit = ($request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL') ? 500 : 100;
+        $logs = $logQuery->limit($limit)->get();
 
         // Post-process deskripsi: ganti "guru ID: X", "sesi ID: Y", "jadwal ID: Z" dengan nama nyata (untuk log lama)
         $legacyPetugasIds = [];
@@ -671,14 +687,65 @@ class AdminSesiAbsensiController extends Controller
             return $row;
         });
 
-        // Ambil log perubahan absensi yang mendetail
-        $auditLogs = \App\Models\LogPerubahanAbsensi::query()
+        if ($request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL') {
+            $ta = $request->tahun_ajaran;
+            
+            $validCombinations = \App\Models\DataKelasMapel::with(['mataPelajaran', 'kelas'])
+                ->where('tahun_ajaran', $ta)
+                ->get()
+                ->map(function($km) {
+                    $mapel = $km->mataPelajaran?->nama_mapel ?? '';
+                    $kelas = $km->kelas?->nama_kelas ?? '';
+                    return "{$mapel} - {$kelas}";
+                })->filter()->unique()->toArray();
+
+            $logsFormatted = $logsFormatted->filter(function($log) use ($validCombinations) {
+                $desc = $log['deskripsi'] ?? '';
+                foreach ($validCombinations as $combo) {
+                    if ($combo !== ' - ' && str_contains($desc, $combo)) {
+                        return true;
+                    }
+                }
+                return false;
+            })->values()->take(100);
+        }
+
+        $auditQuery = \App\Models\LogPerubahanAbsensi::query()
             ->leftJoin('data_petugas', 'log_perubahan_absensi.diubah_oleh', '=', 'data_petugas.id_petugas')
             ->select('log_perubahan_absensi.*', 'data_petugas.nama_lengkap as nama_admin')
             ->orderByDesc('log_perubahan_absensi.diubah_pada')
-            ->orderByDesc('log_perubahan_absensi.id_log')
-            ->limit(100)
-            ->get();
+            ->orderByDesc('log_perubahan_absensi.id_log');
+
+        if ($request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL') {
+            $ta = $request->tahun_ajaran;
+            $auditQuery->where(function($q) use ($ta) {
+                $q->where(function($q1) use ($ta) {
+                    $q1->where('tabel_terkait', 'absensi_santri')
+                       ->whereExists(function($q2) use ($ta) {
+                           $q2->select(\Illuminate\Support\Facades\DB::raw(1))
+                              ->from('absensi_santri')
+                              ->join('sesi_absensi', 'absensi_santri.id_sesi', '=', 'sesi_absensi.id_sesi')
+                              ->join('jadwal_pembelajaran', 'sesi_absensi.id_jadwal', '=', 'jadwal_pembelajaran.id_jadwal')
+                              ->join('data_kelas_mapel', 'jadwal_pembelajaran.id_kelas_mapel', '=', 'data_kelas_mapel.id_kelas_mapel')
+                              ->whereColumn('log_perubahan_absensi.id_record', 'absensi_santri.id_absensi')
+                              ->where('data_kelas_mapel.tahun_ajaran', $ta);
+                       });
+                })->orWhere(function($q1) use ($ta) {
+                    $q1->where('tabel_terkait', 'absensi_pengajar')
+                       ->whereExists(function($q2) use ($ta) {
+                           $q2->select(\Illuminate\Support\Facades\DB::raw(1))
+                              ->from('absensi_pengajar')
+                              ->join('sesi_absensi', 'absensi_pengajar.id_sesi', '=', 'sesi_absensi.id_sesi')
+                              ->join('jadwal_pembelajaran', 'sesi_absensi.id_jadwal', '=', 'jadwal_pembelajaran.id_jadwal')
+                              ->join('data_kelas_mapel', 'jadwal_pembelajaran.id_kelas_mapel', '=', 'data_kelas_mapel.id_kelas_mapel')
+                              ->whereColumn('log_perubahan_absensi.id_record', 'absensi_pengajar.id_abs_pengajar')
+                              ->where('data_kelas_mapel.tahun_ajaran', $ta);
+                       });
+                });
+            });
+        }
+
+        $auditLogs = $auditQuery->limit(100)->get();
 
         // Hydrate info_jadwal dan nama_subjek (Santri/Ustadz) yang bersangkutan
         $santriRecordIds = [];

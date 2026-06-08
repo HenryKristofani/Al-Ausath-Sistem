@@ -27,6 +27,9 @@ class DataAkunSantriController extends Controller
             ->when($request->filled('kode_kelas'), function ($q) use ($request) {
                 $q->whereHas('santri', fn ($subQ) => $subQ->where('kode_kelas', $request->kode_kelas));
             })
+            ->when($request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->where('tahun_ajaran', $request->tahun_ajaran);
+            })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -150,6 +153,9 @@ class DataAkunSantriController extends Controller
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('kode_kelas'), function ($q) use ($request) {
                 $q->whereHas('santri', fn ($subQ) => $subQ->where('kode_kelas', $request->kode_kelas));
+            })
+            ->when($request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->where('tahun_ajaran', $request->tahun_ajaran);
             })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
