@@ -519,10 +519,12 @@ class PpdbController extends Controller
             $request->merge(['hasil' => $hasilInput]);
         }
 
-        if ($this->isStatusDiterima($hasilInput) && !$this->isPembayaranPpdbLunas($idPendaftaran)) {
-            return response()->json([
-                'message' => 'Pendaftar belum bisa diterima. Pembayaran administrasi PPDB belum lunas atau belum diverifikasi.',
-            ], 422);
+        if ($this->isStatusDiterima($hasilInput)) {
+            if (!$this->isPembayaranPpdbLunas($idPendaftaran)) {
+                return response()->json([
+                    'message' => 'Pendaftar belum bisa diterima. Pembayaran administrasi PPDB belum lunas atau belum diverifikasi.',
+                ], 422);
+            }
         }
 
         $validated = $request->validate([
@@ -802,6 +804,14 @@ class PpdbController extends Controller
             'tahun_masuk' => $santri->tahun_masuk ?: (int) now()->format('Y'),
             'nomor_telepon' => $pendaftar->akun?->phone,
             'alamat_email' => $pendaftar->akun?->email,
+            'jenis_kelamin' => $pendaftar->jenis_kelamin,
+            'tempat_lahir' => $pendaftar->tempat_lahir,
+            'tanggal_lahir' => $pendaftar->tanggal_lahir,
+            'alamat_tinggal' => $pendaftar->alamat_lengkap,
+            'nama_ayah_kandung' => $pendaftar->nama_ayah,
+            'nama_ibu_kandung' => $pendaftar->nama_ibu,
+            'nama_wali' => $pendaftar->nomor_umi,
+            'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
         ]);
 
         $santri->save();
@@ -811,6 +821,24 @@ class PpdbController extends Controller
         PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)
             ->whereNull('id_santri')
             ->update(['id_santri' => $santri->id_santri]);
+
+        // Transfer proof of payment from ppdb_pendaftar to pembayaran_spp
+        if (!empty($pendaftar->bukti_uang_pangkal_path) || !empty($pendaftar->bukti_spp_path)) {
+            $ppdbPayments = PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)
+                ->where('id_santri', $santri->id_santri)
+                ->get();
+            
+            foreach ($ppdbPayments as $payment) {
+                // Update proof for uang pangkal payment
+                if (!empty($pendaftar->bukti_uang_pangkal_path)) {
+                    $payment->update(['bukti_bayar_path' => $pendaftar->bukti_uang_pangkal_path]);
+                }
+                // Update proof for SPP payment if available
+                elseif (!empty($pendaftar->bukti_spp_path)) {
+                    $payment->update(['bukti_bayar_path' => $pendaftar->bukti_spp_path]);
+                }
+            }
+        }
 
         // Provision SPP billing for the active santri
         $this->billingService->provisionBillingForActiveSantri($santri);

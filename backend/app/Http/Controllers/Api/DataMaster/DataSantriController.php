@@ -135,6 +135,7 @@ class DataSantriController extends Controller
             'nama_ayah_kandung' => ['nullable', 'string', 'max:200'],
             'nama_ibu_kandung' => ['nullable', 'string', 'max:200'],
             'nama_wali' => ['nullable', 'string', 'max:200'],
+            'is_anak_guru' => ['nullable', 'boolean'],
         ]);
 
         $data = DB::transaction(function () use ($validated) {
@@ -223,6 +224,7 @@ class DataSantriController extends Controller
             'nama_ayah_kandung' => ['nullable', 'string', 'max:200'],
             'nama_ibu_kandung' => ['nullable', 'string', 'max:200'],
             'nama_wali' => ['nullable', 'string', 'max:200'],
+            'is_anak_guru' => ['nullable', 'boolean'],
         ]);
 
         DB::transaction(function () use ($santri, $validated) {
@@ -474,6 +476,7 @@ class DataSantriController extends Controller
                 'nama_ayah_kandung' => ['nullable', 'string', 'max:200'],
                 'nama_ibu_kandung' => ['nullable', 'string', 'max:200'],
                 'nama_wali' => ['nullable', 'string', 'max:200'],
+                'is_anak_guru' => ['nullable', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -949,6 +952,7 @@ class DataSantriController extends Controller
             'nama_ayah_kandung' => $rowData['nama_ayah_kandung'] ?? null,
             'nama_ibu_kandung' => $rowData['nama_ibu_kandung'] ?? null,
             'nama_wali' => $rowData['nama_wali'] ?? null,
+            'is_anak_guru' => filter_var($rowData['is_anak_guru'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 }
