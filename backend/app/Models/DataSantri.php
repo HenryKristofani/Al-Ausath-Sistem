@@ -34,12 +34,14 @@ class DataSantri extends Model
         'nama_ayah_kandung',
         'nama_ibu_kandung',
         'nama_wali',
+        'is_anak_guru',
         'is_deleted',
         'deleted_at',
     ];
 
     protected $casts = [
         'tanggal_lahir' => 'date',
+        'is_anak_guru' => 'boolean',
         'is_deleted' => 'boolean',
         'deleted_at' => 'datetime',
     ];

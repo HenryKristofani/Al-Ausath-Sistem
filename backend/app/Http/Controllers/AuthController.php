@@ -321,8 +321,9 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $this->ensurePpdbAdministrasiTagihan($pendaftar);
+        // Load period dulu agar ensurePpdbAdministrasiTagihan bisa pakai relasi yang sudah ter-load
         $pendaftar->load(['tes', 'verifikasi', 'period']);
+        $this->ensurePpdbAdministrasiTagihan($pendaftar);
 
         return response()->json([
             'message' => 'Dashboard pendaftar berhasil dimuat.',
@@ -605,8 +606,9 @@ class AuthController extends Controller
             $akun->update(['phone' => $validated['phone_ppdb']]);
         }
 
+        // Load period dulu agar ensurePpdbAdministrasiTagihan bisa pakai relasi yang sudah ter-load
+        $pendaftar->load(['tes', 'verifikasi', 'period']);
         $this->ensurePpdbAdministrasiTagihan($pendaftar);
-        $pendaftar->load(['tes', 'verifikasi']);
 
         return response()->json([
             'message' => 'Form pendaftaran berhasil disimpan.',
@@ -623,7 +625,24 @@ class AuthController extends Controller
             return;
         }
 
-        $nominal = $pendaftar->is_anak_guru ? 50000 : 100000;
+        // Ambil biaya dari gelombang PPDB yang terkait
+        $biayaGelombang = null;
+        if ($pendaftar->ppdb_period_id) {
+            $period = $pendaftar->relationLoaded('period')
+                ? $pendaftar->period
+                : \App\Models\PpdbPeriod::find($pendaftar->ppdb_period_id);
+            $biayaGelombang = $period?->biaya_pendaftaran ? (int) $period->biaya_pendaftaran : null;
+        }
+
+        // Fallback ke nilai default jika gelombang tidak memiliki biaya
+        $nominalDefault = $pendaftar->is_anak_guru ? 50000 : 100000;
+
+        if ($biayaGelombang !== null && $biayaGelombang > 0) {
+            // Anak guru mendapat diskon 50% dari biaya gelombang
+            $nominal = $pendaftar->is_anak_guru ? (int) round($biayaGelombang * 0.5) : $biayaGelombang;
+        } else {
+            $nominal = $nominalDefault;
+        }
 
         $tagihan = PembayaranSpp::query()
             ->where('id_pendaftaran', $pendaftar->id_pendaftaran)
@@ -1346,9 +1365,17 @@ class AuthController extends Controller
         }
 
         // ── Step determination ───────────────────────────────────────────
+        // Infaq step: wajib dilewati setelah form/tes selesai, sebelum pembayaran PPDB.
+        // Ditandai dengan pilihan_uang_gedung yang masih null.
+        $infaqBelumDiisi = empty($pendaftar->pilihan_uang_gedung);
+        $infaqStepRequired = $pendaftaranSelesai && $infaqBelumDiisi;
+
         $step = 'lengkapi-form';
         if ($showTesPage) {
             $step = 'tes';
+        } elseif ($pendaftaranSelesai && $infaqBelumDiisi) {
+            // Setelah form/tes selesai, WAJIB mengisi infaq sebelum lanjut ke pembayaran
+            $step = 'infaq';
         } elseif ($showPembayaranPpdb && !$isPaymentVerified) {
             $step = 'pembayaran-ppdb';
         } elseif ($showPembayaranPpdb && $isStatusDiterima && $isPaymentVerified) {
@@ -1385,6 +1412,7 @@ class AuthController extends Controller
             'tes_finished' => $tesSelesai,
             'is_form_lengkap' => $isFormLengkap,
             'pendaftaran_selesai' => $pendaftaranSelesai,
+            'infaq_step_required' => $infaqStepRequired,
             'show_halaman_pembayaran_ppdb' => $showPembayaranPpdb,
             'pembayaran_ppdb' => $pembayaranPpdb,
             'soal_tes' => $soalTes,
@@ -1462,6 +1490,11 @@ class AuthController extends Controller
             trim((string) $pendaftar->no_hp_calon) !== '',
             trim((string) $pendaftar->nama_ibu) !== '',
             trim((string) $pendaftar->no_hp_ibu) !== '',
+            // Semua berkas wajib harus sudah diupload sebelum form dianggap lengkap
+            trim((string) $pendaftar->file_akta_path) !== '',
+            trim((string) $pendaftar->file_kk_path) !== '',
+            trim((string) $pendaftar->file_surat_rekomendasi_path) !== '',
+            trim((string) $pendaftar->surat_pernyataan_file_path) !== '',
         ];
 
         if (in_array($jenjang, ['MI', 'MTS', 'MA'], true)) {
@@ -1486,13 +1519,17 @@ class AuthController extends Controller
 
     protected function resolvePpdbPaymentInfo(PpdbPendaftar $pendaftar): array
     {
-        $latestPayment = PembayaranSpp::query()
+        // Tagihan administrasi PPDB (biaya pendaftaran/registrasi) selalu bertipe 'administrasi'.
+        // Jangan ambil tagihan terbaru secara keseluruhan — setelah pendaftar diterima,
+        // tagihan uang pangkal & SPP akan dibuat dan memiliki id_pembayaran lebih besar.
+        $adminPayment = PembayaranSpp::query()
             ->with(['kwitansi'])
             ->where('id_pendaftaran', $pendaftar->id_pendaftaran)
+            ->where('metode_bayar', 'administrasi')
             ->orderByDesc('id_pembayaran')
             ->first();
 
-        if (!$latestPayment) {
+        if (!$adminPayment) {
             return [
                 'has_tagihan' => false,
                 'status' => null,
@@ -1506,17 +1543,17 @@ class AuthController extends Controller
 
         return [
             'has_tagihan' => true,
-            'id_pembayaran' => $latestPayment->id_pembayaran,
-            'status' => $latestPayment->status,
-            'nominal_bayar' => $latestPayment->nominal_bayar,
-            'tanggal_bayar' => optional($latestPayment->tanggal_bayar)->format('Y-m-d H:i:s'),
-            'tanggal_verifikasi' => optional($latestPayment->tanggal_verifikasi)->format('Y-m-d H:i:s'),
-            'metode_bayar' => $latestPayment->metode_bayar,
-            'kwitansi_tersedia' => (bool) $latestPayment->kwitansi,
-            'kwitansi' => $latestPayment->kwitansi ? [
-                'id_kwitansi' => $latestPayment->kwitansi->id_kwitansi,
-                'file_path_pdf' => $latestPayment->kwitansi->file_path_pdf,
-                'jumlah' => $latestPayment->kwitansi->jumlah,
+            'id_pembayaran' => $adminPayment->id_pembayaran,
+            'status' => $adminPayment->status,
+            'nominal_bayar' => $adminPayment->nominal_bayar,
+            'tanggal_bayar' => optional($adminPayment->tanggal_bayar)->format('Y-m-d H:i:s'),
+            'tanggal_verifikasi' => optional($adminPayment->tanggal_verifikasi)->format('Y-m-d H:i:s'),
+            'metode_bayar' => $adminPayment->metode_bayar,
+            'kwitansi_tersedia' => (bool) $adminPayment->kwitansi,
+            'kwitansi' => $adminPayment->kwitansi ? [
+                'id_kwitansi' => $adminPayment->kwitansi->id_kwitansi,
+                'file_path_pdf' => $adminPayment->kwitansi->file_path_pdf,
+                'jumlah' => $adminPayment->kwitansi->jumlah,
             ] : null,
         ];
     }

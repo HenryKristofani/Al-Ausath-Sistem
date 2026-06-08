@@ -406,6 +406,7 @@ class PembayaranSppController extends Controller
             'alamat_email' => $pendaftar->akun?->email,
             'nama_ayah_kandung' => $pendaftar->nama_ayah,
             'nama_ibu_kandung' => $pendaftar->nama_ibu,
+            'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
         ]);
         $santri->save();
 

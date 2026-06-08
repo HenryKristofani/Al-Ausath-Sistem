@@ -31,8 +31,8 @@ class DataSantriObserver
             return;
         }
 
-        // If class or SPP golongan changes, delete unpaid bills and re-provision
-        if ($santri->wasChanged('id_golongan_spp') || $santri->wasChanged('kode_kelas')) {
+        // If class, SPP golongan, or is_anak_guru status changes, delete unpaid bills and re-provision
+        if ($santri->wasChanged('id_golongan_spp') || $santri->wasChanged('kode_kelas') || $santri->wasChanged('is_anak_guru')) {
             Log::info("Santri {$santri->id_santri} changed class or SPP golongan. Re-evaluating unpaid SPP bills.");
 
             // 1. Delete unpaid bills

@@ -37,9 +37,18 @@ class SppSettingObserver
 
         // Jika jumlah (nominal) berubah, update nominal_bayar untuk tagihan yang masih menunggu pembayaran
         if ($setting->wasChanged('jumlah')) {
-            \App\Models\PembayaranSpp::where('id_setting', $setting->id_setting)
+            $pendingBills = \App\Models\PembayaranSpp::where('id_setting', $setting->id_setting)
                 ->where('status', 'menunggu_pembayaran')
-                ->update(['nominal_bayar' => (float) $setting->jumlah]);
+                ->with('santri')
+                ->get();
+
+            foreach ($pendingBills as $bill) {
+                $nominal = (float) $setting->jumlah;
+                if ($bill->santri && $bill->santri->is_anak_guru) {
+                    $nominal = (float) ($nominal * 0.5);
+                }
+                $bill->update(['nominal_bayar' => $nominal]);
+            }
             Log::info("SPP bills nominal updated for setting {$setting->id_setting} to: {$setting->jumlah}");
         }
     }

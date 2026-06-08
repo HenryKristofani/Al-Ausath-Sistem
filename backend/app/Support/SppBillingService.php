@@ -109,6 +109,11 @@ class SppBillingService
                 }
             }
 
+            $nominal = (float) ($setting->jumlah ?? 0);
+            if ($santri->is_anak_guru) {
+                $nominal = (float) ($nominal * 0.5);
+            }
+
             if ($isSpp) {
                 // If it is SPP, it should be calculated per month (6 months in a semester)
                 $periodUpper = strtoupper($setting->periode ?? '');
@@ -129,7 +134,7 @@ class SppBillingService
                             'bulan' => $month,
                         ],
                         [
-                            'nominal_bayar' => (float) ($setting->jumlah ?? 0),
+                            'nominal_bayar' => $nominal,
                             'tanggal_bayar' => null,
                             'metode_bayar' => null,
                             'status' => 'menunggu_pembayaran',
@@ -151,7 +156,7 @@ class SppBillingService
                         'bulan' => null,
                     ],
                     [
-                        'nominal_bayar' => (float) ($setting->jumlah ?? 0),
+                        'nominal_bayar' => $nominal,
                         'tanggal_bayar' => null,
                         'metode_bayar' => null,
                         'status' => 'menunggu_pembayaran',

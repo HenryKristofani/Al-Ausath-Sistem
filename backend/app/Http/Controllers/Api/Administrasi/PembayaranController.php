@@ -164,7 +164,7 @@ class PembayaranController extends Controller
 
         // 2. Fetch base IDs from entities to support search filters
         $santriQuery = DataSantri::query()
-            ->select('id_santri', 'nomor_induk', 'nama_lengkap_santri')
+            ->select('id_santri', 'nomor_induk', 'nama_lengkap_santri', 'is_anak_guru')
             ->when($nomorInduk, fn ($q) => $q->where('nomor_induk', $nomorInduk))
             ->when($keyword, function ($q) use ($keyword) {
                 $q->where('nama_lengkap_santri', 'like', "%{$keyword}%")
@@ -172,7 +172,7 @@ class PembayaranController extends Controller
             });
 
         $ppdbQuery = PpdbPendaftar::query()
-            ->select('id_pendaftaran', 'id_santri', 'no_pendaftaran', 'no_pendaftaran_final', 'nomor_induk_generated', 'nama_calon')
+            ->select('id_pendaftaran', 'id_santri', 'no_pendaftaran', 'no_pendaftaran_final', 'nomor_induk_generated', 'nama_calon', 'is_anak_guru')
             ->when($nomorInduk, function ($q) use ($nomorInduk) {
                 $q->where(function ($sub) use ($nomorInduk) {
                     $sub->where('nomor_induk_generated', $nomorInduk)
@@ -253,6 +253,7 @@ class PembayaranController extends Controller
                 'sumber_data'    => 'master_data_santri',
                 'id_santri'      => $id,
                 'id_pendaftaran' => null,
+                'is_anak_guru'   => (bool) $s->is_anak_guru,
             ]);
         }
 
@@ -279,6 +280,7 @@ class PembayaranController extends Controller
                 'sumber_data'    => 'ppdb',
                 'id_santri'      => null,
                 'id_pendaftaran' => $id,
+                'is_anak_guru'   => (bool) $p->is_anak_guru,
             ]);
         }
 
@@ -415,6 +417,7 @@ class PembayaranController extends Controller
                     'kelas_sekarang' => $santri?->kelas?->nama_kelas ?? $pendaftar?->kode_kelas_diterima,
                     'tahun_ajaran'   => $santri?->kelas?->tahun_ajaran,
                     'status'         => $santri?->status ?? $pendaftar?->status_verifikasi,
+                    'is_anak_guru'   => (bool) ($santri?->is_anak_guru ?? $pendaftar?->is_anak_guru),
                 ],
                 'ringkasan' => [
                     'jumlah_invoice' => $items->count(),
@@ -545,6 +548,7 @@ class PembayaranController extends Controller
                 'kelas_sekarang' => $santri->kelas?->nama_kelas,
                 'status' => $paymentStatus,
                 'invoice' => $mappedInvoices,
+                'is_anak_guru' => (bool) $santri->is_anak_guru,
             ]);
         }
 
@@ -632,6 +636,7 @@ class PembayaranController extends Controller
                 'bukti_bayar_path' => $row->bukti_bayar_path,
                 'catatan_bayar' => $row->catatan_bayar,
                 'aksi' => ['detail', 'status', 'hapus'],
+                'is_anak_guru' => (bool) ($row->santri?->is_anak_guru ?? $row->pendaftarPpdb?->is_anak_guru),
             ];
         });
 
