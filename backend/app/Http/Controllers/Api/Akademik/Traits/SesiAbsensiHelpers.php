@@ -44,7 +44,19 @@ trait SesiAbsensiHelpers
 
     protected function authorizeAdmin(DataPetugas $petugas): void
     {
-        if ((string) $petugas->peran_akun !== 'Petugas Admin') {
+        $userRole = $petugas->peran_akun;
+        
+        if (is_string($userRole) && str_starts_with($userRole, '[')) {
+            $decoded = json_decode($userRole, true);
+            if (is_array($decoded)) {
+                $userRole = $decoded;
+            }
+        }
+
+        $rolesToCheck = is_array($userRole) ? $userRole : [(string) $userRole];
+        $rolesToCheck = array_map(fn($r) => trim((string) $r), $rolesToCheck);
+
+        if (!in_array('Petugas Admin', $rolesToCheck, true)) {
             abort(403, 'Akses khusus Petugas Admin.');
         }
     }

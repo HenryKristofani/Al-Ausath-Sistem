@@ -684,6 +684,18 @@ class AdminSesiAbsensiController extends Controller
             }, $desc);
 
             $row['deskripsi'] = $desc;
+
+            // Fix Timezone: DB stores UTC, Laravel incorrectly assumes local. We parse raw UTC and format to ISO-8601
+            // We use substr to remove fractional seconds (e.g. .546323) which can cause JS Date.parse to misinterpret the timezone offset.
+            if (!empty($log->getRawOriginal('created_at'))) {
+                try {
+                    $rawDate = substr($log->getRawOriginal('created_at'), 0, 19);
+                    $row['created_at'] = \Carbon\Carbon::parse($rawDate, 'UTC')
+                        ->timezone(config('app.timezone', 'Asia/Jakarta'))
+                        ->toIso8601String();
+                } catch (\Throwable $e) {}
+            }
+
             return $row;
         });
 
