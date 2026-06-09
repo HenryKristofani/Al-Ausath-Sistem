@@ -20,6 +20,7 @@ class KkmMapelController extends Controller
     ];
 
     private const ADMIN_ROLES = [
+        'petugas admin',
         'admin',
         'administrator',
     ];
@@ -164,9 +165,11 @@ class KkmMapelController extends Controller
             ], 403);
         }
 
-        $role = strtolower(trim((string) $petugas->peran_akun));
+        $rawRoles = $petugas->peran_akun;
+        $roles = is_array($rawRoles) ? $rawRoles : [$rawRoles];
+        $roles = array_filter(array_map(fn ($role) => strtolower(trim((string) $role)), $roles), fn ($role) => $role !== '');
 
-        if (in_array($role, self::ADMIN_ROLES, true)) {
+        if (count(array_intersect($roles, self::ADMIN_ROLES)) > 0) {
             if ($canOverride) {
                 return null;
             }
@@ -176,7 +179,7 @@ class KkmMapelController extends Controller
             ], 403);
         }
 
-        if (in_array($role, self::MAPEL_ROLES, true)) {
+        if (count(array_intersect($roles, self::MAPEL_ROLES)) > 0) {
             if (! $canOverride || $allowMapelOverride) {
                 return null;
             }
