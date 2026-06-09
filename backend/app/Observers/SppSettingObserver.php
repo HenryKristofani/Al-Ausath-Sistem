@@ -80,6 +80,7 @@ class SppSettingObserver
 
             // Priority 2-5: Provision untuk multiple santri
             $query = DataSantri::query()
+                ->with(['kelas.unit'])
                 ->where('is_deleted', false)
                 ->whereRaw('UPPER(status) = ?', ['AKTIF']);
 
@@ -87,7 +88,7 @@ class SppSettingObserver
             if ($setting->kode_kelas) {
                 $query->where('kode_kelas', $setting->kode_kelas);
             } elseif ($setting->id_unit) {
-                $query->whereHas('kelas', fn ($q) => $q->where('id_unit', $setting->id_unit));
+                $query->whereHas('kelas.unit', fn ($q) => $q->where('id_unit', $setting->id_unit));
             } elseif ($setting->jenjang) {
                 $query->whereHas('kelas.unit', fn ($q) => 
                     $q->whereRaw('UPPER(nama_unit) = ?', [strtoupper($setting->jenjang)])

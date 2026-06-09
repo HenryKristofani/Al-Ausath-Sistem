@@ -3,9 +3,21 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\DataRekeningBank;
 
 class PembayaranSpp extends Model
 {
+    protected static function booted()
+    {
+        static::creating(function ($pembayaran) {
+            if (empty($pembayaran->id_rekening)) {
+                $rekening = DataRekeningBank::whereRaw("UPPER(status) = 'AKTIF'")->first();
+                if ($rekening) {
+                    $pembayaran->id_rekening = $rekening->id_rekening;
+                }
+            }
+        });
+    }
     protected $table = 'pembayaran_spp';
     protected $primaryKey = 'id_pembayaran';
 
@@ -15,6 +27,7 @@ class PembayaranSpp extends Model
         'id_pendaftaran',
         'id_santri',
         'id_setting',
+        'id_rekening',
         'bulan',
         'nominal_bayar',
         'tanggal_bayar',
@@ -52,6 +65,11 @@ class PembayaranSpp extends Model
     public function kwitansi()
     {
         return $this->hasOne(KwitansiPdf::class, 'id_pembayaran', 'id_pembayaran');
+    }
+
+    public function rekening()
+    {
+        return $this->belongsTo(DataRekeningBank::class, 'id_rekening', 'id_rekening');
     }
 }
 

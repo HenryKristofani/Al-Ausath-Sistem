@@ -355,38 +355,38 @@ class PembayaranController extends Controller
      */
     public function tagihanDetail(int $id): JsonResponse
     {
-        // Try to find payment row in pembayaran_spp first (may not exist for PPDB-only pendaftar)
-        $row = PembayaranSpp::query()
-            ->with(['santri.kelas.unit', 'pendaftarPpdb', 'setting.kategoriTagihan', 'kwitansi'])
-            ->where(function ($q) use ($id) {
-                $q->where('id_santri', $id)
-                  ->orWhere('id_pendaftaran', $id);
-            })
-            ->orderByDesc('id_pembayaran')
-            ->first();
+        // Resolve the actual entity objects for profil correctly
+        $santri = DataSantri::find($id);
+        $pendaftar = null;
 
-        // If no SPP payment exists, try to find pendaftar or santri directly
-        $linkedSantriId = $row?->id_santri;
-        $linkedPendaftaranId = $row?->id_pendaftaran ?? $id;
-        $isSantri = !empty($linkedSantriId);
-
-        // Resolve the actual entity objects for profil
-        $santri = $isSantri ? ($row?->santri ?? DataSantri::find($linkedSantriId)) : DataSantri::find($id);
-        $pendaftar = $row?->pendaftarPpdb ?? PpdbPendaftar::find($id);
-
-        // If neither santri nor pendaftar found, return 404
-        if (!$santri && !$pendaftar) {
-            abort(404, 'Santri atau Pendaftar tidak ditemukan');
-        }
-
-        // If we found a santri, update the linked santri ID
         if ($santri) {
             $linkedSantriId = $santri->id_santri;
             $isSantri = true;
-            // Also get pendaftar if santri came from PPDB
-            if (empty($pendaftar) && !empty($santri->id_pendaftaran)) {
-                $pendaftar = PpdbPendaftar::find($santri->id_pendaftaran);
-                $linkedPendaftaranId = $santri->id_pendaftaran;
+            $pendaftar = PpdbPendaftar::where('id_santri', $santri->id_santri)->first();
+            $linkedPendaftaranId = $pendaftar?->id_pendaftaran;
+        } else {
+            $pendaftar = PpdbPendaftar::find($id);
+            if ($pendaftar) {
+                $linkedPendaftaranId = $pendaftar->id_pendaftaran;
+                $linkedSantriId = $pendaftar->id_santri;
+                $isSantri = !empty($linkedSantriId);
+                if ($isSantri) {
+                    $santri = DataSantri::find($linkedSantriId);
+                }
+            } else {
+                // Try from payment row
+                $row = PembayaranSpp::with(['santri.kelas.unit', 'pendaftarPpdb', 'setting.kategoriTagihan', 'kwitansi'])
+                    ->where('id_pembayaran', $id)
+                    ->first();
+                if ($row) {
+                    $santri = $row->santri;
+                    $pendaftar = $row->pendaftarPpdb;
+                    $linkedSantriId = $row->id_santri;
+                    $linkedPendaftaranId = $row->id_pendaftaran;
+                    $isSantri = !empty($linkedSantriId);
+                } else {
+                    abort(404, 'Santri atau Pendaftar tidak ditemukan');
+                }
             }
         }
 
@@ -833,6 +833,7 @@ class PembayaranController extends Controller
             'bukti_bayar' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'catatan_bayar' => ['nullable', 'string', 'max:500'],
             'metode_bayar' => ['nullable', 'string', 'max:100'],
+            'id_rekening' => ['nullable', 'integer', 'exists:data_rekening_bank,id_rekening'],
         ]);
 
         // Jumlah bayar otomatis = jumlah tunggakan yang ada
@@ -845,6 +846,7 @@ class PembayaranController extends Controller
             'bukti_bayar_path' => $path,
             'catatan_bayar' => $request->catatan_bayar,
             'metode_bayar' => $request->metode_bayar ?? $pembayaran->metode_bayar,
+            'id_rekening' => $request->id_rekening ?? $pembayaran->id_rekening,
             'status' => 'menunggu_verifikasi',
             'tanggal_bayar' => Carbon::now(),
         ]);

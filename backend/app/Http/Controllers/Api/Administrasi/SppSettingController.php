@@ -68,11 +68,12 @@ class SppSettingController extends Controller
             'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
             'kode_kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
             'kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
-            'jenjang' => ['required_without_all:id_golongan_spp,kode_kelas,kelas', 'nullable', 'string', 'max:20'],
+            'jenjang' => ['nullable', 'string', 'max:20'],
             'kategori_tagihan_id' => ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
             'jumlah' => ['nullable', 'numeric'],
             'periode' => ['nullable', 'string', 'max:20'],
             'keterangan' => ['nullable', 'string'],
+            'aktif' => ['nullable', 'boolean'],
         ]);
 
         $payload = $this->hydrateSettingPayload($validated);
@@ -111,6 +112,7 @@ class SppSettingController extends Controller
             'jumlah' => ['nullable', 'numeric'],
             'periode' => ['nullable', 'string', 'max:20'],
             'keterangan' => ['nullable', 'string'],
+            'aktif' => ['nullable', 'boolean'],
         ]);
 
         $payload = $this->hydrateSettingPayload($validated);
