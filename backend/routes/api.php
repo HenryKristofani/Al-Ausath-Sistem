@@ -80,12 +80,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 
     Route::prefix('akademik')->group(function () {
-        Route::get('/bobot', [BobotNilaiController::class, 'index']);
-        Route::post('/bobot', [BobotNilaiController::class, 'store']);
-        Route::post('/bobot/set-default', [BobotNilaiController::class, 'setDefault']);
-        Route::get('/bobot/{id}', [BobotNilaiController::class, 'show']);
-        Route::put('/bobot/{id}', [BobotNilaiController::class, 'update']);
-        Route::delete('/bobot/{id}', [BobotNilaiController::class, 'destroy']);
+        Route::middleware(['role:Petugas Admin'])->group(function () {
+            Route::get('/bobot', [BobotNilaiController::class, 'index']);
+            Route::post('/bobot', [BobotNilaiController::class, 'store']);
+            Route::post('/bobot/set-default', [BobotNilaiController::class, 'setDefault']);
+            Route::get('/bobot/{id}', [BobotNilaiController::class, 'show']);
+            Route::put('/bobot/{id}', [BobotNilaiController::class, 'update']);
+            Route::delete('/bobot/{id}', [BobotNilaiController::class, 'destroy']);
+        });
 
         Route::get('/kkm-mapel', [KkmMapelController::class, 'index']);
         Route::post('/kkm-mapel', [KkmMapelController::class, 'store']);
