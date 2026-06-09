@@ -80,11 +80,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 
     Route::prefix('akademik')->group(function () {
-        Route::middleware(['role:Petugas Admin'])->group(function () {
+        Route::middleware(['role:Petugas Admin,Staf Pengajar'])->group(function () {
             Route::get('/bobot', [BobotNilaiController::class, 'index']);
+            Route::get('/bobot/{id}', [BobotNilaiController::class, 'show']);
+        });
+
+        Route::middleware(['role:Petugas Admin'])->group(function () {
             Route::post('/bobot', [BobotNilaiController::class, 'store']);
             Route::post('/bobot/set-default', [BobotNilaiController::class, 'setDefault']);
-            Route::get('/bobot/{id}', [BobotNilaiController::class, 'show']);
             Route::put('/bobot/{id}', [BobotNilaiController::class, 'update']);
             Route::delete('/bobot/{id}', [BobotNilaiController::class, 'destroy']);
         });
