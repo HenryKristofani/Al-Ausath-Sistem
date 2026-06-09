@@ -22,6 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/ppdb/register',
             'api/logout',
         ]);
+        
+        $middleware->alias([
+            'role' => \App\Http\Middleware\EnsureUserRole::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $e, Request $request) {
