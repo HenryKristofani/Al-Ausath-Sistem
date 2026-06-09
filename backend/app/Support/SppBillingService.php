@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Log;
 
 class SppBillingService
 {
+    protected static $cachedActiveYear = null;
+    protected static bool $activeYearLoaded = false;
+
     /**
      * Provision tagihan SPP untuk santri aktif secara idempotent.
      * 
@@ -31,10 +34,14 @@ class SppBillingService
         $santri->loadMissing(['kelas.unit']);
 
         // Get active academic year
-        $activeYear = DataTahunAjaran::query()
-            ->whereRaw('UPPER(status) = ?', ['AKTIF'])
-            ->where('is_deleted', false)
-            ->first();
+        if (!self::$activeYearLoaded) {
+            self::$cachedActiveYear = DataTahunAjaran::query()
+                ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                ->where('is_deleted', false)
+                ->first();
+            self::$activeYearLoaded = true;
+        }
+        $activeYear = self::$cachedActiveYear;
 
         $periodCandidates = collect([
             $activeYear?->kode_tahun,

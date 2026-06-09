@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\Administrasi\PembayaranController;
 use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
 use App\Http\Controllers\Api\Administrasi\PpdbPeriodController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\Administrasi\RekeningBankController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -412,6 +413,15 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/{id}/konfirmasi', [PembayaranController::class, 'konfirmasiVerifikasi']);
         Route::put('/{id}/status', [PembayaranSppController::class, 'updateStatusVerifikasi']);
         Route::delete('/{id}', [PembayaranSppController::class, 'destroy']);
+    });
+
+    // Rekening Bank — admin CRUD + public listing for payment pages
+    Route::prefix('rekening')->group(function () {
+        Route::get('/', [RekeningBankController::class, 'index']);
+        Route::post('/', [RekeningBankController::class, 'store']);
+        Route::get('/{id}', [RekeningBankController::class, 'show']);
+        Route::put('/{id}', [RekeningBankController::class, 'update']);
+        Route::delete('/{id}', [RekeningBankController::class, 'destroy']);
     });
 });
 

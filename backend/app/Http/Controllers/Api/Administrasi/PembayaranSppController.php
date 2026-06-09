@@ -37,7 +37,7 @@ class PembayaranSppController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = PembayaranSpp::query()
-            ->with(['santri', 'setting', 'pendaftarPpdb', 'kwitansi'])
+            ->with(['santri', 'setting', 'pendaftarPpdb', 'kwitansi', 'rekening'])
             ->when($request->filled('id_pendaftaran'), fn ($q) => $q->where('id_pendaftaran', $request->id_pendaftaran))
             ->when($request->filled('id_santri'), fn ($q) => $q->where('id_santri', $request->id_santri))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
@@ -112,7 +112,7 @@ class PembayaranSppController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = PembayaranSpp::with(['santri', 'setting'])->findOrFail($id);
+        $data = PembayaranSpp::with(['santri', 'setting', 'rekening'])->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -168,7 +168,7 @@ class PembayaranSppController extends Controller
 
         return response()->json([
             'message' => 'Pembayaran SPP berhasil diperbarui.',
-            'data' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
+            'data' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi', 'rekening']),
         ]);
     }
 
@@ -216,7 +216,7 @@ class PembayaranSppController extends Controller
             }
 
             return [
-                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi']),
+                'pembayaran' => $pembayaran->fresh(['santri', 'setting', 'pendaftarPpdb', 'kwitansi', 'rekening']),
                 'kwitansi' => $kwitansi,
                 'integrasi_ppdb' => $integrasi,
             ];
@@ -236,7 +236,7 @@ class PembayaranSppController extends Controller
         $statusTunggakan = $this->tunggakanStatuses();
 
         $rows = PembayaranSpp::query()
-            ->with(['santri.kelas', 'setting.kategoriTagihan'])
+            ->with(['santri.kelas', 'setting.kategoriTagihan', 'rekening'])
             ->whereIn('status', $statusTunggakan)
             ->when($request->filled('id_santri'), fn ($q) => $q->where('id_santri', $request->id_santri))
             ->orderByDesc('tanggal_bayar')
@@ -262,6 +262,14 @@ class PembayaranSppController extends Controller
                         'tanggal_bayar' => $row->tanggal_bayar,
                         'status' => $row->status,
                         'kategori' => $row->setting?->kategoriTagihan?->nama_tagihan,
+                        'rekening' => $row->rekening ? [
+                            'id_rekening' => $row->rekening->id_rekening,
+                            'nama_bank' => $row->rekening->nama_bank,
+                            'nomor_rekening' => $row->rekening->nomor_rekening,
+                            'nama_pemilik' => $row->rekening->nama_pemilik,
+                            'cabang_bank' => $row->rekening->cabang_bank,
+                            'peruntukan' => $row->rekening->peruntukan,
+                        ] : null,
                     ])->values(),
                 ];
             })
