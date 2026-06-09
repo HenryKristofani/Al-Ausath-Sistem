@@ -442,7 +442,7 @@ class PembayaranController extends Controller
             'kwitansi_tersedia' => (bool) $item->kwitansi,
             'kwitansi_url'    => $item->kwitansi?->file_path_pdf ? Storage::url($item->kwitansi->file_path_pdf) : null,
             'bukti_bayar_path' => $item->bukti_bayar_path,
-            'bukti_bayar_url'  => $item->bukti_bayar_path ? Storage::disk('public')->url($item->bukti_bayar_path) : null,
+            'bukti_bayar_url'  => $item->bukti_bayar_path ? Storage::url($item->bukti_bayar_path) : null,
             'catatan_bayar'    => $item->catatan_bayar,
             // Tambahan untuk staging payment
             'jumlah_minimum_dp' => !empty($item->id_pendaftaran) 
@@ -465,6 +465,33 @@ class PembayaranController extends Controller
                 return $item;
             })
             ->values();
+
+        $sppSettings = $sppItems
+            ->map(fn (PembayaranSpp $item) => $item->setting)
+            ->filter()
+            ->unique('id_setting')
+            ->values()
+            ->map(function ($setting) {
+                return [
+                    'id_setting' => $setting->id_setting,
+                    'nama_setting' => $setting->kategoriTagihan?->nama_tagihan ?: $setting->keterangan ?: 'SPP',
+                    'periode' => $setting->periode,
+                    'jenjang' => $setting->jenjang,
+                    'kode_kelas' => $setting->kode_kelas,
+                    'jumlah' => (float) ($setting->jumlah ?? 0),
+                    'aktif' => (bool) ($setting->aktif ?? false),
+                ];
+            })
+            ->values();
+
+        $ppdbSelection = $pendaftar ? [
+            'pilihan_uang_gedung' => $pendaftar->pilihan_uang_gedung ? (int) $pendaftar->pilihan_uang_gedung : null,
+            'pilihan_infaq_bulanan' => $pendaftar->pilihan_infaq_bulanan ? (int) $pendaftar->pilihan_infaq_bulanan : null,
+            'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
+            'status_verifikasi' => $pendaftar->status_verifikasi,
+            'batas_bayar_uang_pangkal' => optional($pendaftar->batas_bayar_uang_pangkal)->format('Y-m-d'),
+            'batas_bayar_spp' => optional($pendaftar->batas_bayar_spp)->format('Y-m-d'),
+        ] : null;
 
         // Calculate summary from merged data
         $totalTagihan = (float) $allInvoices
@@ -502,6 +529,8 @@ class PembayaranController extends Controller
                     'total_tunggakan' => $totalTunggakan,
                 ],
                 'invoice' => $allInvoices,
+                'spp_settings' => $sppSettings,
+                'ppdb_selection' => $ppdbSelection,
             ],
         ]);
     }
@@ -534,7 +563,7 @@ class PembayaranController extends Controller
             'kwitansi_tersedia' => false, // ppdb_tagihan doesn't have kwitansi integration yet
             'kwitansi_url'    => null,
             'bukti_bayar_path' => $row->bukti_bayar_path ?? null,
-            'bukti_bayar_url'  => !empty($row->bukti_bayar_path) ? Storage::disk('public')->url($row->bukti_bayar_path) : null,
+            'bukti_bayar_url'  => !empty($row->bukti_bayar_path) ? Storage::url($row->bukti_bayar_path) : null,
             'catatan_bayar'    => $row->catatan_bayar ?? null,
             'jumlah_minimum_dp' => (float) ($row->jumlah_minimum_dp ?? ($nominalTagihan * 0.5)), // Use column or calculate 50% DP
             'bulan' => $row->bulan_tagihan ?? null,
@@ -793,7 +822,7 @@ class PembayaranController extends Controller
                     'metode_bayar' => $pembayaran->metode_bayar,
                     'bukti_bayar_path' => $pembayaran->bukti_bayar_path,
                     'bukti_bayar_url' => $pembayaran->bukti_bayar_path
-                        ? Storage::disk('public')->url($pembayaran->bukti_bayar_path)
+                        ? Storage::url($pembayaran->bukti_bayar_path)
                         : null,
                     'catatan_bayar' => $pembayaran->catatan_bayar,
                 ],

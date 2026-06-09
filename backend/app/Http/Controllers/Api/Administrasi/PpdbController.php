@@ -729,6 +729,34 @@ class PpdbController extends Controller
         ], 201);
     }
 
+    /**
+     * Buat tagihan infaq PPDB untuk pendaftar yang sudah diterima.
+     */
+    public function createTagihanInfaq(Request $request, string $id): JsonResponse
+    {
+        $pendaftar = $this->resolvePendaftarByIdentifier($id, ['akun', 'santriDiterima']);
+
+        if (!$this->isStatusDiterima($pendaftar->status_verifikasi)) {
+            return response()->json([
+                'message' => 'Tagihan infaq hanya dapat dibuat untuk pendaftar yang sudah diterima.',
+            ], 422);
+        }
+
+        $santri = $pendaftar->santriDiterima ?: ($pendaftar->id_santri ? DataSantri::find($pendaftar->id_santri) : null);
+        $tagihan = $this->createTagihanInfaqIfNeeded($pendaftar, $santri);
+
+        if (!$tagihan) {
+            return response()->json([
+                'message' => 'Tagihan infaq belum dapat dibuat. Pastikan pilihan infaq sudah diisi.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Tagihan infaq berhasil dibuat.',
+            'data'    => $tagihan->load(['setting', 'pendaftarPpdb', 'kwitansi']),
+        ], 201);
+    }
+
     private function createTagihanPpdbIfNeeded(PpdbPendaftar $pendaftar, array $overrides = []): PembayaranSpp
     {
         $existing = PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)->first();
@@ -770,7 +798,7 @@ class PpdbController extends Controller
      * untuk kombinasi (id_santri, id_pendaftaran, bulan=null, id_setting),
      * record yang sudah ada akan dikembalikan tanpa membuat duplikat.
      */
-    private function createTagihanInfaqIfNeeded(PpdbPendaftar $pendaftar, DataSantri $santri): ?PembayaranSpp
+    private function createTagihanInfaqIfNeeded(PpdbPendaftar $pendaftar, ?DataSantri $santri = null): ?PembayaranSpp
     {
         // 1. Periksa apakah pilihan_infaq_bulanan diisi (tidak null dan > 0)
         $nominalInfaq = $pendaftar->pilihan_infaq_bulanan;
@@ -781,8 +809,8 @@ class PpdbController extends Controller
         // 2. Cari SppSetting yang cocok untuk kategori infaq
         $setting = null;
 
-        // Dapatkan kelas santri untuk pencocokan jenjang / unit
-        $kelas = $santri->kelas;
+        // Dapatkan kelas santri untuk pencocokan jenjang / unit bila sudah terintegrasi
+        $kelas = $santri?->kelas;
 
         $query = SppSetting::query()
             ->whereNull('id_santri') // Hanya setting global, bukan per-santri
@@ -813,6 +841,15 @@ class PpdbController extends Controller
                 // Juga coba cocok berdasarkan kode_kelas langsung jika kolom tersedia
                 if (Schema::hasColumn('spp_setting', 'kode_kelas')) {
                     $q->orWhere('kode_kelas', $kelas->kode_kelas);
+                }
+            });
+        } elseif (!empty($pendaftar->jenjang) || !empty($pendaftar->program_pendaftaran)) {
+            $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran)));
+            $query->where(function ($q) use ($jenjang) {
+                $q->whereRaw('UPPER(COALESCE(jenjang, "")) = ?', [$jenjang]);
+
+                if (Schema::hasColumn('spp_setting', 'kode_kelas')) {
+                    $q->orWhereRaw('UPPER(COALESCE(kode_kelas, "")) = ?', [$jenjang]);
                 }
             });
         }

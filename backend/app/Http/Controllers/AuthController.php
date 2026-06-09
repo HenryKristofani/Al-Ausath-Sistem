@@ -469,6 +469,42 @@ class AuthController extends Controller
         ]);
     }
 
+    public function infaqPpdb(Request $request)
+    {
+        $akun = $this->resolveAuthenticatedPpdbUser();
+
+        if (!$akun) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $pendaftar = $akun->pendaftaran()
+            ->orderByDesc('id_pendaftaran')
+            ->first();
+
+        if (!$pendaftar) {
+            return response()->json([
+                'message' => 'ID pendaftaran belum dibuat untuk akun ini.',
+            ], 422);
+        }
+
+        $this->ensurePpdbAdministrasiTagihan($pendaftar);
+        $this->ensurePpdbInfaqTagihan($pendaftar);
+        $flow = $this->buildPpdbFlowState($pendaftar);
+
+        return response()->json([
+            'message' => 'Data infaq PPDB berhasil dimuat.',
+            'data' => [
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'status_verifikasi' => $pendaftar->status_verifikasi,
+                'pilihan_uang_gedung' => $pendaftar->pilihan_uang_gedung ? (int) $pendaftar->pilihan_uang_gedung : null,
+                'pilihan_infaq_bulanan' => $pendaftar->pilihan_infaq_bulanan ? (int) $pendaftar->pilihan_infaq_bulanan : null,
+                'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
+                'flow' => $flow,
+                'pembayaran_ppdb' => $flow['pembayaran_ppdb'] ?? null,
+            ],
+        ]);
+    }
+
     public function updateFormPpdb(Request $request)
     {
         \Illuminate\Support\Facades\Log::info('updateFormPpdb request input: ' . json_encode($request->except(['password'])));

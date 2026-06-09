@@ -76,6 +76,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
         Route::get('/pembayaran', [AuthController::class, 'pembayaranStatusPpdb']);
+        Route::get('/infaq', [AuthController::class, 'infaqPpdb']);
         Route::put('/form', [AuthController::class, 'updateFormPpdb']);
         Route::post('/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
     });
@@ -341,6 +342,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/pendaftar/{id}/verifikasi-spp', [PpdbController::class, 'verifikasiSpp']);
         Route::post('/pendaftar/{id}/notifikasi', [PpdbController::class, 'storeNotifikasi']);
         Route::post('/pendaftar/{id}/tagihan', [PpdbController::class, 'createTagihanPpdb']);
+        Route::post('/pendaftar/{id}/tagihan-infaq', [PpdbController::class, 'createTagihanInfaq']);
 
         Route::get('/tes/konfigurasi', [PpdbTesKonfigurasiController::class, 'index']);
         Route::put('/tes/konfigurasi/{jenjang}', [PpdbTesKonfigurasiController::class, 'update']);
