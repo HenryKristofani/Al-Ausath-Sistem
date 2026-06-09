@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Support\PpdbRegistrationNumberService;
 use App\Support\KwitansiPdfGenerator;
+use App\Support\SppBillingService;
 
 class PembayaranSppController extends Controller
 {
@@ -352,7 +353,16 @@ class PembayaranSppController extends Controller
 
     private function tunggakanStatuses(): array
     {
-        return ['tunggakan', 'belum_lunas', 'pending', 'TUNGGAKAN', 'BELUM_LUNAS', 'PENDING'];
+        // Include 'menunggu_pembayaran' so newly provisioned bills (default status) are visible.
+        return [
+            'menunggu_pembayaran',
+            'tunggakan',
+            'belum_lunas',
+            'pending',
+            'TUNGGAKAN',
+            'BELUM_LUNAS',
+            'PENDING',
+        ];
     }
 
     private function integrasikanPembayaranTerverifikasi(PembayaranSpp $pembayaran): ?array
@@ -409,6 +419,9 @@ class PembayaranSppController extends Controller
             'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
         ]);
         $santri->save();
+
+        // Provision SPP billing for the newly integrated santri
+        app(SppBillingService::class)->provisionBillingForActiveSantri($santri);
 
         $passwordHash = $pendaftar->akun?->password_hash;
         $passwordDefault = null;

@@ -11,6 +11,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class PembayaranController extends Controller
@@ -354,7 +355,7 @@ class PembayaranController extends Controller
      */
     public function tagihanDetail(int $id): JsonResponse
     {
-        // Find the first payment row matching by id_santri OR id_pendaftaran
+        // Try to find payment row in pembayaran_spp first (may not exist for PPDB-only pendaftar)
         $row = PembayaranSpp::query()
             ->with(['santri.kelas.unit', 'pendaftarPpdb', 'setting.kategoriTagihan', 'kwitansi'])
             ->where(function ($q) use ($id) {
@@ -362,50 +363,125 @@ class PembayaranController extends Controller
                   ->orWhere('id_pendaftaran', $id);
             })
             ->orderByDesc('id_pembayaran')
-            ->firstOrFail();
+            ->first();
 
-        // Resolve: if this payment has id_santri (SPP bill, or PPDB bill after integration fix),
-        // treat the whole detail as a santri-view and fetch ALL bills by id_santri.
-        $linkedSantriId = $row->id_santri;
-        $isSantri       = !empty($linkedSantriId);
+        // If no SPP payment exists, try to find pendaftar or santri directly
+        $linkedSantriId = $row?->id_santri;
+        $linkedPendaftaranId = $row?->id_pendaftaran ?? $id;
+        $isSantri = !empty($linkedSantriId);
 
         // Resolve the actual entity objects for profil
-        $santri    = $isSantri ? $row->santri : null;
-        $pendaftar = $row->pendaftarPpdb;
+        $santri = $isSantri ? ($row?->santri ?? DataSantri::find($linkedSantriId)) : DataSantri::find($id);
+        $pendaftar = $row?->pendaftarPpdb ?? PpdbPendaftar::find($id);
 
-        // Fetch ALL bills for this entity
-        $items = PembayaranSpp::query()
+        // If neither santri nor pendaftar found, return 404
+        if (!$santri && !$pendaftar) {
+            abort(404, 'Santri atau Pendaftar tidak ditemukan');
+        }
+
+        // If we found a santri, update the linked santri ID
+        if ($santri) {
+            $linkedSantriId = $santri->id_santri;
+            $isSantri = true;
+            // Also get pendaftar if santri came from PPDB
+            if (empty($pendaftar) && !empty($santri->id_pendaftaran)) {
+                $pendaftar = PpdbPendaftar::find($santri->id_pendaftaran);
+                $linkedPendaftaranId = $santri->id_pendaftaran;
+            }
+        }
+
+        // Fetch ALL SPP bills for this entity
+        $sppItems = PembayaranSpp::query()
             ->with(['setting.kategoriTagihan', 'kwitansi'])
-            ->where(function ($q) use ($isSantri, $linkedSantriId, $row) {
-                if ($isSantri) {
-                    // Fetch both SPP bills (by id_santri) and PPDB bills (by id_pendaftaran linked to same santri)
+            ->where(function ($q) use ($isSantri, $linkedSantriId, $linkedPendaftaranId) {
+                if ($isSantri && !empty($linkedSantriId)) {
                     $q->where('id_santri', $linkedSantriId);
-                    if (!empty($row->id_pendaftaran)) {
-                        $q->orWhere('id_pendaftaran', $row->id_pendaftaran);
+                    if (!empty($linkedPendaftaranId)) {
+                        $q->orWhere('id_pendaftaran', $linkedPendaftaranId);
                     }
-                } else {
-                    $q->where('id_pendaftaran', $row->id_pendaftaran);
+                } else if (!empty($linkedPendaftaranId)) {
+                    $q->where('id_pendaftaran', $linkedPendaftaranId);
                 }
             })
             ->orderByDesc('tanggal_bayar')
             ->orderByDesc('id_pembayaran')
             ->get();
 
-        $totalTagihan = (float) $items
-            ->reject(fn (PembayaranSpp $item) => $this->isCanceledStatus((string) $item->status))
-            ->sum('nominal_bayar');
+        // Fetch ALL Infaq PPDB bills from ppdb_tagihan table
+        $infaqItems = collect();
+        if (!empty($linkedPendaftaranId) || !empty($linkedSantriId)) {
+            $infaqItems = DB::table('ppdb_tagihan')
+                ->where(function ($q) use ($linkedPendaftaranId, $linkedSantriId) {
+                    if (!empty($linkedPendaftaranId)) {
+                        $q->where('id_pendaftaran', $linkedPendaftaranId);
+                    }
+                    if (!empty($linkedSantriId)) {
+                        $q->orWhere('id_santri', $linkedSantriId);
+                    }
+                })
+                ->orderByDesc('created_at')
+                ->get();
+        }
 
-        $totalDibayar = (float) $items
-            ->filter(fn (PembayaranSpp $item) => $this->isPaidStatus((string) $item->status))
-            ->sum('nominal_bayar');
+        // Map SPP items to unified format
+        $sppInvoices = collect($sppItems->map(fn (PembayaranSpp $item) => [
+            'id_pembayaran'   => $item->id_pembayaran,
+            'nomor_invoice'   => $this->buildNomorInvoice($item->id_pembayaran),
+            'periode_tagihan' => $item->setting?->periode,
+            'rincian_tagihan' => $item->bulan 
+                ? (($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: 'SPP') . ' - ' . $item->bulan) 
+                : ($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'Tagihan SPP' : 'Tagihan PPDB')),
+            'jenis_tagihan'   => empty($item->id_pendaftaran) ? 'SPP' : 'PPDB',
+            'jumlah_tagihan'  => (float) ($item->nominal_bayar ?? 0),
+            'jumlah_dibayar'  => $this->isPaidStatus((string) $item->status) ? (float) ($item->nominal_bayar ?? 0) : 0,
+            'jumlah_tunggakan' => $this->isPaidStatus((string) $item->status) ? 0 : (float) ($item->nominal_bayar ?? 0),
+            'status'          => $item->status,
+            'status_key'      => $this->normalizeStatusForFrontend((string) $item->status),
+            'status_label'    => $this->buildStatusLabel((string) $item->status),
+            'waktu_invoice'   => optional($item->tanggal_bayar)->format('Y-m-d H:i:s'),
+            'kwitansi_tersedia' => (bool) $item->kwitansi,
+            'kwitansi_url'    => $item->kwitansi?->file_path_pdf ? Storage::url($item->kwitansi->file_path_pdf) : null,
+            'bukti_bayar_path' => $item->bukti_bayar_path,
+            'bukti_bayar_url'  => $item->bukti_bayar_path ? Storage::disk('public')->url($item->bukti_bayar_path) : null,
+            'catatan_bayar'    => $item->catatan_bayar,
+            // Tambahan untuk staging payment
+            'jumlah_minimum_dp' => !empty($item->id_pendaftaran) 
+                ? (float) ($item->nominal_bayar * 0.5) // 50% untuk tagihan PPDB
+                : null,
+            'bulan' => $item->bulan, // Format YYYY-MM untuk tracking consecutive months
+            '_source' => 'pembayaran_spp',
+            '_sort_time' => $item->tanggal_bayar?->format('Y-m-d H:i:s') ?? $item->created_at?->format('Y-m-d H:i:s'),
+        ]));
+
+        // Map Infaq items to unified format
+        $infaqInvoices = collect($infaqItems->map(fn ($item) => $this->normalizePpdbTagihanRow($item)));
+
+        // Merge both invoice arrays and sort by time
+        $allInvoices = $sppInvoices->merge($infaqInvoices)
+            ->sortByDesc('_sort_time')
+            ->map(function ($item) {
+                // Remove internal fields before sending to frontend
+                unset($item['_source'], $item['_sort_time']);
+                return $item;
+            })
+            ->values();
+
+        // Calculate summary from merged data
+        $totalTagihan = (float) $allInvoices
+            ->reject(fn ($item) => in_array($item['status_key'], ['dibatalkan']))
+            ->sum('jumlah_tagihan');
+
+        $totalDibayar = (float) $allInvoices
+            ->filter(fn ($item) => $item['status_key'] === 'lunas')
+            ->sum('jumlah_dibayar');
 
         $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
 
         return response()->json([
             'data' => [
                 'profil' => [
-                    'id'           => $isSantri ? $linkedSantriId : $row->id_pendaftaran,
-                    'sumber'       => $isSantri ? 'santri' : 'ppdb',
+                    'id'           => $isSantri ? $linkedSantriId : $linkedPendaftaranId,
+                    'sumber'       => $pendaftar ? 'ppdb' : 'santri',
                     'nama_lengkap' => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon,
                     'nomor_induk'  => $santri?->nomor_induk
                         ?? $pendaftar?->nomor_induk_generated
@@ -420,34 +496,51 @@ class PembayaranController extends Controller
                     'is_anak_guru'   => (bool) ($santri?->is_anak_guru ?? $pendaftar?->is_anak_guru),
                 ],
                 'ringkasan' => [
-                    'jumlah_invoice' => $items->count(),
+                    'jumlah_invoice' => $allInvoices->count(),
                     'total_tagihan'  => $totalTagihan,
                     'total_dibayar'  => $totalDibayar,
                     'total_tunggakan' => $totalTunggakan,
                 ],
-                'invoice' => $items->map(fn (PembayaranSpp $item) => [
-                    'id_pembayaran'   => $item->id_pembayaran,
-                    'nomor_invoice'   => $this->buildNomorInvoice($item->id_pembayaran),
-                    'periode_tagihan' => $item->setting?->periode,
-                    'rincian_tagihan' => $item->bulan 
-                        ? (($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: 'SPP') . ' - ' . $item->bulan) 
-                        : ($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'Tagihan SPP' : 'Tagihan PPDB')),
-                    'jenis_tagihan'   => empty($item->id_pendaftaran) ? 'SPP' : 'PPDB',
-                    'jumlah_tagihan'  => (float) ($item->nominal_bayar ?? 0),
-                    'jumlah_dibayar'  => $this->isPaidStatus((string) $item->status) ? (float) ($item->nominal_bayar ?? 0) : 0,
-                    'jumlah_tunggakan' => $this->isPaidStatus((string) $item->status) ? 0 : (float) ($item->nominal_bayar ?? 0),
-                    'status'          => $item->status,
-                    'status_key'      => $this->normalizeStatusForFrontend((string) $item->status),
-                    'status_label'    => $this->buildStatusLabel((string) $item->status),
-                    'waktu_invoice'   => optional($item->tanggal_bayar)->format('Y-m-d H:i:s'),
-                    'kwitansi_tersedia' => (bool) $item->kwitansi,
-                    'kwitansi_url'    => $item->kwitansi?->file_path_pdf ? Storage::url($item->kwitansi->file_path_pdf) : null,
-                    'bukti_bayar_path' => $item->bukti_bayar_path,
-                    'bukti_bayar_url'  => $item->bukti_bayar_path ? Storage::disk('public')->url($item->bukti_bayar_path) : null,
-                    'catatan_bayar'    => $item->catatan_bayar,
-                ])->values(),
+                'invoice' => $allInvoices,
             ],
         ]);
+    }
+
+    /**
+     * Normalize ppdb_tagihan row to unified invoice format
+     */
+    private function normalizePpdbTagihanRow($row): array
+    {
+        $status = (string) ($row->status_pembayaran ?? 'menunggu_dp');
+        $normalizedStatus = $this->normalizeStatusForFrontend($status);
+        $isPaid = in_array($normalizedStatus, ['lunas']);
+        
+        $nominalTagihan = (float) ($row->nominal_tagihan ?? 0);
+        $jumlahTerbayar = (float) ($row->jumlah_terbayar ?? 0);
+        
+        return [
+            'id_pembayaran'   => (int) $row->id_tagihan,
+            'nomor_invoice'   => "INV-PPDB-{$row->id_tagihan}",
+            'periode_tagihan' => $row->periode_tagihan ?? null,
+            'rincian_tagihan' => $row->nama_tagihan ?? 'Tagihan Infaq PPDB',
+            'jenis_tagihan'   => 'PPDB',
+            'jumlah_tagihan'  => $nominalTagihan,
+            'jumlah_dibayar'  => $isPaid ? $jumlahTerbayar : 0,
+            'jumlah_tunggakan' => $isPaid ? 0 : max($nominalTagihan - $jumlahTerbayar, 0),
+            'status'          => $status,
+            'status_key'      => $normalizedStatus,
+            'status_label'    => $this->buildStatusLabel($status),
+            'waktu_invoice'   => $row->created_at ?? null,
+            'kwitansi_tersedia' => false, // ppdb_tagihan doesn't have kwitansi integration yet
+            'kwitansi_url'    => null,
+            'bukti_bayar_path' => $row->bukti_bayar_path ?? null,
+            'bukti_bayar_url'  => !empty($row->bukti_bayar_path) ? Storage::disk('public')->url($row->bukti_bayar_path) : null,
+            'catatan_bayar'    => $row->catatan_bayar ?? null,
+            'jumlah_minimum_dp' => (float) ($row->jumlah_minimum_dp ?? ($nominalTagihan * 0.5)), // Use column or calculate 50% DP
+            'bulan' => $row->bulan_tagihan ?? null,
+            '_source' => 'ppdb_tagihan',
+            '_sort_time' => $row->created_at ?? $row->updated_at ?? null,
+        ];
     }
 
 
@@ -742,6 +835,10 @@ class PembayaranController extends Controller
             'metode_bayar' => ['nullable', 'string', 'max:100'],
         ]);
 
+        // Jumlah bayar otomatis = jumlah tunggakan yang ada
+        // User TIDAK perlu input jumlah, karena sudah pasti dari tagihan
+        $jumlahBayar = (float) $pembayaran->nominal_bayar;
+
         $path = $request->file('bukti_bayar')->store('pembayaran/bukti', 'public');
 
         $pembayaran->update([
@@ -758,6 +855,7 @@ class PembayaranController extends Controller
                 'id_pembayaran' => $pembayaran->id_pembayaran,
                 'status' => 'menunggu_verifikasi',
                 'bukti_bayar_url' => Storage::url($path),
+                'jumlah_bayar' => $jumlahBayar,
             ],
         ]);
     }
@@ -867,9 +965,17 @@ class PembayaranController extends Controller
         $normalized = mb_strtolower(trim($status));
 
         return match ($normalized) {
+            // SPP status mappings (existing)
             'menunggu_verifikasi' => 'menunggu_konfirmasi',
             'terverifikasi' => 'lunas',
             'ditolak' => 'dibatalkan',
+            
+            // PPDB Infaq status mappings (new - based on ppdb_tagihan enum)
+            'menunggu_dp' => 'menunggu_pembayaran',
+            'dp_terbayar' => 'menunggu_konfirmasi',
+            'terlambat' => 'menunggu_pembayaran',
+            
+            // Default: return as-is
             default => $normalized,
         };
     }

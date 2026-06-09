@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -602,10 +603,20 @@ class PpdbController extends Controller
                     (string) ($validated['kode_kelas_diterima'] ?? ''),
                     $autoBuatAkunSantri
                 );
+                // Refresh agar id_santri yang baru di-assign oleh integrasikanPendaftarDiterima
+                // terlihat oleh createTagihanPpdbIfNeeded dan blok back-fill di bawah.
+                $pendaftar->refresh();
             }
 
             if ($this->isStatusDiterima($validated['hasil'] ?? null) && $buatTagihanPpdb) {
                 $tagihanPpdb = $this->createTagihanPpdbIfNeeded($pendaftar);
+            }
+
+            // Hubungkan tagihan PPDB lama ke id_santri (jika pendaftar sudah punya id_santri dari integrasi sebelumnya)
+            if ($this->isStatusDiterima($validated['hasil'] ?? null) && !empty($pendaftar->id_santri)) {
+                PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)
+                    ->whereNull('id_santri')
+                    ->update(['id_santri' => $pendaftar->id_santri]);
             }
 
             return $verifikasi;
@@ -741,6 +752,7 @@ class PpdbController extends Controller
 
         return PembayaranSpp::create([
             'id_pendaftaran' => $pendaftar->id_pendaftaran,
+            // id_santri diisi langsung jika pendaftar sudah terintegrasi ke DataSantri
             'id_santri' => $pendaftar->id_santri ?? null,
             'id_setting' => $setting?->id_setting ?? ($overrides['id_setting'] ?? null),
             'nominal_bayar' => $nominal,
@@ -748,6 +760,91 @@ class PpdbController extends Controller
             'metode_bayar' => $overrides['metode_bayar'] ?? null,
             'status' => 'menunggu_pembayaran',
         ]);
+    }
+
+    /**
+     * Buat tagihan infaq bulanan untuk santri yang diterima via PPDB,
+     * apabila pendaftar memilih nominal infaq bulanan.
+     *
+     * Metode ini bersifat idempotent: jika tagihan infaq sudah ada
+     * untuk kombinasi (id_santri, id_pendaftaran, bulan=null, id_setting),
+     * record yang sudah ada akan dikembalikan tanpa membuat duplikat.
+     */
+    private function createTagihanInfaqIfNeeded(PpdbPendaftar $pendaftar, DataSantri $santri): ?PembayaranSpp
+    {
+        // 1. Periksa apakah pilihan_infaq_bulanan diisi (tidak null dan > 0)
+        $nominalInfaq = $pendaftar->pilihan_infaq_bulanan;
+        if (empty($nominalInfaq) || $nominalInfaq <= 0) {
+            return null;
+        }
+
+        // 2. Cari SppSetting yang cocok untuk kategori infaq
+        $setting = null;
+
+        // Dapatkan kelas santri untuk pencocokan jenjang / unit
+        $kelas = $santri->kelas;
+
+        $query = SppSetting::query()
+            ->whereNull('id_santri') // Hanya setting global, bukan per-santri
+            ->where(function ($q) {
+                // Filter berdasarkan keterangan atau nama kategori tagihan yang mengandung "infaq"
+                $q->whereRaw('LOWER(keterangan) LIKE ?', ['%infaq%'])
+                  ->orWhereHas('kategoriTagihan', function ($kq) {
+                      $kq->whereRaw('LOWER(nama_tagihan) LIKE ?', ['%infaq%']);
+                  });
+            });
+
+        // Filter aktif jika kolom tersedia
+        if (Schema::hasColumn('spp_setting', 'aktif')) {
+            $query->where('aktif', true);
+        }
+
+        // Cocokkan dengan jenjang atau unit santri
+        if ($kelas) {
+            $query->where(function ($q) use ($kelas) {
+                if (!empty($kelas->kode_unit)) {
+                    // id_unit pada spp_setting mengacu ke data_unit; kelas memiliki kode_unit
+                    // Lakukan sub-query untuk mendapatkan id_unit yang sesuai kode_unit
+                    $q->whereHas('unit', function ($uq) use ($kelas) {
+                        $uq->where('kode_unit', $kelas->kode_unit);
+                    });
+                }
+
+                // Juga coba cocok berdasarkan kode_kelas langsung jika kolom tersedia
+                if (Schema::hasColumn('spp_setting', 'kode_kelas')) {
+                    $q->orWhere('kode_kelas', $kelas->kode_kelas);
+                }
+            });
+        }
+
+        $setting = $query->orderByDesc('id_setting')->first();
+
+        // 3. Buat atau dapatkan tagihan infaq menggunakan firstOrCreate untuk idempotency
+        $tagihan = PembayaranSpp::firstOrCreate(
+            [
+                'id_santri'       => $santri->id_santri,
+                'id_pendaftaran'  => $pendaftar->id_pendaftaran,
+                'bulan'           => null,
+                'id_setting'      => $setting?->id_setting,
+            ],
+            [
+                // 4. Nilai tagihan: gunakan pilihan_infaq_bulanan apa adanya (infaq tidak didiskon untuk anak guru)
+                // Infaq tidak didiskon untuk anak guru — nominal diambil langsung dari pilihan pendaftar
+                'nominal_bayar' => $nominalInfaq,
+                'status'        => 'menunggu_pembayaran',
+            ]
+        );
+
+        // 5. Log hasil pembuatan tagihan
+        Log::info('Tagihan infaq bulanan PPDB', [
+            'id_pendaftaran' => $pendaftar->id_pendaftaran,
+            'id_santri'      => $santri->id_santri,
+            'id_setting'     => $setting?->id_setting,
+            'nominal_infaq'  => $nominalInfaq,
+            'is_created'     => $tagihan->wasRecentlyCreated,
+        ]);
+
+        return $tagihan;
     }
 
     private function isPembayaranPpdbLunas(int $idPendaftaran): bool
@@ -816,6 +913,8 @@ class PpdbController extends Controller
 
         $santri->save();
 
+        // Bug fix: Hubungkan semua tagihan PPDB (yang dibuat sebelum integrasi) ke id_santri yang baru.
+        // Tanpa ini, halaman administrasi santri (query by id_santri) tidak menemukan tagihan PPDB awal.
         // Link existing PPDB payment records to the new santri id,
         // so PPDB bills and SPP bills are merged under the same santri identity.
         PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)
@@ -842,6 +941,8 @@ class PpdbController extends Controller
 
         // Provision SPP billing for the active santri
         $this->billingService->provisionBillingForActiveSantri($santri);
+
+        $this->createTagihanInfaqIfNeeded($pendaftar, $santri);
 
         $akunSantri = null;
         $passwordDefault = null;

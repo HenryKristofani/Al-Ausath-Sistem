@@ -609,6 +609,9 @@ class AuthController extends Controller
         // Load period dulu agar ensurePpdbAdministrasiTagihan bisa pakai relasi yang sudah ter-load
         $pendaftar->load(['tes', 'verifikasi', 'period']);
         $this->ensurePpdbAdministrasiTagihan($pendaftar);
+        
+        // Generate tagihan infaq PPDB jika pilihan sudah diisi
+        $this->ensurePpdbInfaqTagihan($pendaftar);
 
         return response()->json([
             'message' => 'Form pendaftaran berhasil disimpan.',
@@ -617,6 +620,171 @@ class AuthController extends Controller
                 'flow' => $this->buildPpdbFlowState($pendaftar),
             ],
         ]);
+    }
+    
+    /**
+     * Generate tagihan infaq PPDB berdasarkan pilihan pendaftar.
+     * Tagihan yang dibuat:
+     * 1. Uang Pangkal (sesuai pilihan A/B)
+     * 2. Perlengkapan (tetap untuk PAUD, Pratahfidz, MTs)
+     * 3. Uang Modul (tetap untuk MTs, MTQU)
+     * 4. SPP Bulanan (sesuai pilihan A/B) - untuk pembayaran pertama
+     */
+    protected function ensurePpdbInfaqTagihan(PpdbPendaftar $pendaftar): void
+    {
+        // Hanya generate jika pilihan infaq sudah diisi dan status diterima
+        if (
+            !$pendaftar->pilihan_uang_gedung 
+            || !$pendaftar->pilihan_infaq_bulanan
+            || $pendaftar->status_verifikasi !== 'diterima'
+        ) {
+            return;
+        }
+
+        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        
+        // Konfigurasi nominal infaq per jenjang
+        $configInfaq = $this->getInfaqConfig($jenjang);
+        
+        if (!$configInfaq) {
+            \Log::warning("Konfigurasi infaq tidak ditemukan untuk jenjang: {$jenjang}");
+            return;
+        }
+
+        // Nominal yang dipilih pendaftar
+        $nominalUangPangkal = $pendaftar->pilihan_uang_gedung == 1 
+            ? $configInfaq['uang_pangkal_a'] 
+            : $configInfaq['uang_pangkal_b'];
+        
+        $nominalInfaqBulanan = $pendaftar->pilihan_infaq_bulanan == 1
+            ? $configInfaq['infaq_bulanan_a']
+            : $configInfaq['infaq_bulanan_b'];
+        
+        // Apply diskon anak guru HANYA untuk Uang Pangkal
+        if ($pendaftar->is_anak_guru) {
+            $nominalUangPangkal = $nominalUangPangkal * 0.5; // 50% diskon
+        }
+        
+        $totalUangPangkal = $nominalUangPangkal + $configInfaq['perlengkapan'];
+        
+        // 1. Buat tagihan Uang Pangkal + Perlengkapan
+        $this->createOrUpdateTagihan(
+            $pendaftar,
+            'Uang Pangkal + Perlengkapan',
+            $totalUangPangkal,
+            'PPDB_UANG_PANGKAL'
+        );
+        
+        // 2. Buat tagihan Uang Modul (jika ada)
+        if ($configInfaq['uang_modul'] > 0) {
+            $this->createOrUpdateTagihan(
+                $pendaftar,
+                'Uang Modul Semester Ganjil',
+                $configInfaq['uang_modul'],
+                'PPDB_UANG_MODUL'
+            );
+        }
+        
+        // 3. Buat tagihan SPP Bulanan pertama
+        $this->createOrUpdateTagihan(
+            $pendaftar,
+            'SPP Bulanan (Pembayaran Pertama)',
+            $nominalInfaqBulanan,
+            'PPDB_SPP_BULANAN'
+        );
+    }
+    
+    /**
+     * Get konfigurasi infaq berdasarkan jenjang
+     */
+    protected function getInfaqConfig(string $jenjang): ?array
+    {
+        $configs = [
+            'PAUD' => [
+                'uang_pangkal_a' => 1_000_000,
+                'uang_pangkal_b' => 1_500_000,
+                'perlengkapan' => 300_000,
+                'uang_modul' => 0,
+                'infaq_bulanan_a' => 200_000,
+                'infaq_bulanan_b' => 250_000,
+            ],
+            'PRATAHFIDZ' => [
+                'uang_pangkal_a' => 1_000_000,
+                'uang_pangkal_b' => 1_500_000,
+                'perlengkapan' => 1_200_000,
+                'uang_modul' => 0,
+                'infaq_bulanan_a' => 300_000,
+                'infaq_bulanan_b' => 350_000,
+            ],
+            'MTS' => [
+                'uang_pangkal_a' => 1_500_000,
+                'uang_pangkal_b' => 2_000_000,
+                'perlengkapan' => 875_000, // meja, sekat, almari, kasur
+                'uang_modul' => 250_000,
+                'infaq_bulanan_a' => 600_000,
+                'infaq_bulanan_b' => 650_000,
+            ],
+            'MTQU' => [
+                'uang_pangkal_a' => 1_800_000,
+                'uang_pangkal_b' => 2_000_000,
+                'perlengkapan' => 0,
+                'uang_modul' => 200_000,
+                'infaq_bulanan_a' => 350_000,
+                'infaq_bulanan_b' => 400_000,
+            ],
+        ];
+        
+        return $configs[$jenjang] ?? null;
+    }
+    
+    /**
+     * Create or update tagihan dengan FirstOrCreate untuk idempotency
+     */
+    protected function createOrUpdateTagihan(
+        PpdbPendaftar $pendaftar, 
+        string $keterangan, 
+        float $nominal, 
+        string $jenis
+    ): PembayaranSpp {
+        // Cari atau buat setting yang sesuai
+        $setting = SppSetting::firstOrCreate(
+            [
+                'jenjang' => $pendaftar->jenjang,
+                'keterangan' => $keterangan,
+            ],
+            [
+                'jumlah' => $nominal,
+                'aktif' => true,
+            ]
+        );
+        
+        // Hitung DP 50%
+        $minimumDp = $nominal * 0.5;
+        
+        // Create or update tagihan (idempotent)
+        $tagihan = PembayaranSpp::firstOrCreate(
+            [
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'id_setting' => $setting->id_setting,
+            ],
+            [
+                'id_santri' => $pendaftar->id_santri,
+                'nominal_bayar' => $nominal,
+                'status' => 'menunggu_pembayaran',
+                'metode_bayar' => null,
+                'tanggal_bayar' => null,
+            ]
+        );
+        
+        // Tambahkan field custom untuk DP jika belum ada
+        if (!$tagihan->wasRecentlyCreated && $tagihan->status === 'menunggu_pembayaran') {
+            // Update nominal jika ada perubahan
+            if ($tagihan->nominal_bayar != $nominal) {
+                $tagihan->update(['nominal_bayar' => $nominal]);
+            }
+        }
+        
+        return $tagihan;
     }
 
     protected function ensurePpdbAdministrasiTagihan(PpdbPendaftar $pendaftar): void
