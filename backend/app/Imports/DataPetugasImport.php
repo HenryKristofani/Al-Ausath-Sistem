@@ -49,7 +49,8 @@ class DataPetugasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $validator = Validator::make($payload, [
                 'nomor_induk' => ['nullable', 'string', 'max:20'],
                 'nama_lengkap' => ['required', 'string', 'max:200'],
-                'peran_akun' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
+                'peran_akun' => ['required', 'array', 'min:1'],
+                'peran_akun.*' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
                 'pilihan_unit' => ['nullable', 'string', 'max:10'],
                 'alamat_email' => ['required', 'email', 'max:100'],
                 'nomor_telepon' => ['nullable', 'string', 'max:20'],
@@ -161,6 +162,11 @@ class DataPetugasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
 
         if (!empty($payload['status'])) {
             $payload['status'] = strtoupper((string) $payload['status']);
+        }
+
+        if (array_key_exists('peran_akun', $payload) && is_string($payload['peran_akun'])) {
+            $roles = array_map('trim', explode(',', $payload['peran_akun']));
+            $payload['peran_akun'] = array_filter($roles, fn($role) => $role !== '');
         }
 
         return $payload;

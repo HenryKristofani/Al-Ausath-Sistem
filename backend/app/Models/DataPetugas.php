@@ -37,8 +37,9 @@ class DataPetugas extends Authenticatable
         'password_hash',
     ];
 
-        protected $casts = [
+    protected $casts = [
         'last_login' => 'datetime',
+        'peran_akun' => 'array',
     ];
 
     public function getAuthPassword()

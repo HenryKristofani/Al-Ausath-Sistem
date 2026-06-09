@@ -27,7 +27,7 @@ class DataPetugasController extends Controller
 
         $query = DataPetugas::query()
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('peran_akun'), fn ($q) => $q->where('peran_akun', $request->peran_akun))
+            ->when($request->filled('peran_akun'), fn ($q) => $q->whereJsonContains('peran_akun', $request->peran_akun))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -50,7 +50,8 @@ class DataPetugasController extends Controller
         $validated = $request->validate([
             'nomor_induk' => ['nullable', 'string', 'max:20', 'unique:data_petugas,nomor_induk'],
             'nama_lengkap' => ['required', 'string', 'max:200'],
-            'peran_akun' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
+            'peran_akun' => ['required', 'array', 'min:1'],
+            'peran_akun.*' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
             'pilihan_unit' => ['nullable', 'string', 'max:10'],
             'alamat_email' => ['required', 'email', 'max:100', 'unique:data_petugas,alamat_email'],
             'nomor_telepon' => ['nullable', 'string', 'max:20'],
@@ -101,7 +102,8 @@ class DataPetugasController extends Controller
                 Rule::unique('data_petugas', 'nomor_induk')->ignore($petugas->id_petugas, 'id_petugas'),
             ],
             'nama_lengkap' => ['sometimes', 'string', 'max:200'],
-            'peran_akun' => ['sometimes', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
+            'peran_akun' => ['sometimes', 'array', 'min:1'],
+            'peran_akun.*' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
             'pilihan_unit' => ['nullable', 'string', 'max:10'],
             'alamat_email' => [
                 'sometimes',
@@ -246,7 +248,8 @@ class DataPetugasController extends Controller
             $validator = Validator::make($payload, [
                 'nomor_induk' => ['nullable', 'string', 'max:20'],
                 'nama_lengkap' => ['required', 'string', 'max:200'],
-                'peran_akun' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
+                'peran_akun' => ['required', 'array', 'min:1'],
+                'peran_akun.*' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
                 'pilihan_unit' => ['nullable', 'string', 'max:10'],
                 'alamat_email' => ['required', 'email', 'max:100'],
                 'nomor_telepon' => ['nullable', 'string', 'max:20'],
@@ -420,6 +423,11 @@ class DataPetugasController extends Controller
 
         if (!empty($payload['status'])) {
             $payload['status'] = strtoupper((string) $payload['status']);
+        }
+
+        if (array_key_exists('peran_akun', $payload) && is_string($payload['peran_akun'])) {
+            $roles = array_map('trim', explode(',', $payload['peran_akun']));
+            $payload['peran_akun'] = array_filter($roles, fn($role) => $role !== '');
         }
 
         return $payload;

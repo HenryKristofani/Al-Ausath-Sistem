@@ -21,7 +21,7 @@ class DataPetugasExport implements FromCollection, WithHeadings, ShouldAutoSize
     {
         return DataPetugas::query()
             ->when(!empty($this->status), fn ($q) => $q->where('status', strtoupper($this->status)))
-            ->when(!empty($this->peranAkun), fn ($q) => $q->where('peran_akun', $this->peranAkun))
+            ->when(!empty($this->peranAkun), fn ($q) => $q->whereJsonContains('peran_akun', $this->peranAkun))
             ->when(!empty($this->keyword), function ($q) {
                 $keyword = $this->keyword;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -43,6 +43,7 @@ class DataPetugasExport implements FromCollection, WithHeadings, ShouldAutoSize
                 'last_login',
             ])
             ->map(function ($row) {
+                $row->peran_akun = is_array($row->peran_akun) ? implode(', ', $row->peran_akun) : $row->peran_akun;
                 $row->last_login = optional($row->last_login)->format('Y-m-d H:i:s');
                 return $row;
             });
