@@ -40,19 +40,8 @@ class DataMasterInitController extends Controller
             ->limit(10)
             ->get(['kode_tahun', 'nama_tahun', 'status']);
 
-        // 4. Peran Petugas (Distinct)
-        // Jika ada tabel/enum terpisah, bisa diambil dari situ.
-        // Di sini kita ambil nilai unik dari DataPetugas
-        $peran = DataPetugas::select('peran_akun')
-            ->distinct()
-            ->whereNotNull('peran_akun')
-            ->pluck('peran_akun');
-            
-        // Jika tidak ada di DB (misal saat awal belum ada petugas), 
-        // fallback ke opsi default yang ada di frontend
-        if ($peran->isEmpty()) {
-            $peran = ["Petugas Admin", "Petugas Tata Usaha", "Petugas PPDB", "Petugas SPP", "Staf Pengajar"];
-        }
+        // 4. Peran Petugas (Ambil dari opsi konstan di model, menghindari JSON berantakan)
+        $peran = DataPetugas::PERAN_AKUN_OPTIONS;
 
         // 5. Opsi Tambahan: Mata Pelajaran (untuk halaman mapel / jadwal)
         $mapel = DataMataPelajaran::orderBy('nama_mapel')
