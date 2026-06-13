@@ -398,4 +398,133 @@ class SppPpdbFeatureTest extends TestCase
         $response->assertStatus(200)
                  ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
     }
+
+    /**
+     * Test sibling registration under the same guardian account (Issue #4).
+     */
+    public function test_ppdb_sibling_registration(): void
+    {
+        // 1. Create a period
+        $period = PpdbPeriod::create([
+            'nama_gelombang' => 'Gelombang Test Sibling',
+            'tahun_ajaran' => '2026/2027',
+            'tanggal_mulai' => now()->subDay()->toDateString(),
+            'tanggal_selesai' => now()->addDay()->toDateString(),
+            'kuota' => 10,
+            'biaya_pendaftaran' => 100000,
+            'status' => 'aktif',
+        ]);
+
+        // 2. Create and authenticate an AkunPendaftar
+        $user = \App\Models\AkunPendaftar::create([
+            'nama' => 'Wali Murid',
+            'email' => 'walimurid_' . uniqid() . '@example.com',
+            'phone' => '08122334455',
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('password123'),
+        ]);
+
+        Sanctum::actingAs($user, ['*']);
+
+        // Create the first registration
+        $firstPendaftar = $this->createMockPendaftar([
+            'id_akun' => $user->id_akun,
+            'ppdb_period_id' => $period->id,
+            'nama_calon' => 'Anak Pertama',
+        ]);
+
+        // 3. Add a sibling registration
+        $response = $this->postJson('/api/ppdb/pendaftaran/tambah-siswa');
+        $response->assertStatus(201)
+                 ->assertJsonStructure(['message', 'data' => ['id_pendaftaran', 'no_pendaftaran']]);
+
+        $siblingId = $response->json('data.id_pendaftaran');
+
+        // 4. Retrieve profile and verify multiple students exist under this account
+        $profileResponse = $this->getJson('/api/me');
+        $profileResponse->assertStatus(200);
+
+        $daftar = $profileResponse->json('user.daftar_pendaftaran');
+        $this->assertCount(2, $daftar);
+
+        $ids = array_column($daftar, 'id_pendaftaran');
+        $this->assertContains($firstPendaftar->id_pendaftaran, $ids);
+        $this->assertContains($siblingId, $ids);
+    }
+
+    /**
+     * Test retrieving available classes according to unit level and quota (Issue #3).
+     */
+    public function test_ppdb_available_kelas(): void
+    {
+        $user = \App\Models\AkunPendaftar::first() ?: \App\Models\AkunPendaftar::create([
+            'nama' => 'Wali Murid',
+            'email' => 'walimurid_kelas_' . uniqid() . '@example.com',
+            'phone' => '08122334455',
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('password123'),
+        ]);
+
+        Sanctum::actingAs($user, ['*']);
+
+        // Ensure at least one active class exists
+        $kelas = DataKelas::where('status', 'AKTIF')->where('is_deleted', false)->first();
+        if (!$kelas) {
+            $unit = \App\Models\DataUnit::first() ?: \App\Models\DataUnit::create([
+                'kode_unit' => 'MTS',
+                'nama_unit' => 'MTs Al-Ausath',
+            ]);
+            $kelas = DataKelas::create([
+                'kode_unit' => $unit->kode_unit,
+                'kode_kelas' => '7A-' . uniqid(),
+                'nama_kelas' => 'Kelas VII A',
+                'tahun_ajaran' => '2026/2027',
+                'status' => 'AKTIF',
+                'is_deleted' => false,
+            ]);
+        }
+
+        $response = $this->getJson('/api/ppdb/available-kelas?jenjang=' . $kelas->kode_unit);
+        $response->assertStatus(200)
+                 ->assertJsonStructure(['message', 'data']);
+
+        $data = $response->json('data');
+        $this->assertNotEmpty($data);
+        $this->assertEquals($kelas->kode_kelas, $data[0]['kode_kelas']);
+    }
+
+    /**
+     * Test retrieving specific pendaftaran using id_pendaftaran (Issue #4).
+     */
+    public function test_ppdb_specific_pendaftaran(): void
+    {
+        $user = \App\Models\AkunPendaftar::create([
+            'nama' => 'Wali Murid Multi',
+            'email' => 'walimulti_' . uniqid() . '@example.com',
+            'phone' => '08122334455',
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('password123'),
+        ]);
+
+        Sanctum::actingAs($user, ['*']);
+
+        $firstPendaftar = $this->createMockPendaftar([
+            'id_akun' => $user->id_akun,
+            'nama_calon' => 'Anak Sulung',
+        ]);
+
+        $secondPendaftar = $this->createMockPendaftar([
+            'id_akun' => $user->id_akun,
+            'nama_calon' => 'Anak Bungsu',
+        ]);
+
+        // Query the sulung
+        $response1 = $this->getJson('/api/ppdb/dashboard?id_pendaftaran=' . $firstPendaftar->id_pendaftaran);
+        $response1->assertStatus(200);
+        $this->assertEquals($firstPendaftar->id_pendaftaran, $response1->json('data.pendaftaran.id_pendaftaran'));
+        $this->assertEquals('Anak Sulung', $response1->json('data.pendaftaran.nama_calon'));
+
+        // Query the bungsu
+        $response2 = $this->getJson('/api/ppdb/dashboard?id_pendaftaran=' . $secondPendaftar->id_pendaftaran);
+        $response2->assertStatus(200);
+        $this->assertEquals($secondPendaftar->id_pendaftaran, $response2->json('data.pendaftaran.id_pendaftaran'));
+        $this->assertEquals('Anak Bungsu', $response2->json('data.pendaftaran.nama_calon'));
+    }
 }

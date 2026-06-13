@@ -77,6 +77,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
         Route::get('/pembayaran', [AuthController::class, 'pembayaranStatusPpdb']);
         Route::get('/infaq', [AuthController::class, 'infaqPpdb']);
+        Route::get('/available-kelas', [PpdbController::class, 'availableKelas']);
+        Route::post('/pendaftaran/tambah-siswa', [AuthController::class, 'tambahSiswaPpdb']);
         Route::put('/form', [AuthController::class, 'updateFormPpdb']);
         Route::post('/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
     });
@@ -328,6 +330,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
 
     Route::prefix('ppdb')->group(function () {
         Route::get('/pendaftar/rekap/diterima', [PpdbController::class, 'rekapDiterima']);
+        Route::get('/pendaftar/available-kelas', [PpdbController::class, 'availableKelas']);
         Route::get('/pendaftar/export', [PpdbController::class, 'export']);
         Route::get('/pendaftar', [PpdbController::class, 'index']);
         Route::post('/pendaftar', [PpdbController::class, 'store']);
@@ -345,6 +348,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::post('/pendaftar/{id}/tagihan-infaq', [PpdbController::class, 'createTagihanInfaq']);
 
         Route::get('/tes/konfigurasi', [PpdbTesKonfigurasiController::class, 'index']);
+        Route::post('/tes/konfigurasi/upload-gambar', [PpdbTesKonfigurasiController::class, 'uploadGambar']);
         Route::put('/tes/konfigurasi/{jenjang}', [PpdbTesKonfigurasiController::class, 'update']);
 
         Route::get('/periods/statistik', [PpdbPeriodController::class, 'statistik']);
@@ -395,6 +399,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('bebas')->group(function () {
         Route::get('/', [AdministrasiBebasController::class, 'index']);
         Route::post('/', [AdministrasiBebasController::class, 'store']);
+        Route::post('/bulk', [AdministrasiBebasController::class, 'storeBulk']);
         Route::get('/{id}', [AdministrasiBebasController::class, 'show']);
         Route::put('/{id}', [AdministrasiBebasController::class, 'update']);
         Route::delete('/{id}', [AdministrasiBebasController::class, 'destroy']);
@@ -405,6 +410,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('pembayaran')->group(function () {
         Route::get('/options', [PembayaranController::class, 'options']);
         Route::get('/tagihan', [PembayaranController::class, 'tagihan']);
+        Route::get('/tagihan-saya', [PembayaranController::class, 'tagihanSaya']); // Issue #11: untuk santri login
         Route::get('/tagihan/{id}/detail', [PembayaranController::class, 'tagihanDetail']);
         Route::get('/proses', [PembayaranController::class, 'proses']);
         Route::get('/verifikasi', [PembayaranController::class, 'verifikasi']);

@@ -15,6 +15,8 @@ class AdministrasiBebas extends Model
     protected $fillable = [
         'id_santri',
         'deskripsi',
+        'kategori',
+        'tahun_ajaran',
         'total_tagihan',
         'sisa',
         'status',

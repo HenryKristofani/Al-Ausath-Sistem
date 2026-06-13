@@ -533,6 +533,7 @@ class PpdbController extends Controller
             'tanggal_verif' => ['nullable', 'date'],
             'hasil' => ['nullable', 'string', 'max:20'],
             'catatan' => ['nullable', 'string'],
+            'bukti_ortu_guru_verified' => ['nullable', 'boolean'],
             'kode_kelas_diterima' => [
                 Rule::requiredIf(fn () => $this->isStatusDiterima($hasilInput)),
                 'nullable',
@@ -558,6 +559,7 @@ class PpdbController extends Controller
 
         $payloadVerifikasi = $validated;
         unset($payloadVerifikasi['kode_kelas_diterima']);
+        unset($payloadVerifikasi['bukti_ortu_guru_verified']);
 
         $integrasiDiterima = null;
         $tagihanPpdb = null;
@@ -568,10 +570,9 @@ class PpdbController extends Controller
                 $payloadVerifikasi
             );
 
+            $payloadPendaftar = [];
             if (!empty($validated['hasil'])) {
-                $payloadPendaftar = [
-                    'status_verifikasi' => $validated['hasil'],
-                ];
+                $payloadPendaftar['status_verifikasi'] = $validated['hasil'];
 
                 if (empty($pendaftar->tanggal_pengumuman) && $this->hasPendaftarColumn('tanggal_pengumuman')) {
                     $payloadPendaftar['tanggal_pengumuman'] = Carbon::parse($validated['tanggal_verif'])->toDateString();
@@ -589,11 +590,19 @@ class PpdbController extends Controller
                 if (!empty($validated['kode_kelas_diterima'])) {
                     $payloadPendaftar['kode_kelas_diterima'] = $validated['kode_kelas_diterima'];
                 }
+            }
 
-                $payloadPendaftar = $this->filterPendaftarPayloadByExistingColumns($payloadPendaftar);
+            if (array_key_exists('bukti_ortu_guru_verified', $validated)) {
+                $payloadPendaftar['bukti_ortu_guru_verified'] = (bool) $validated['bukti_ortu_guru_verified'];
+            }
 
-                if ($payloadPendaftar !== []) {
-                    $pendaftar->update($payloadPendaftar);
+            if ($payloadPendaftar !== []) {
+                $payloadPendaftarFiltered = $this->filterPendaftarPayloadByExistingColumns($payloadPendaftar);
+                if (array_key_exists('bukti_ortu_guru_verified', $payloadPendaftar)) {
+                    $payloadPendaftarFiltered['bukti_ortu_guru_verified'] = $payloadPendaftar['bukti_ortu_guru_verified'];
+                }
+                if ($payloadPendaftarFiltered !== []) {
+                    $pendaftar->update($payloadPendaftarFiltered);
                 }
             }
 
@@ -1127,5 +1136,68 @@ class PpdbController extends Controller
             fn ($column) => $this->hasPendaftarColumn((string) $column),
             ARRAY_FILTER_USE_KEY
         );
+    }
+
+    /**
+     * Endpoint to list available classes for PPDB admission.
+     */
+    public function availableKelas(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'jenjang' => ['required', 'string'],
+            'tahun_ajaran' => ['nullable', 'string'],
+        ]);
+
+        $jenjang = strtoupper($validated['jenjang']);
+        // Normalize jenjang to unit code (MI, MTS, MA)
+        $unitCode = match ($jenjang) {
+            'MI', 'SD' => 'MI',
+            'MTS', 'SMP' => 'MTS',
+            'MA', 'SMA' => 'MA',
+            default => $jenjang,
+        };
+
+        $tahunAjaran = $validated['tahun_ajaran'] ?? null;
+        if (!$tahunAjaran) {
+            $activeTA = \App\Models\DataTahunAjaran::where('status', 'AKTIF')->first();
+            $tahunAjaran = $activeTA ? $activeTA->kode_tahun : null;
+        }
+
+        $query = DataKelas::query()
+            ->withCount(['santri as jumlah_santri_aktif' => function ($q) {
+                $q->where('status', 'AKTIF')->where('is_deleted', false);
+            }])
+            ->where('status', 'AKTIF')
+            ->where('is_deleted', false)
+            ->where('kode_unit', $unitCode);
+
+        if ($tahunAjaran) {
+            $query->where('tahun_ajaran', $tahunAjaran);
+        }
+
+        $classes = $query->get();
+
+        $data = $classes->map(function ($kelas) {
+            $kapasitas = 30; // standard capacity
+            $sisaKuota = max(0, $kapasitas - $kelas->jumlah_santri_aktif);
+
+            return [
+                'id_kelas' => $kelas->id_kelas,
+                'kode_kelas' => $kelas->kode_kelas,
+                'nama_kelas' => $kelas->nama_kelas,
+                'nama_jurusan' => $kelas->nama_jurusan,
+                'kode_unit' => $kelas->kode_unit,
+                'tahun_ajaran' => $kelas->tahun_ajaran,
+                'jumlah_santri_aktif' => $kelas->jumlah_santri_aktif,
+                'kapasitas' => $kapasitas,
+                'sisa_kuota' => $sisaKuota,
+                'is_penuh' => $sisaKuota <= 0,
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Daftar kelas tersedia berhasil diambil.',
+            'data' => $data,
+        ]);
     }
 }

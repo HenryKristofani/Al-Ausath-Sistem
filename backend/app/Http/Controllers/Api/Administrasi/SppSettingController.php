@@ -65,6 +65,15 @@ class SppSettingController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        if (!$request->filled('id_unit') && !$request->filled('id_golongan_spp') && !$request->filled('kode_kelas') && !$request->filled('kelas') && !$request->filled('jenjang')) {
+            return response()->json([
+                'message' => 'Salah satu lingkup target (id_unit, id_golongan_spp, kode_kelas/kelas, jenjang) wajib diisi.',
+                'errors' => [
+                    'id_unit' => ['Salah satu lingkup target wajib diisi.'],
+                ],
+            ], 422);
+        }
+
         $validated = $request->validate([
             'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
             'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],

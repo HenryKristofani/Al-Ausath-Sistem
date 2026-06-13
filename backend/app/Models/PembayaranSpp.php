@@ -28,6 +28,7 @@ class PembayaranSpp extends Model
         'id_santri',
         'id_setting',
         'id_rekening',
+        'jenis_tagihan',
         'bulan',
         'nominal_bayar',
         'tanggal_bayar',

@@ -57,17 +57,102 @@ class AdministrasiBebasController extends Controller
         $validated = $request->validate([
             'id_santri' => ['required', 'integer', 'exists:data_santri,id_santri'],
             'deskripsi' => ['required', 'string', 'max:255'],
+            'kategori' => ['nullable', 'string', 'max:100'],
+            'tahun_ajaran' => ['nullable', 'string'],
             'total_tagihan' => ['required', 'numeric', 'min:0'],
         ]);
 
         $validated['sisa'] = $validated['total_tagihan'];
         $validated['status'] = 'BELUM_LUNAS';
+        if (empty($validated['kategori'])) {
+            $validated['kategori'] = 'Lainnya';
+        }
+        if (empty($validated['tahun_ajaran'])) {
+            $activeYear = \App\Models\DataTahunAjaran::whereRaw('UPPER(status) = ?', ['AKTIF'])->first();
+            $validated['tahun_ajaran'] = $activeYear ? $activeYear->nama_tahun : date('Y') . '/' . (date('Y') + 1);
+        }
 
         $data = AdministrasiBebas::create($validated);
 
         return response()->json([
             'message' => 'Tagihan bebas berhasil dibuat.',
             'data' => $data->load('santri'),
+        ], 201);
+    }
+
+    /**
+     * Simpan tagihan bebas baru secara massal (bulk generation).
+     */
+    public function storeBulk(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_santri_list' => ['nullable', 'array'],
+            'id_santri_list.*' => ['integer', 'exists:data_santri,id_santri'],
+            'kode_kelas' => ['nullable', 'string', 'exists:data_kelas,kode_kelas'],
+            'kode_unit' => ['nullable', 'string', 'exists:data_unit,kode_unit'],
+            'deskripsi' => ['required', 'string', 'max:255'],
+            'kategori' => ['nullable', 'string', 'max:100'],
+            'tahun_ajaran' => ['nullable', 'string'],
+            'total_tagihan' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $deskripsi = $validated['deskripsi'];
+        $totalTagihan = $validated['total_tagihan'];
+        $kategori = $validated['kategori'] ?? 'Lainnya';
+        
+        $tahunAjaran = $validated['tahun_ajaran'] ?? null;
+        if (!$tahunAjaran) {
+            $activeYear = \App\Models\DataTahunAjaran::whereRaw('UPPER(status) = ?', ['AKTIF'])->first();
+            $tahunAjaran = $activeYear ? $activeYear->nama_tahun : date('Y') . '/' . (date('Y') + 1);
+        }
+
+        $santriIds = collect();
+
+        if (!empty($validated['id_santri_list'])) {
+            $santriIds = collect($validated['id_santri_list']);
+        } elseif (!empty($validated['kode_kelas'])) {
+            $santriIds = DataSantri::where('kode_kelas', $validated['kode_kelas'])
+                ->where('is_deleted', false)
+                ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                ->pluck('id_santri');
+        } elseif (!empty($validated['kode_unit'])) {
+            $santriIds = DataSantri::whereHas('kelas', function ($q) use ($validated) {
+                $q->where('kode_unit', strtoupper($validated['kode_unit']));
+            })
+                ->where('is_deleted', false)
+                ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                ->pluck('id_santri');
+        } else {
+            return response()->json([
+                'message' => 'Harap tentukan target santri (id_santri_list, kode_kelas, atau kode_unit).'
+            ], 422);
+        }
+
+        if ($santriIds->isEmpty()) {
+            return response()->json([
+                'message' => 'Tidak ada santri aktif yang ditemukan untuk kriteria target ini.'
+            ], 422);
+        }
+
+        $createdCount = 0;
+        DB::transaction(function () use ($santriIds, $deskripsi, $totalTagihan, $kategori, $tahunAjaran, &$createdCount) {
+            foreach ($santriIds as $idSantri) {
+                AdministrasiBebas::create([
+                    'id_santri' => $idSantri,
+                    'deskripsi' => $deskripsi,
+                    'kategori' => $kategori,
+                    'tahun_ajaran' => $tahunAjaran,
+                    'total_tagihan' => $totalTagihan,
+                    'sisa' => $totalTagihan,
+                    'status' => 'BELUM_LUNAS',
+                ]);
+                $createdCount++;
+            }
+        });
+
+        return response()->json([
+            'message' => "Tagihan bebas berhasil dibuat secara massal untuk {$createdCount} santri.",
+            'created_count' => $createdCount
         ], 201);
     }
 

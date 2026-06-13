@@ -58,6 +58,8 @@ class PpdbPendaftar extends Model
         'status_spp',
         'bukti_uang_pangkal_path',
         'bukti_spp_path',
+        'bukti_ortu_guru_path',
+        'bukti_ortu_guru_verified',
     ];
 
         protected $casts = [
@@ -71,6 +73,7 @@ class PpdbPendaftar extends Model
         'waktu_pendaftaran' => 'datetime',
         'is_luar_kota' => 'boolean',
         'is_anak_guru' => 'boolean',
+        'bukti_ortu_guru_verified' => 'boolean',
         'pilihan_uang_gedung' => 'integer',
         'pilihan_infaq_bulanan' => 'integer',
         'surat_pernyataan_setuju' => 'boolean',

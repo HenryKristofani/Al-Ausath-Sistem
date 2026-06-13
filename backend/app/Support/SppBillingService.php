@@ -99,21 +99,44 @@ class SppBillingService
             . $settings->count() . " active settings. Period candidates: " 
             . $periodCandidates->implode(', '));
 
-        // Create PembayaranSpp records (idempotent via firstOrCreate)
+        // Fetch all existing bills for this santri in one query to optimize performance
+        $existingBills = PembayaranSpp::where('id_santri', $santri->id_santri)
+            ->whereNull('id_pendaftaran')
+            ->get();
+
+        // Create PembayaranSpp records (idempotent via in-memory checks)
         $createdCount = 0;
         $totalProcessedCount = 0;
         foreach ($settings as $setting) {
             $isSpp = false;
+            $isInfaq = false;
+            $isUangGedung = false;
+            $namaTagihanLower = '';
+
             if ($setting->kategoriTagihan) {
-                $namaTagihan = strtolower($setting->kategoriTagihan->nama_tagihan);
-                if (strpos($namaTagihan, 'spp') !== false) {
-                    $isSpp = true;
-                }
+                $namaTagihanLower = strtolower($setting->kategoriTagihan->nama_tagihan);
             } else {
-                $keterangan = strtolower($setting->keterangan ?? '');
-                if (strpos($keterangan, 'spp') !== false) {
-                    $isSpp = true;
-                }
+                $namaTagihanLower = strtolower($setting->keterangan ?? '');
+            }
+
+            if (strpos($namaTagihanLower, 'spp') !== false) {
+                $isSpp = true;
+            }
+            if (strpos($namaTagihanLower, 'infaq') !== false || strpos($namaTagihanLower, 'infak') !== false) {
+                $isInfaq = true;
+            }
+            if (strpos($namaTagihanLower, 'gedung') !== false || strpos($namaTagihanLower, 'pangkal') !== false) {
+                $isUangGedung = true;
+            }
+
+            // Determine jenis_tagihan
+            $jenisTagihan = 'spp';
+            if ($isInfaq) {
+                $jenisTagihan = 'infaq';
+            } elseif ($isUangGedung) {
+                $jenisTagihan = 'uang_gedung';
+            } elseif (!$isSpp) {
+                $jenisTagihan = 'lainnya';
             }
 
             $nominal = (float) ($setting->jumlah ?? 0);
@@ -131,46 +154,121 @@ class SppBillingService
                     $months = ['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
                 }
 
+                if ($santri->is_pindahan && $santri->created_at) {
+                    $entryMonthVal = (int) $santri->created_at->format('m');
+                    $entryYearVal = (int) $santri->created_at->format('Y');
+                    $periodYear = null;
+                    if (preg_match('/(\d{4})/', $periodUpper, $matches)) {
+                        $periodYear = (int) $matches[1];
+                    }
+                    $monthMap = [
+                        'Januari' => 1, 'Februari' => 2, 'Maret' => 3, 'April' => 4, 'Mei' => 5, 'Juni' => 6,
+                        'Juli' => 7, 'Agustus' => 8, 'September' => 9, 'Oktober' => 10, 'November' => 11, 'Desember' => 12
+                    ];
+                    $months = array_filter($months, function($mName) use ($monthMap, $entryMonthVal, $entryYearVal, $periodYear) {
+                        $mVal = $monthMap[$mName] ?? 1;
+                        if ($entryYearVal === $periodYear || ($entryYearVal === $periodYear + 1 && $mVal <= 6)) {
+                            return $mVal >= $entryMonthVal;
+                        }
+                        return true;
+                    });
+                }
+
                 foreach ($months as $month) {
                     $totalProcessedCount++;
-                    $created = PembayaranSpp::firstOrCreate(
-                        [
+
+                    // In-memory lookup to bypass database N+1 queries
+                    $exists = $existingBills->first(function ($bill) use ($setting, $month) {
+                        return $bill->id_setting == $setting->id_setting && $bill->bulan === $month;
+                    });
+
+                    if (!$exists) {
+                        PembayaranSpp::create([
                             'id_santri' => $santri->id_santri,
                             'id_setting' => $setting->id_setting,
                             'id_pendaftaran' => null,
                             'bulan' => $month,
-                        ],
-                        [
+                            'jenis_tagihan' => $jenisTagihan,
                             'nominal_bayar' => $nominal,
                             'tanggal_bayar' => null,
                             'metode_bayar' => null,
                             'status' => 'menunggu_pembayaran',
-                        ]
-                    );
+                        ]);
+                        $createdCount++;
+                    }
+                }
+            } elseif ($isInfaq) {
+                // Infaq: per-month billing similar to SPP
+                $periodUpper = strtoupper($setting->periode ?? '');
+                if (strpos($periodUpper, 'GENAP') !== false) {
+                    $months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'];
+                } else {
+                    $months = ['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                }
 
-                    if ($created->wasRecentlyCreated) {
+                if ($santri->is_pindahan && $santri->created_at) {
+                    $entryMonthVal = (int) $santri->created_at->format('m');
+                    $entryYearVal = (int) $santri->created_at->format('Y');
+                    $periodYear = null;
+                    if (preg_match('/(\d{4})/', $periodUpper, $matches)) {
+                        $periodYear = (int) $matches[1];
+                    }
+                    $monthMap = [
+                        'Januari' => 1, 'Februari' => 2, 'Maret' => 3, 'April' => 4, 'Mei' => 5, 'Juni' => 6,
+                        'Juli' => 7, 'Agustus' => 8, 'September' => 9, 'Oktober' => 10, 'November' => 11, 'Desember' => 12
+                    ];
+                    $months = array_filter($months, function($mName) use ($monthMap, $entryMonthVal, $entryYearVal, $periodYear) {
+                        $mVal = $monthMap[$mName] ?? 1;
+                        if ($entryYearVal === $periodYear || ($entryYearVal === $periodYear + 1 && $mVal <= 6)) {
+                            return $mVal >= $entryMonthVal;
+                        }
+                        return true;
+                    });
+                }
+
+                foreach ($months as $month) {
+                    $totalProcessedCount++;
+
+                    // In-memory lookup to bypass database N+1 queries
+                    $exists = $existingBills->first(function ($bill) use ($setting, $month) {
+                        return $bill->id_setting == $setting->id_setting && $bill->bulan === $month;
+                    });
+
+                    if (!$exists) {
+                        PembayaranSpp::create([
+                            'id_santri' => $santri->id_santri,
+                            'id_setting' => $setting->id_setting,
+                            'id_pendaftaran' => null,
+                            'bulan' => $month,
+                            'jenis_tagihan' => 'infaq',
+                            'nominal_bayar' => $nominal,
+                            'tanggal_bayar' => null,
+                            'metode_bayar' => null,
+                            'status' => 'menunggu_pembayaran',
+                        ]);
                         $createdCount++;
                     }
                 }
             } else {
                 $totalProcessedCount++;
-                // Non-SPP (e.g. one-off fees)
-                $created = PembayaranSpp::firstOrCreate(
-                    [
+
+                // In-memory lookup to bypass database N+1 queries
+                $exists = $existingBills->first(function ($bill) use ($setting) {
+                    return $bill->id_setting == $setting->id_setting && $bill->bulan === null;
+                });
+
+                if (!$exists) {
+                    PembayaranSpp::create([
                         'id_santri' => $santri->id_santri,
                         'id_setting' => $setting->id_setting,
                         'id_pendaftaran' => null,
                         'bulan' => null,
-                    ],
-                    [
+                        'jenis_tagihan' => $jenisTagihan,
                         'nominal_bayar' => $nominal,
                         'tanggal_bayar' => null,
                         'metode_bayar' => null,
                         'status' => 'menunggu_pembayaran',
-                    ]
-                );
-
-                if ($created->wasRecentlyCreated) {
+                    ]);
                     $createdCount++;
                 }
             }

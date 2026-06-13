@@ -304,9 +304,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $pendaftar = $akun->pendaftaran()
-            ->orderByDesc('id_pendaftaran')
-            ->first();
+        $idPendaftaran = $request->input('id_pendaftaran') ?? $request->query('id_pendaftaran');
+        $pendaftar = $idPendaftaran
+            ? $akun->pendaftaran()->where('id_pendaftaran', $idPendaftaran)->first()
+            : $akun->pendaftaran()->orderByDesc('id_pendaftaran')->first();
 
         if (!$pendaftar) {
             return response()->json([
@@ -354,7 +355,7 @@ class AuthController extends Controller
                     'no_hp_calon' => $pendaftar->no_hp_calon,
                     'nama_ibu' => $pendaftar->nama_ibu,
                     'no_hp_ibu' => $pendaftar->no_hp_ibu,
-                    'soal_jawab' => $pendaftar->soal_jawab,
+                    'soal_jawab' => (json_decode($pendaftar->soal_jawab) !== null) ? json_decode($pendaftar->soal_jawab, true) : $pendaftar->soal_jawab,
                     'file_akta_path' => $pendaftar->file_akta_path,
                     'file_kk_path' => $pendaftar->file_kk_path,
                     'file_surat_rekomendasi_path' => $pendaftar->file_surat_rekomendasi_path,
@@ -382,9 +383,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $pendaftar = $akun->pendaftaran()
-            ->orderByDesc('id_pendaftaran')
-            ->first();
+        $idPendaftaran = $request->input('id_pendaftaran') ?? $request->query('id_pendaftaran');
+        $pendaftar = $idPendaftaran
+            ? $akun->pendaftaran()->where('id_pendaftaran', $idPendaftaran)->first()
+            : $akun->pendaftaran()->orderByDesc('id_pendaftaran')->first();
 
         if (!$pendaftar) {
             return response()->json([
@@ -444,9 +446,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $pendaftar = $akun->pendaftaran()
-            ->orderByDesc('id_pendaftaran')
-            ->first();
+        $idPendaftaran = $request->input('id_pendaftaran') ?? $request->query('id_pendaftaran');
+        $pendaftar = $idPendaftaran
+            ? $akun->pendaftaran()->where('id_pendaftaran', $idPendaftaran)->first()
+            : $akun->pendaftaran()->orderByDesc('id_pendaftaran')->first();
 
         if (!$pendaftar) {
             return response()->json([
@@ -477,9 +480,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $pendaftar = $akun->pendaftaran()
-            ->orderByDesc('id_pendaftaran')
-            ->first();
+        $idPendaftaran = $request->input('id_pendaftaran') ?? $request->query('id_pendaftaran');
+        $pendaftar = $idPendaftaran
+            ? $akun->pendaftaran()->where('id_pendaftaran', $idPendaftaran)->first()
+            : $akun->pendaftaran()->orderByDesc('id_pendaftaran')->first();
 
         if (!$pendaftar) {
             return response()->json([
@@ -571,6 +575,7 @@ class AuthController extends Controller
             'pilihan_infaq_bulanan' => 'sometimes|nullable|integer',
             'bukti_uang_pangkal_path' => 'sometimes|nullable|string',
             'bukti_spp_path' => 'sometimes|nullable|string',
+            'bukti_ortu_guru_path' => 'sometimes|nullable|string',
         ]);
 
         $jenjangDipakai = mb_strtolower((string) ($validated['jenjang'] ?? $pendaftar->jenjang));
@@ -612,6 +617,7 @@ class AuthController extends Controller
             'pilihan_infaq_bulanan',
             'bukti_uang_pangkal_path',
             'bukti_spp_path',
+            'bukti_ortu_guru_path',
         ];
 
         $updates = [];
@@ -702,17 +708,16 @@ class AuthController extends Controller
             $nominalUangPangkal = $nominalUangPangkal * 0.5; // 50% diskon
         }
         
-        $totalUangPangkal = $nominalUangPangkal + $configInfaq['perlengkapan'];
-        
-        // 1. Buat tagihan Uang Pangkal + Perlengkapan
+        // Issue #9: Gabungkan Uang Pangkal + Perlengkapan + SPP Bulanan Pertama menjadi SATU tagihan
+        $totalTagihanGabungan = $nominalUangPangkal + $configInfaq['perlengkapan'] + $nominalInfaqBulanan;
         $this->createOrUpdateTagihan(
             $pendaftar,
-            'Uang Pangkal + Perlengkapan',
-            $totalUangPangkal,
-            'PPDB_UANG_PANGKAL'
+            'Uang Gedung + Perlengkapan + SPP Pertama',
+            $totalTagihanGabungan,
+            'PPDB_UANG_PANGKAL_SPP'
         );
         
-        // 2. Buat tagihan Uang Modul (jika ada)
+        // Buat tagihan Uang Modul terpisah (jika ada)
         if ($configInfaq['uang_modul'] > 0) {
             $this->createOrUpdateTagihan(
                 $pendaftar,
@@ -721,14 +726,6 @@ class AuthController extends Controller
                 'PPDB_UANG_MODUL'
             );
         }
-        
-        // 3. Buat tagihan SPP Bulanan pertama
-        $this->createOrUpdateTagihan(
-            $pendaftar,
-            'SPP Bulanan (Pembayaran Pertama)',
-            $nominalInfaqBulanan,
-            'PPDB_SPP_BULANAN'
-        );
     }
     
     /**
@@ -1112,6 +1109,7 @@ class AuthController extends Controller
 
         $storeByAliases(['bukti_uang_pangkal', 'buktiUangPangkal'], 'bukti_uang_pangkal_path');
         $storeByAliases(['bukti_spp', 'buktiSpp'], 'bukti_spp_path');
+        $storeByAliases(['bukti_ortu_guru', 'buktiOrtuGuru'], 'bukti_ortu_guru_path');
 
         return $storedPaths;
     }
@@ -1480,17 +1478,87 @@ class AuthController extends Controller
         return $pendaftar;
     }
 
+    protected function createNewDraftPendaftaran(AkunPendaftar $akun): PpdbPendaftar
+    {
+        $tanggalDaftar = Carbon::now();
+        $nomorService = $this->registrationNumberService();
+        $idPendaftaran = $nomorService->generatePendaftaranId($tanggalDaftar);
+        $noPendaftaran = $nomorService->generateInitialNumber($tanggalDaftar);
+        $noPendaftaranFinal = $nomorService->generateFinalNumber($noPendaftaran);
+
+        $activePeriod = PpdbPeriod::sedangBerlangsung()->first();
+
+        $pendaftar = new PpdbPendaftar([
+            'id_akun' => $akun->id_akun,
+            'ppdb_period_id' => $activePeriod ? $activePeriod->id : null,
+            'no_pendaftaran' => $noPendaftaran,
+            'no_pendaftaran_final' => $noPendaftaranFinal,
+            'nama_calon' => 'Calon Peserta Baru',
+            'status_verifikasi' => 'pending',
+            'tanggal_daftar' => $tanggalDaftar->toDateString(),
+            'waktu_pendaftaran' => $tanggalDaftar,
+            'is_luar_kota' => false,
+        ]);
+
+        $pendaftar->id_pendaftaran = $idPendaftaran;
+        $pendaftar->save();
+
+        return $pendaftar;
+    }
+
+    public function tambahSiswaPpdb(Request $request)
+    {
+        $akun = $this->resolveAuthenticatedPpdbUser();
+
+        if (!$akun) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $activePeriod = PpdbPeriod::sedangBerlangsung()->first();
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'Pendaftaran PPDB saat ini sedang ditutup atau belum dibuka.',
+            ], 422);
+        }
+
+        if ($activePeriod->isKuotaPenuh()) {
+            return response()->json([
+                'message' => 'Kuota pendaftaran untuk gelombang saat ini sudah penuh.',
+            ], 422);
+        }
+
+        $pendaftar = $this->createNewDraftPendaftaran($akun);
+
+        return response()->json([
+            'message' => 'Pendaftaran untuk saudara/siswa baru berhasil dibuat.',
+            'data' => [
+                'id_akun' => $akun->id_akun,
+                'email_ppdb' => $akun->email,
+                'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                'nomor_pendaftar' => $pendaftar->no_pendaftaran,
+                'no_pendaftaran' => $pendaftar->no_pendaftaran,
+                'no_pendaftaran_final' => $pendaftar->no_pendaftaran_final,
+                'status_verifikasi' => $pendaftar->status_verifikasi,
+                'tanggal_daftar' => $pendaftar->tanggal_daftar,
+            ]
+        ], 201);
+    }
+
     protected function buildPpdbFlowState(PpdbPendaftar $pendaftar): array
     {
         $verifikasi = $pendaftar->relationLoaded('verifikasi') ? $pendaftar->verifikasi : $pendaftar->verifikasi()->first();
 
         $konfigurasiTes = $this->resolveTesKonfigurasiForPendaftar($pendaftar);
         $fiturSoalAktif = (bool) ($konfigurasiTes?->fitur_soal_aktif ?? false);
-        $soalTes = trim((string) ($konfigurasiTes?->soal_tes ?? ''));
+        $bahasa = $konfigurasiTes?->bahasa ?? 'id';
+        $isRtl = (bool) ($konfigurasiTes?->is_rtl ?? false);
+        $soalTesRaw = trim((string) ($konfigurasiTes?->soal_tes ?? ''));
+        $soalTesDecoded = json_decode($soalTesRaw, true);
+        $soalTes = (json_last_error() === JSON_ERROR_NONE) ? $soalTesDecoded : $soalTesRaw;
         $formSchema = is_array($konfigurasiTes?->form_schema) ? $konfigurasiTes->form_schema : [];
 
         $tesAvailable = $fiturSoalAktif && (
-            $soalTes !== '' || (is_array($formSchema) && count($formSchema) > 0)
+            $soalTesRaw !== '' || (is_array($formSchema) && count($formSchema) > 0)
         );
 
         $isFormLengkap = $this->isPpdbFormLengkapUntukTes($pendaftar);
@@ -1622,6 +1690,8 @@ class AuthController extends Controller
             'pembayaran_ppdb' => $pembayaranPpdb,
             'soal_tes' => $soalTes,
             'form_schema' => $formSchema,
+            'bahasa' => $bahasa,
+            'is_rtl' => $isRtl,
             'step' => $step,
             'status_verifikasi' => $pendaftar->status_verifikasi,
             'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
@@ -1634,6 +1704,8 @@ class AuthController extends Controller
             'status_spp' => $statusSpp,
             'bukti_uang_pangkal_url' => $pendaftar->bukti_uang_pangkal_path ? asset('storage/' . $pendaftar->bukti_uang_pangkal_path) : null,
             'bukti_spp_url' => $pendaftar->bukti_spp_path ? asset('storage/' . $pendaftar->bukti_spp_path) : null,
+            'bukti_ortu_guru_url' => $pendaftar->bukti_ortu_guru_path ? asset('storage/' . $pendaftar->bukti_ortu_guru_path) : null,
+            'bukti_ortu_guru_verified' => (bool) $pendaftar->bukti_ortu_guru_verified,
             'nomor_induk_generated' => $pendaftar->nomor_induk_generated,
             'kode_kelas_diterima' => $pendaftar->kode_kelas_diterima,
         ];
@@ -1782,6 +1854,15 @@ class AuthController extends Controller
         } elseif (Auth::guard('ppdb')->check()) {
             $guard = 'ppdb';
             $user = Auth::guard('ppdb')->user();
+        } else {
+            $user = Auth::user();
+            if ($user instanceof DataPetugas) {
+                $guard = 'petugas';
+            } elseif ($user instanceof DataAkunSantri) {
+                $guard = 'santri';
+            } elseif ($user instanceof AkunPendaftar) {
+                $guard = 'ppdb';
+            }
         }
 
         if (!$user) {
@@ -1789,7 +1870,10 @@ class AuthController extends Controller
         }
 
         if ($guard === 'ppdb' && $user instanceof AkunPendaftar) {
-            $pendaftar = $user->pendaftaran()->orderByDesc('id_pendaftaran')->first();
+            $idPendaftaran = $request->query('id_pendaftaran');
+            $pendaftar = $idPendaftaran
+                ? $user->pendaftaran()->where('id_pendaftaran', $idPendaftaran)->first()
+                : $user->pendaftaran()->orderByDesc('id_pendaftaran')->first();
 
             if (!$pendaftar) {
                 return response()->json([
@@ -1809,8 +1893,31 @@ class AuthController extends Controller
 
             $pendaftar->load(['tes', 'verifikasi']);
 
+            $daftarPendaftaran = $user->pendaftaran()
+                ->orderByDesc('id_pendaftaran')
+                ->get()
+                ->map(fn ($item) => [
+                    'id_pendaftaran' => $item->id_pendaftaran,
+                    'nama_calon' => $item->nama_calon,
+                    'jenjang' => $item->jenjang,
+                    'no_pendaftaran' => $item->no_pendaftaran,
+                    'no_pendaftaran_final' => $item->no_pendaftaran_final,
+                    'nomor_induk_generated' => $item->nomor_induk_generated,
+                    'status_verifikasi' => $item->status_verifikasi,
+                ])
+                ->values();
+
             return response()->json([
-                'user' => $user,
+                'user' => [
+                    'id' => $user->getKey(),
+                    'id_akun' => $user->id_akun,
+                    'nama_lengkap' => $user->nama,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'pendaftaran_aktif' => $pendaftar,
+                    'daftar_pendaftaran' => $daftarPendaftaran,
+                    'flow' => $this->buildPpdbFlowState($pendaftar),
+                ],
                 'role' => $guard,
                 'id_pendaftaran' => $pendaftar->id_pendaftaran,
                 'pendaftaran_aktif' => $pendaftar,

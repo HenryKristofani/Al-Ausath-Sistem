@@ -132,6 +132,16 @@ class PembayaranController extends Controller
             ->groupBy('id_santri', 'id_pendaftaran')
             ->get();
 
+        $bebasStatsRaw = \Illuminate\Support\Facades\DB::table('administrasi_bebas')
+            ->select('id_santri')
+            ->selectRaw("SUM(total_tagihan) as total_tagihan")
+            ->selectRaw("SUM(total_tagihan - sisa) as total_dibayar")
+            ->selectRaw("SUM(sisa) as total_sisa")
+            ->selectRaw("COUNT(id_admin_bebas) as count_invoice")
+            ->groupBy('id_santri')
+            ->get()
+            ->keyBy('id_santri');
+
         $santriStats = [];
         $ppdbStats = [];
         foreach ($stats as $row) {
@@ -160,6 +170,37 @@ class PembayaranController extends Controller
                 $santriStats[$row->id_santri] = $statData;
             } elseif ($row->id_pendaftaran) {
                 $ppdbStats[$row->id_pendaftaran] = $statData;
+            }
+        }
+
+        foreach ($bebasStatsRaw as $idSantri => $bebasRow) {
+            if (isset($santriStats[$idSantri])) {
+                $santriStats[$idSantri]['tagihan'] += (float) $bebasRow->total_tagihan;
+                $santriStats[$idSantri]['dibayar'] += (float) $bebasRow->total_dibayar;
+                $santriStats[$idSantri]['tunggakan'] += (float) $bebasRow->total_sisa;
+                $santriStats[$idSantri]['count'] += $bebasRow->count_invoice;
+                
+                if ($santriStats[$idSantri]['tagihan'] > 0) {
+                    if ($santriStats[$idSantri]['tunggakan'] <= 0) {
+                        $santriStats[$idSantri]['status'] = 'lunas';
+                    } else {
+                        if ($santriStats[$idSantri]['status'] !== 'menunggu_konfirmasi') {
+                            $santriStats[$idSantri]['status'] = 'menunggu_pembayaran';
+                        }
+                    }
+                }
+            } else {
+                $status = 'menunggu_pembayaran';
+                if ((float)$bebasRow->total_tagihan > 0 && (float)$bebasRow->total_sisa <= 0) {
+                    $status = 'lunas';
+                }
+                $santriStats[$idSantri] = [
+                    'tagihan' => (float) $bebasRow->total_tagihan,
+                    'dibayar' => (float) $bebasRow->total_dibayar,
+                    'tunggakan' => (float) $bebasRow->total_sisa,
+                    'status' => $status,
+                    'count' => $bebasRow->count_invoice,
+                ];
             }
         }
 
@@ -456,8 +497,41 @@ class PembayaranController extends Controller
         // Map Infaq items to unified format
         $infaqInvoices = collect($infaqItems->map(fn ($item) => $this->normalizePpdbTagihanRow($item)));
 
-        // Merge both invoice arrays and sort by time
-        $allInvoices = $sppInvoices->merge($infaqInvoices)
+        // Fetch ALL Administrasi Bebas bills for this entity
+        $bebasItems = collect();
+        if (!empty($linkedSantriId)) {
+            $bebasItems = \App\Models\AdministrasiBebas::with(['pembayaran', 'kwitansi'])
+                ->where('id_santri', $linkedSantriId)
+                ->orderByDesc('id_admin_bebas')
+                ->get();
+        }
+
+        $bebasInvoices = collect($bebasItems->map(fn (\App\Models\AdministrasiBebas $item) => [
+            'id_pembayaran'   => $item->id_admin_bebas,
+            'nomor_invoice'   => "INV-BEBAS-" . str_pad((string) $item->id_admin_bebas, 5, '0', STR_PAD_LEFT),
+            'periode_tagihan' => $item->tahun_ajaran ?? null,
+            'rincian_tagihan' => $item->deskripsi ?: 'Administrasi Bebas',
+            'jenis_tagihan'   => 'BEBAS',
+            'jumlah_tagihan'  => (float) ($item->total_tagihan ?? 0),
+            'jumlah_dibayar'  => (float) (($item->total_tagihan ?? 0) - ($item->sisa ?? 0)),
+            'jumlah_tunggakan' => (float) ($item->sisa ?? 0),
+            'status'          => strtolower($item->status),
+            'status_key'      => strtolower($item->status) === 'lunas' ? 'lunas' : 'belum_lunas',
+            'status_label'    => strtolower($item->status) === 'lunas' ? 'Lunas' : 'Belum Lunas',
+            'waktu_invoice'   => $item->created_at ? $item->created_at->format('Y-m-d H:i:s') : null,
+            'kwitansi_tersedia' => (bool) $item->kwitansi->isNotEmpty(),
+            'kwitansi_url'    => $item->kwitansi->first()?->file_path_pdf ? Storage::url($item->kwitansi->first()->file_path_pdf) : null,
+            'bukti_bayar_path' => null,
+            'bukti_bayar_url'  => null,
+            'catatan_bayar'    => null,
+            'jumlah_minimum_dp' => null,
+            'bulan' => null,
+            '_source' => 'administrasi_bebas',
+            '_sort_time' => $item->created_at ? $item->created_at->format('Y-m-d H:i:s') : null,
+        ]));
+
+        // Merge all invoice arrays and sort by time
+        $allInvoices = $sppInvoices->merge($infaqInvoices)->merge($bebasInvoices)
             ->sortByDesc('_sort_time')
             ->map(function ($item) {
                 // Remove internal fields before sending to frontend
@@ -612,17 +686,29 @@ class PembayaranController extends Controller
             ->get()
             ->groupBy('id_santri');
 
+        // Get Administrasi Bebas for these santri
+        $bebasBySantri = \App\Models\AdministrasiBebas::query()
+            ->with(['pembayaran', 'kwitansi'])
+            ->whereIn('id_santri', $idSantriList)
+            ->get()
+            ->groupBy('id_santri');
+
         $filteredSantri = collect();
         foreach ($allSantri as $santri) {
             $invoices = $invoiceBySantri->get($santri->id_santri) ?? collect();
+            $bebasItems = $bebasBySantri->get($santri->id_santri) ?? collect();
+
+            $totalTagihanBebas = (float) $bebasItems->sum('total_tagihan');
+            $totalDibayarBebas = (float) $bebasItems->sum(fn($b) => $b->total_tagihan - $b->sisa);
+            $totalTunggakanBebas = (float) $bebasItems->sum('sisa');
 
             $totalTagihan = (float) $invoices
                 ->reject(fn ($item) => $this->isCanceledStatus((string) $item->status))
-                ->sum('nominal_bayar');
+                ->sum('nominal_bayar') + $totalTagihanBebas;
 
             $totalDibayar = (float) $invoices
                 ->filter(fn ($item) => $this->isPaidStatus((string) $item->status))
-                ->sum('nominal_bayar');
+                ->sum('nominal_bayar') + $totalDibayarBebas;
 
             $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
 
@@ -657,7 +743,27 @@ class PembayaranController extends Controller
                     'kwitansi_tersedia' => (bool) $row->kwitansi,
                     'kwitansi_url' => $row->kwitansi?->file_path_pdf ? Storage::url($row->kwitansi->file_path_pdf) : null,
                 ];
-            })->values();
+            });
+
+            $mappedBebasInvoices = $bebasItems->map(function (\App\Models\AdministrasiBebas $row) {
+                return [
+                    'id_pembayaran' => $row->id_admin_bebas,
+                    'nomor_invoice' => "INV-BEBAS-" . str_pad((string) $row->id_admin_bebas, 5, '0', STR_PAD_LEFT),
+                    'periode_tagihan' => $row->tahun_ajaran ?? null,
+                    'rincian_tagihan' => $row->deskripsi ?: 'Administrasi Bebas',
+                    'jumlah_tagihan' => (float) ($row->total_tagihan ?? 0),
+                    'jumlah_dibayar' => (float) (($row->total_tagihan ?? 0) - ($row->sisa ?? 0)),
+                    'jumlah_tunggakan' => (float) ($row->sisa ?? 0),
+                    'status' => strtolower($row->status),
+                    'status_key' => strtolower($row->status) === 'lunas' ? 'lunas' : 'belum_lunas',
+                    'status_label' => strtolower($row->status) === 'lunas' ? 'Lunas' : 'Belum Lunas',
+                    'waktu_invoice' => $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : null,
+                    'kwitansi_tersedia' => (bool) $row->kwitansi->isNotEmpty(),
+                    'kwitansi_url' => $row->kwitansi->first()?->file_path_pdf ? Storage::url($row->kwitansi->first()->file_path_pdf) : null,
+                ];
+            });
+
+            $allSantriInvoices = $mappedInvoices->merge($mappedBebasInvoices)->values();
 
             $filteredSantri->push([
                 'id_santri' => $santri->id_santri,
@@ -669,7 +775,7 @@ class PembayaranController extends Controller
                 'unit_sekarang' => $santri->kelas?->unit?->nama_unit ?? $santri->kelas?->kode_unit,
                 'kelas_sekarang' => $santri->kelas?->nama_kelas,
                 'status' => $paymentStatus,
-                'invoice' => $mappedInvoices,
+                'invoice' => $allSantriInvoices,
                 'is_anak_guru' => (bool) $santri->is_anak_guru,
             ]);
         }
@@ -953,6 +1059,135 @@ class PembayaranController extends Controller
                 'status_ditolak' => $ditolak,
                 'nominal_total' => $nominalTotal,
                 'nominal_terverifikasi' => $nominalTerverifikasi,
+            ],
+        ]);
+    }
+
+
+    /**
+     * Issue #11: Tagihan milik santri yang sedang login.
+     * Mencakup SPP (bulanan + infaq), Tagihan PPDB, dan Administrasi Bebas.
+     * Endpoint: GET /api/administrasi/pembayaran/tagihan-saya
+     */
+    public function tagihanSaya(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // Resolve id_santri dari akun santri yang login
+        $idSantri = null;
+        $nomorInduk = null;
+
+        if ($user instanceof \App\Models\DataAkunSantri) {
+            $nomorInduk = $user->nomor_induk;
+            $santri = \App\Models\DataSantri::where('nomor_induk', $nomorInduk)->first();
+            $idSantri = $santri?->id_santri;
+        } elseif ($user instanceof \App\Models\DataSantri) {
+            $idSantri = $user->id_santri;
+            $nomorInduk = $user->nomor_induk;
+        }
+
+        if (!$idSantri) {
+            return response()->json([
+                'message' => 'Data santri tidak ditemukan untuk akun ini.',
+                'data' => [
+                    'tagihan' => [],
+                    'ringkasan' => ['total_tagihan' => 0, 'total_dibayar' => 0, 'total_tunggakan' => 0],
+                ],
+            ]);
+        }
+
+        $santriData = \App\Models\DataSantri::with(['kelas.unit'])->find($idSantri);
+
+        // 1. Tagihan SPP & Infaq dari pembayaran_spp (SPP + PPDB)
+        $sppItems = PembayaranSpp::query()
+            ->with(['setting.kategoriTagihan', 'kwitansi'])
+            ->where(function ($q) use ($idSantri) {
+                $q->where('id_santri', $idSantri);
+                // Juga ambil yang terhubung via id_pendaftaran (PPDB yang belum linked)
+                $pendaftaranIds = \App\Models\PpdbPendaftar::where('id_santri', $idSantri)
+                    ->pluck('id_pendaftaran');
+                if ($pendaftaranIds->isNotEmpty()) {
+                    $q->orWhereIn('id_pendaftaran', $pendaftaranIds);
+                }
+            })
+            ->orderByDesc('tanggal_bayar')
+            ->orderByDesc('id_pembayaran')
+            ->get();
+
+        $sppTagihan = $sppItems->map(fn (PembayaranSpp $item) => [
+            'id'              => $item->id_pembayaran,
+            'nomor_invoice'   => $this->buildNomorInvoice($item->id_pembayaran),
+            'jenis_tagihan'   => empty($item->id_pendaftaran)
+                ? (strtoupper((string) ($item->jenis_tagihan ?? 'SPP')))
+                : 'PPDB',
+            'rincian_tagihan' => $item->bulan
+                ? (($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'SPP' : 'PPDB')) . ' — ' . $item->bulan)
+                : ($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'Tagihan SPP' : 'Tagihan PPDB')),
+            'periode_tagihan' => $item->setting?->periode,
+            'bulan'           => $item->bulan,
+            'jumlah_tagihan'  => (float) ($item->nominal_bayar ?? 0),
+            'jumlah_dibayar'  => $this->isPaidStatus((string) $item->status) ? (float) ($item->nominal_bayar ?? 0) : 0,
+            'jumlah_tunggakan' => $this->isPaidStatus((string) $item->status) ? 0 : (float) ($item->nominal_bayar ?? 0),
+            'status'          => $item->status,
+            'status_key'      => $this->normalizeStatusForFrontend((string) $item->status),
+            'status_label'    => $this->buildStatusLabel((string) $item->status),
+            'waktu_invoice'   => optional($item->tanggal_bayar)->format('Y-m-d H:i:s'),
+            'kwitansi_tersedia' => (bool) $item->kwitansi,
+            'kwitansi_url'    => $item->kwitansi?->file_path_pdf ? Storage::url($item->kwitansi->file_path_pdf) : null,
+            'bukti_bayar_url'  => $item->bukti_bayar_path ? Storage::url($item->bukti_bayar_path) : null,
+        ])->values()->all();
+
+        // 2. Administrasi Bebas
+        $bebasItems = \App\Models\AdministrasiBebas::with(['kwitansi'])
+            ->where('id_santri', $idSantri)
+            ->orderByDesc('id_admin_bebas')
+            ->get();
+
+        $bebasTagihan = $bebasItems->map(fn (\App\Models\AdministrasiBebas $item) => [
+            'id'              => $item->id_admin_bebas,
+            'nomor_invoice'   => 'INV-BEBAS-' . str_pad((string) $item->id_admin_bebas, 5, '0', STR_PAD_LEFT),
+            'jenis_tagihan'   => 'BEBAS',
+            'rincian_tagihan' => $item->deskripsi ?: 'Administrasi Bebas',
+            'periode_tagihan' => $item->tahun_ajaran,
+            'bulan'           => null,
+            'jumlah_tagihan'  => (float) ($item->total_tagihan ?? 0),
+            'jumlah_dibayar'  => (float) (($item->total_tagihan ?? 0) - ($item->sisa ?? 0)),
+            'jumlah_tunggakan' => (float) ($item->sisa ?? 0),
+            'status'          => strtolower($item->status),
+            'status_key'      => strtolower($item->status) === 'lunas' ? 'lunas' : 'belum_lunas',
+            'status_label'    => strtolower($item->status) === 'lunas' ? 'Lunas' : 'Belum Lunas',
+            'waktu_invoice'   => $item->created_at ? $item->created_at->format('Y-m-d H:i:s') : null,
+            'kwitansi_tersedia' => $item->kwitansi->isNotEmpty(),
+            'kwitansi_url'    => $item->kwitansi->first()?->file_path_pdf ? Storage::url($item->kwitansi->first()->file_path_pdf) : null,
+            'bukti_bayar_url'  => null,
+        ])->values()->all();
+
+        // Gabung semua
+        $semuaTagihan = array_merge($sppTagihan, $bebasTagihan);
+        usort($semuaTagihan, fn ($a, $b) => strcmp((string)($b['waktu_invoice'] ?? ''), (string)($a['waktu_invoice'] ?? '')));
+
+        // Ringkasan
+        $totalTagihan  = array_sum(array_column($semuaTagihan, 'jumlah_tagihan'));
+        $totalDibayar  = array_sum(array_column($semuaTagihan, 'jumlah_dibayar'));
+        $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
+
+        return response()->json([
+            'data' => [
+                'santri' => [
+                    'id_santri'    => $santriData?->id_santri,
+                    'nomor_induk'  => $santriData?->nomor_induk,
+                    'nama_lengkap' => $santriData?->nama_lengkap_santri,
+                    'kelas'        => $santriData?->kelas?->nama_kelas,
+                    'unit'         => $santriData?->kelas?->unit?->nama_unit,
+                    'is_anak_guru' => (bool) $santriData?->is_anak_guru,
+                ],
+                'ringkasan' => [
+                    'total_tagihan'   => $totalTagihan,
+                    'total_dibayar'   => $totalDibayar,
+                    'total_tunggakan' => $totalTunggakan,
+                    'jumlah_invoice'  => count($semuaTagihan),
+                ],
+                'tagihan' => $semuaTagihan,
             ],
         ]);
     }
