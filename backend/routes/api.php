@@ -135,6 +135,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/academic-progress', [SantriAnalyticsController::class, 'academicProgress']);
         });
 
+        Route::get('/nilai-akhlak/kelas', [NilaiAkhlakController::class, 'kelasIndex']);
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
