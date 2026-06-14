@@ -47,6 +47,56 @@ class NilaiMapelController extends Controller
     }
 
     /**
+     * List nilai mapel untuk seluruh santri dalam satu kelas
+     */
+    public function kelasIndex(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'kode_mapel' => ['required', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+        ]);
+
+        $santris = DataSantri::query()
+            ->where('kode_kelas', $validated['kode_kelas'])
+            ->where(function($q) {
+                $q->where('status', 'AKTIF')
+                  ->orWhere('status', 'Aktif');
+            })
+            ->where(function($q) {
+                $q->whereNull('is_deleted')
+                  ->orWhere('is_deleted', false)
+                  ->orWhere('is_deleted', 0);
+            })
+            ->orderBy('nama_lengkap_santri')
+            ->get();
+
+        $nilais = DataNilaiSiswa::query()
+            ->where('kode_kelas', $validated['kode_kelas'])
+            ->where('kode_mapel', $validated['kode_mapel'])
+            ->where('tahun_ajaran', $validated['tahun_ajaran'])
+            ->where('semester', (int) $validated['semester'])
+            ->get()
+            ->keyBy('nomor_induk');
+
+        $result = $santris->map(function ($santri) use ($nilais) {
+            $nilai = $nilais->get($santri->nomor_induk);
+            
+            return [
+                'id' => $santri->id_santri,
+                'nomor_induk' => $santri->nomor_induk,
+                'nama_santri' => $santri->nama_lengkap_santri,
+                'nilai' => $nilai ? $nilai->toArray() : null,
+            ];
+        });
+
+        return response()->json([
+            'data' => $result,
+        ]);
+    }
+
+    /**
      * Detail nilai mapel.
      */
     public function show(Request $request, string $kode_mapel): JsonResponse

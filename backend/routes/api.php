@@ -76,6 +76,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/dashboard', [AuthController::class, 'dashboardPpdb']);
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
         Route::get('/pembayaran', [AuthController::class, 'pembayaranStatusPpdb']);
+        Route::get('/infaq', [AuthController::class, 'infaqPpdb']);
+        Route::get('/available-kelas', [PpdbController::class, 'availableKelas']);
+        Route::post('/pendaftaran/tambah-siswa', [AuthController::class, 'tambahSiswaPpdb']);
         Route::put('/form', [AuthController::class, 'updateFormPpdb']);
         Route::post('/pengumuman/cek', [AuthController::class, 'cekPengumumanPpdb']);
     });
@@ -106,6 +109,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::delete('/konversi-nilai/{id}', [KonversiNilaiController::class, 'destroy']);
 
         Route::get('/nilai-mapel', [NilaiMapelController::class, 'index']);
+        Route::get('/nilai-mapel/kelas', [NilaiMapelController::class, 'kelasIndex']);
         Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
         Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
         Route::put('/nilai-mapel/{id}', [NilaiMapelController::class, 'update']);
@@ -131,6 +135,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/academic-progress', [SantriAnalyticsController::class, 'academicProgress']);
         });
 
+        Route::get('/nilai-akhlak/kelas', [NilaiAkhlakController::class, 'kelasIndex']);
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
@@ -328,6 +333,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
 
     Route::prefix('ppdb')->group(function () {
         Route::get('/pendaftar/rekap/diterima', [PpdbController::class, 'rekapDiterima']);
+        Route::get('/pendaftar/available-kelas', [PpdbController::class, 'availableKelas']);
         Route::get('/pendaftar/export', [PpdbController::class, 'export']);
         Route::get('/pendaftar', [PpdbController::class, 'index']);
         Route::post('/pendaftar', [PpdbController::class, 'store']);
@@ -342,8 +348,10 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::put('/pendaftar/{id}/verifikasi-spp', [PpdbController::class, 'verifikasiSpp']);
         Route::post('/pendaftar/{id}/notifikasi', [PpdbController::class, 'storeNotifikasi']);
         Route::post('/pendaftar/{id}/tagihan', [PpdbController::class, 'createTagihanPpdb']);
+        Route::post('/pendaftar/{id}/tagihan-infaq', [PpdbController::class, 'createTagihanInfaq']);
 
         Route::get('/tes/konfigurasi', [PpdbTesKonfigurasiController::class, 'index']);
+        Route::post('/tes/konfigurasi/upload-gambar', [PpdbTesKonfigurasiController::class, 'uploadGambar']);
         Route::put('/tes/konfigurasi/{jenjang}', [PpdbTesKonfigurasiController::class, 'update']);
 
         Route::get('/periods/statistik', [PpdbPeriodController::class, 'statistik']);
@@ -394,6 +402,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('bebas')->group(function () {
         Route::get('/', [AdministrasiBebasController::class, 'index']);
         Route::post('/', [AdministrasiBebasController::class, 'store']);
+        Route::post('/bulk', [AdministrasiBebasController::class, 'storeBulk']);
         Route::get('/{id}', [AdministrasiBebasController::class, 'show']);
         Route::put('/{id}', [AdministrasiBebasController::class, 'update']);
         Route::delete('/{id}', [AdministrasiBebasController::class, 'destroy']);
@@ -404,6 +413,7 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
     Route::prefix('pembayaran')->group(function () {
         Route::get('/options', [PembayaranController::class, 'options']);
         Route::get('/tagihan', [PembayaranController::class, 'tagihan']);
+        Route::get('/tagihan-saya', [PembayaranController::class, 'tagihanSaya']); // Issue #11: untuk santri login
         Route::get('/tagihan/{id}/detail', [PembayaranController::class, 'tagihanDetail']);
         Route::get('/proses', [PembayaranController::class, 'proses']);
         Route::get('/verifikasi', [PembayaranController::class, 'verifikasi']);

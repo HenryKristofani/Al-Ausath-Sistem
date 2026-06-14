@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Administrasi;
 
 use App\Http\Controllers\Controller;
 use App\Models\DataKelas;
+use App\Models\DataSantri;
 use App\Models\SppGolongan;
 use App\Models\SppSetting;
+use App\Support\SppBillingService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,6 +65,15 @@ class SppSettingController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        if (!$request->filled('id_unit') && !$request->filled('id_golongan_spp') && !$request->filled('kode_kelas') && !$request->filled('kelas') && !$request->filled('jenjang')) {
+            return response()->json([
+                'message' => 'Salah satu lingkup target (id_unit, id_golongan_spp, kode_kelas/kelas, jenjang) wajib diisi.',
+                'errors' => [
+                    'id_unit' => ['Salah satu lingkup target wajib diisi.'],
+                ],
+            ], 422);
+        }
+
         $validated = $request->validate([
             'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
             'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
@@ -144,6 +155,201 @@ class SppSettingController extends Controller
         ]);
     }
 
+    /**
+     * Provision tagihan SPP untuk santri aktif berdasarkan setting yang tersedia.
+     */
+    public function provisionBills(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_santri' => ['nullable', 'integer', 'exists:data_santri,id_santri'],
+            'kode_kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
+            'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
+            'jenjang' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $query = DataSantri::query()->with(['kelas.unit']);
+
+        if (Schema::hasColumn('data_santri', 'is_deleted')) {
+            $query->where(function ($subQuery) {
+                $subQuery->whereNull('is_deleted')->orWhere('is_deleted', false);
+            });
+        }
+
+        $query->whereRaw("UPPER(COALESCE(status, '')) = ?", ['AKTIF']);
+
+        if (!empty($validated['id_santri'])) {
+            $query->where('id_santri', $validated['id_santri']);
+        }
+
+        if (!empty($validated['kode_kelas'])) {
+            $query->where('kode_kelas', strtoupper(trim((string) $validated['kode_kelas'])));
+        }
+
+        if (!empty($validated['id_golongan_spp'])) {
+            $query->where('id_golongan_spp', $validated['id_golongan_spp']);
+        }
+
+        if (!empty($validated['id_unit'])) {
+            $query->whereHas('kelas.unit', function ($unitQuery) use ($validated) {
+                $unitQuery->where('id_unit', $validated['id_unit']);
+            });
+        }
+
+        if (!empty($validated['jenjang'])) {
+            $jenjang = strtoupper(trim((string) $validated['jenjang']));
+            $query->whereHas('kelas.unit', function ($unitQuery) use ($jenjang) {
+                $unitQuery->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]);
+            });
+        }
+
+        $santriList = $query->orderBy('nama_lengkap_santri')->get();
+        $service = app(SppBillingService::class);
+
+        $processed = 0;
+        foreach ($santriList as $santri) {
+            /** @var DataSantri $santri */
+            $service->provisionBillingForActiveSantri($santri);
+            $processed++;
+        }
+
+        return response()->json([
+            'message' => $processed > 0
+                ? 'Provision tagihan SPP berhasil dijalankan.'
+                : 'Tidak ada santri aktif yang cocok untuk diproses.',
+            'data' => [
+                'processed' => $processed,
+                'filters' => [
+                    'id_santri' => $validated['id_santri'] ?? null,
+                    'kode_kelas' => $validated['kode_kelas'] ?? null,
+                    'id_unit' => $validated['id_unit'] ?? null,
+                    'id_golongan_spp' => $validated['id_golongan_spp'] ?? null,
+                    'jenjang' => $validated['jenjang'] ?? null,
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Generate tagihan SPP per periode untuk setting tertentu.
+     */
+    public function generateTagihanPeriode(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'bulan_mulai' => ['required', 'integer', 'between:1,12'],
+            'tahun_mulai' => ['required', 'integer', 'min:1900'],
+            'bulan_selesai' => ['required', 'integer', 'between:1,12'],
+            'tahun_selesai' => ['required', 'integer', 'min:1900'],
+        ]);
+
+        if (
+            (int) $validated['tahun_selesai'] < (int) $validated['tahun_mulai']
+            || (
+                (int) $validated['tahun_selesai'] === (int) $validated['tahun_mulai']
+                && (int) $validated['bulan_selesai'] < (int) $validated['bulan_mulai']
+            )
+        ) {
+            return response()->json([
+                'message' => 'Periode selesai harus sama dengan atau setelah periode mulai.',
+            ], 422);
+        }
+
+        $setting = SppSetting::with(['kategoriTagihan', 'golonganSpp', 'unit', 'kelas.unit'])->findOrFail($id);
+
+        $santriQuery = DataSantri::query()->with(['kelas.unit']);
+
+        if (Schema::hasColumn('data_santri', 'is_deleted')) {
+            $santriQuery->where(function ($subQuery) {
+                $subQuery->whereNull('is_deleted')->orWhere('is_deleted', false);
+            });
+        }
+
+        $santriQuery->whereRaw("UPPER(COALESCE(status, '')) = ?", ['AKTIF']);
+
+        $hasFilter = false;
+        if (!empty($setting->id_santri)) {
+            $santriQuery->where('id_santri', $setting->id_santri);
+            $hasFilter = true;
+        }
+
+        if (!empty($setting->kode_kelas)) {
+            $santriQuery->when($hasFilter, fn ($query) => $query->orWhere('kode_kelas', $setting->kode_kelas), fn ($query) => $query->where('kode_kelas', $setting->kode_kelas));
+            $hasFilter = true;
+        }
+
+        if (!empty($setting->id_unit)) {
+            $santriQuery->when($hasFilter, fn ($query) => $query->orWhereHas('kelas.unit', function ($unitQuery) use ($setting) {
+                $unitQuery->where('id_unit', $setting->id_unit);
+            }), fn ($query) => $query->whereHas('kelas.unit', function ($unitQuery) use ($setting) {
+                $unitQuery->where('id_unit', $setting->id_unit);
+            }));
+            $hasFilter = true;
+        }
+
+        if (!empty($setting->jenjang)) {
+            $jenjang = strtoupper(trim((string) $setting->jenjang));
+            $santriQuery->when($hasFilter, fn ($query) => $query->orWhereHas('kelas.unit', function ($unitQuery) use ($jenjang) {
+                $unitQuery->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]);
+            }), fn ($query) => $query->whereHas('kelas.unit', function ($unitQuery) use ($jenjang) {
+                $unitQuery->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]);
+            }));
+            $hasFilter = true;
+        }
+
+        if (!empty($setting->id_golongan_spp)) {
+            $santriQuery->when($hasFilter, fn ($query) => $query->orWhere('id_golongan_spp', $setting->id_golongan_spp), fn ($query) => $query->where('id_golongan_spp', $setting->id_golongan_spp));
+        }
+
+        $santriList = $santriQuery->orderBy('nama_lengkap_santri')->get();
+        $periods = $this->buildPeriodLabels(
+            (int) $validated['bulan_mulai'],
+            (int) $validated['tahun_mulai'],
+            (int) $validated['bulan_selesai'],
+            (int) $validated['tahun_selesai'],
+        );
+
+        $createdCount = 0;
+        foreach ($santriList as $santri) {
+            $nominal = (float) ($setting->jumlah ?? 0);
+            if ($santri->is_anak_guru) {
+                $nominal = (float) ($nominal * 0.5);
+            }
+
+            foreach ($periods as $period) {
+                $created = \App\Models\PembayaranSpp::firstOrCreate(
+                    [
+                        'id_santri' => $santri->id_santri,
+                        'id_setting' => $setting->id_setting,
+                        'id_pendaftaran' => null,
+                        'bulan' => $period,
+                    ],
+                    [
+                        'nominal_bayar' => $nominal,
+                        'tanggal_bayar' => null,
+                        'metode_bayar' => null,
+                        'status' => 'menunggu_pembayaran',
+                    ]
+                );
+
+                if ($created->wasRecentlyCreated) {
+                    $createdCount++;
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => $createdCount > 0
+                ? 'Generate tagihan periode berhasil dijalankan.'
+                : 'Tidak ada tagihan baru yang dibuat.',
+            'data' => [
+                'jumlah_tagihan_baru' => $createdCount,
+                'jumlah_santri' => $santriList->count(),
+                'jumlah_periode' => count($periods),
+                'periode' => $periods,
+            ],
+        ]);
+    }
+
     private function hydrateSettingPayload(array $validated): array
     {
         if (!array_key_exists('kode_kelas', $validated) && array_key_exists('kelas', $validated)) {
@@ -179,5 +385,44 @@ class SppSettingController extends Controller
         }
 
         return $validated;
+    }
+
+    /**
+     * Build daftar label periode dari bulan/tahun mulai sampai selesai.
+     *
+     * @return array<int, string>
+     */
+    private function buildPeriodLabels(int $bulanMulai, int $tahunMulai, int $bulanSelesai, int $tahunSelesai): array
+    {
+        $bulanNames = [
+            1 => 'Januari',
+            2 => 'Februari',
+            3 => 'Maret',
+            4 => 'April',
+            5 => 'Mei',
+            6 => 'Juni',
+            7 => 'Juli',
+            8 => 'Agustus',
+            9 => 'September',
+            10 => 'Oktober',
+            11 => 'November',
+            12 => 'Desember',
+        ];
+
+        $periods = [];
+        $currentMonth = $bulanMulai;
+        $currentYear = $tahunMulai;
+
+        while ($currentYear < $tahunSelesai || ($currentYear === $tahunSelesai && $currentMonth <= $bulanSelesai)) {
+            $periods[] = $bulanNames[$currentMonth] . ' ' . $currentYear;
+
+            $currentMonth++;
+            if ($currentMonth > 12) {
+                $currentMonth = 1;
+                $currentYear++;
+            }
+        }
+
+        return $periods;
     }
 }

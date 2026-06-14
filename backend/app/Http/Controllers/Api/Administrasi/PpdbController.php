@@ -533,6 +533,7 @@ class PpdbController extends Controller
             'tanggal_verif' => ['nullable', 'date'],
             'hasil' => ['nullable', 'string', 'max:20'],
             'catatan' => ['nullable', 'string'],
+            'bukti_ortu_guru_verified' => ['nullable', 'boolean'],
             'kode_kelas_diterima' => [
                 Rule::requiredIf(fn () => $this->isStatusDiterima($hasilInput)),
                 'nullable',
@@ -558,6 +559,7 @@ class PpdbController extends Controller
 
         $payloadVerifikasi = $validated;
         unset($payloadVerifikasi['kode_kelas_diterima']);
+        unset($payloadVerifikasi['bukti_ortu_guru_verified']);
 
         $integrasiDiterima = null;
         $tagihanPpdb = null;
@@ -568,10 +570,9 @@ class PpdbController extends Controller
                 $payloadVerifikasi
             );
 
+            $payloadPendaftar = [];
             if (!empty($validated['hasil'])) {
-                $payloadPendaftar = [
-                    'status_verifikasi' => $validated['hasil'],
-                ];
+                $payloadPendaftar['status_verifikasi'] = $validated['hasil'];
 
                 if (empty($pendaftar->tanggal_pengumuman) && $this->hasPendaftarColumn('tanggal_pengumuman')) {
                     $payloadPendaftar['tanggal_pengumuman'] = Carbon::parse($validated['tanggal_verif'])->toDateString();
@@ -589,11 +590,19 @@ class PpdbController extends Controller
                 if (!empty($validated['kode_kelas_diterima'])) {
                     $payloadPendaftar['kode_kelas_diterima'] = $validated['kode_kelas_diterima'];
                 }
+            }
 
-                $payloadPendaftar = $this->filterPendaftarPayloadByExistingColumns($payloadPendaftar);
+            if (array_key_exists('bukti_ortu_guru_verified', $validated)) {
+                $payloadPendaftar['bukti_ortu_guru_verified'] = (bool) $validated['bukti_ortu_guru_verified'];
+            }
 
-                if ($payloadPendaftar !== []) {
-                    $pendaftar->update($payloadPendaftar);
+            if ($payloadPendaftar !== []) {
+                $payloadPendaftarFiltered = $this->filterPendaftarPayloadByExistingColumns($payloadPendaftar);
+                if (array_key_exists('bukti_ortu_guru_verified', $payloadPendaftar)) {
+                    $payloadPendaftarFiltered['bukti_ortu_guru_verified'] = $payloadPendaftar['bukti_ortu_guru_verified'];
+                }
+                if ($payloadPendaftarFiltered !== []) {
+                    $pendaftar->update($payloadPendaftarFiltered);
                 }
             }
 
@@ -729,6 +738,34 @@ class PpdbController extends Controller
         ], 201);
     }
 
+    /**
+     * Buat tagihan infaq PPDB untuk pendaftar yang sudah diterima.
+     */
+    public function createTagihanInfaq(Request $request, string $id): JsonResponse
+    {
+        $pendaftar = $this->resolvePendaftarByIdentifier($id, ['akun', 'santriDiterima']);
+
+        if (!$this->isStatusDiterima($pendaftar->status_verifikasi)) {
+            return response()->json([
+                'message' => 'Tagihan infaq hanya dapat dibuat untuk pendaftar yang sudah diterima.',
+            ], 422);
+        }
+
+        $santri = $pendaftar->santriDiterima ?: ($pendaftar->id_santri ? DataSantri::find($pendaftar->id_santri) : null);
+        $tagihan = $this->createTagihanInfaqIfNeeded($pendaftar, $santri);
+
+        if (!$tagihan) {
+            return response()->json([
+                'message' => 'Tagihan infaq belum dapat dibuat. Pastikan pilihan infaq sudah diisi.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Tagihan infaq berhasil dibuat.',
+            'data'    => $tagihan->load(['setting', 'pendaftarPpdb', 'kwitansi']),
+        ], 201);
+    }
+
     private function createTagihanPpdbIfNeeded(PpdbPendaftar $pendaftar, array $overrides = []): PembayaranSpp
     {
         $existing = PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)->first();
@@ -770,7 +807,7 @@ class PpdbController extends Controller
      * untuk kombinasi (id_santri, id_pendaftaran, bulan=null, id_setting),
      * record yang sudah ada akan dikembalikan tanpa membuat duplikat.
      */
-    private function createTagihanInfaqIfNeeded(PpdbPendaftar $pendaftar, DataSantri $santri): ?PembayaranSpp
+    private function createTagihanInfaqIfNeeded(PpdbPendaftar $pendaftar, ?DataSantri $santri = null): ?PembayaranSpp
     {
         // 1. Periksa apakah pilihan_infaq_bulanan diisi (tidak null dan > 0)
         $nominalInfaq = $pendaftar->pilihan_infaq_bulanan;
@@ -781,8 +818,8 @@ class PpdbController extends Controller
         // 2. Cari SppSetting yang cocok untuk kategori infaq
         $setting = null;
 
-        // Dapatkan kelas santri untuk pencocokan jenjang / unit
-        $kelas = $santri->kelas;
+        // Dapatkan kelas santri untuk pencocokan jenjang / unit bila sudah terintegrasi
+        $kelas = $santri?->kelas;
 
         $query = SppSetting::query()
             ->whereNull('id_santri') // Hanya setting global, bukan per-santri
@@ -813,6 +850,15 @@ class PpdbController extends Controller
                 // Juga coba cocok berdasarkan kode_kelas langsung jika kolom tersedia
                 if (Schema::hasColumn('spp_setting', 'kode_kelas')) {
                     $q->orWhere('kode_kelas', $kelas->kode_kelas);
+                }
+            });
+        } elseif (!empty($pendaftar->jenjang) || !empty($pendaftar->program_pendaftaran)) {
+            $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran)));
+            $query->where(function ($q) use ($jenjang) {
+                $q->whereRaw('UPPER(COALESCE(jenjang, "")) = ?', [$jenjang]);
+
+                if (Schema::hasColumn('spp_setting', 'kode_kelas')) {
+                    $q->orWhereRaw('UPPER(COALESCE(kode_kelas, "")) = ?', [$jenjang]);
                 }
             });
         }
@@ -1090,5 +1136,68 @@ class PpdbController extends Controller
             fn ($column) => $this->hasPendaftarColumn((string) $column),
             ARRAY_FILTER_USE_KEY
         );
+    }
+
+    /**
+     * Endpoint to list available classes for PPDB admission.
+     */
+    public function availableKelas(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'jenjang' => ['required', 'string'],
+            'tahun_ajaran' => ['nullable', 'string'],
+        ]);
+
+        $jenjang = strtoupper($validated['jenjang']);
+        // Normalize jenjang to unit code (MI, MTS, MA)
+        $unitCode = match ($jenjang) {
+            'MI', 'SD' => 'MI',
+            'MTS', 'SMP' => 'MTS',
+            'MA', 'SMA' => 'MA',
+            default => $jenjang,
+        };
+
+        $tahunAjaran = $validated['tahun_ajaran'] ?? null;
+        if (!$tahunAjaran) {
+            $activeTA = \App\Models\DataTahunAjaran::where('status', 'AKTIF')->first();
+            $tahunAjaran = $activeTA ? $activeTA->kode_tahun : null;
+        }
+
+        $query = DataKelas::query()
+            ->withCount(['santri as jumlah_santri_aktif' => function ($q) {
+                $q->where('status', 'AKTIF')->where('is_deleted', false);
+            }])
+            ->where('status', 'AKTIF')
+            ->where('is_deleted', false)
+            ->where('kode_unit', $unitCode);
+
+        if ($tahunAjaran) {
+            $query->where('tahun_ajaran', $tahunAjaran);
+        }
+
+        $classes = $query->get();
+
+        $data = $classes->map(function ($kelas) {
+            $kapasitas = 30; // standard capacity
+            $sisaKuota = max(0, $kapasitas - $kelas->jumlah_santri_aktif);
+
+            return [
+                'id_kelas' => $kelas->id_kelas,
+                'kode_kelas' => $kelas->kode_kelas,
+                'nama_kelas' => $kelas->nama_kelas,
+                'nama_jurusan' => $kelas->nama_jurusan,
+                'kode_unit' => $kelas->kode_unit,
+                'tahun_ajaran' => $kelas->tahun_ajaran,
+                'jumlah_santri_aktif' => $kelas->jumlah_santri_aktif,
+                'kapasitas' => $kapasitas,
+                'sisa_kuota' => $sisaKuota,
+                'is_penuh' => $sisaKuota <= 0,
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Daftar kelas tersedia berhasil diambil.',
+            'data' => $data,
+        ]);
     }
 }

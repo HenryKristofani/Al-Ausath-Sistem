@@ -15,12 +15,15 @@ class PpdbTesKonfigurasi extends Model
     protected $fillable = [
         'jenjang',
         'fitur_soal_aktif',
+        'bahasa',
+        'is_rtl',
         'soal_tes',
         'form_schema',
     ];
 
     protected $casts = [
         'fitur_soal_aktif' => 'boolean',
+        'is_rtl' => 'boolean',
         'form_schema' => 'json',
     ];
 }

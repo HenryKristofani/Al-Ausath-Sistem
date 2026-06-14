@@ -36,9 +36,27 @@ class DataKelasController extends Controller
             ])
             ->where('is_deleted', false)
             ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper($request->kode_unit)))
+            ->when($request->filled('jenjang'), function ($q) use ($request) {
+                $jenjang = strtoupper($request->jenjang);
+                $unitCode = match ($jenjang) {
+                    'MI', 'SD' => 'MI',
+                    'MTS', 'SMP' => 'MTS',
+                    'MA', 'SMA' => 'MA',
+                    default => $jenjang,
+                };
+                return $q->where('kode_unit', $unitCode);
+            })
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
+            ->when($request->filled('status') || $request->filled('status_kelas'), function ($q) use ($request) {
+                $status = $request->status ?? $request->status_kelas;
+                return $q->where('status', strtoupper($status));
+            })
             ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
+            ->when($request->filled('kode_kelas') || $request->filled('kelas'), function ($q) use ($request) {
+                $kelas = $request->kode_kelas ?? $request->kelas;
+                return $q->where('kode_kelas', strtoupper($kelas));
+            })
+            ->when($request->filled('nama_kelas'), fn ($q) => $q->where('nama_kelas', 'like', '%' . $request->nama_kelas . '%'))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
