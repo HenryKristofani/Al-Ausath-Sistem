@@ -196,6 +196,7 @@ class RekapAbsensiController extends Controller
             'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
             'id_petugas'     => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             'kode_kelas'     => ['nullable', 'string', 'max:20'],
+            'kode_unit'      => ['nullable', 'string', 'max:10'],
             'id_jadwal'      => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
             'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
             'q'              => ['nullable', 'string'],
@@ -206,10 +207,12 @@ class RekapAbsensiController extends Controller
             ->leftJoin('sesi_absensi as s', 's.id_sesi', '=', 'ap.id_sesi')
             ->leftJoin('jadwal_pembelajaran as j', 'j.id_jadwal', '=', 's.id_jadwal')
             ->leftJoin('data_kelas_mapel as km', 'km.id_kelas_mapel', '=', 'j.id_kelas_mapel')
+            ->leftJoin('data_kelas as k', 'k.kode_kelas', '=', 'km.kode_kelas')
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereDate('ap.tanggal', '>=', $validated['tanggal_mulai']))
             ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereDate('ap.tanggal', '<=', $validated['tanggal_selesai']))
             ->when(!empty($validated['id_petugas']), fn ($q) => $q->where('ap.id_petugas', (int) $validated['id_petugas']))
             ->when(!empty($validated['kode_kelas']), fn ($q) => $q->where('km.kode_kelas', $validated['kode_kelas']))
+            ->when(!empty($validated['kode_unit']), fn ($q) => $q->where('k.kode_unit', $validated['kode_unit']))
             ->when(!empty($validated['id_jadwal']), fn ($q) => $q->where('s.id_jadwal', (int) $validated['id_jadwal']))
             ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->where('km.tahun_ajaran', $validated['tahun_ajaran']))
             ->when(!empty($validated['q']), function ($q) use ($validated) {

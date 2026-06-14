@@ -31,6 +31,11 @@ class DataKelasMapelController extends Controller
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
             ->when($request->filled('semester'), fn ($q) => $q->where('semester', (int) $request->semester))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
+            ->when($request->filled('kode_unit'), function ($q) use ($request) {
+                $q->whereHas('kelas', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_unit', strtoupper($request->kode_unit));
+                });
+            })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -294,6 +299,11 @@ class DataKelasMapelController extends Controller
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
             ->when($request->filled('semester'), fn ($q) => $q->where('semester', (int) $request->semester))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
+            ->when($request->filled('kode_unit'), function ($q) use ($request) {
+                $q->whereHas('kelas', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_unit', strtoupper($request->kode_unit));
+                });
+            })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {

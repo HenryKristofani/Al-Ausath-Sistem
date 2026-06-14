@@ -63,6 +63,49 @@ class DataSantriController extends Controller
     }
 
     /**
+     * Dapatkan statistik total santri berdasarkan status.
+     */
+    public function stats(Request $request): JsonResponse
+    {
+        $query = DataSantri::query()
+            ->where('is_deleted', false)
+            ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
+            ->when($request->filled('kode_unit') || $request->filled('tahun_ajaran'), function ($q) use ($request) {
+                $q->whereHas('kelas', function ($kelasQuery) use ($request) {
+                    $kelasQuery
+                        ->when($request->filled('kode_unit'), fn($subQuery) => $subQuery->where('kode_unit', $request->kode_unit))
+                        ->when($request->filled('tahun_ajaran'), fn($subQuery) => $subQuery->where('tahun_ajaran', $request->tahun_ajaran));
+                });
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+                $q->where(function ($subQuery) use ($keyword) {
+                    $subQuery
+                        ->where('nama_lengkap_santri', 'like', "%{$keyword}%")
+                        ->orWhere('nomor_induk', 'like', "%{$keyword}%");
+                });
+            });
+
+        $stats = $query->select('status', DB::raw('count(*) as count'))
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        $aktif = (int) ($stats['AKTIF'] ?? 0);
+        $lulus = (int) ($stats['LULUS'] ?? 0);
+        $keluar = (int) ($stats['KELUAR'] ?? 0);
+        $cuti = (int) ($stats['CUTI'] ?? 0);
+
+        return response()->json([
+            'total' => $aktif + $lulus + $keluar + $cuti,
+            'aktif' => $aktif,
+            'lulus' => $lulus,
+            'keluar' => $keluar,
+            'cuti' => $cuti,
+        ]);
+    }
+
+    /**
      * Opsi ringan data santri untuk autocomplete.
      */
     public function options(Request $request): JsonResponse

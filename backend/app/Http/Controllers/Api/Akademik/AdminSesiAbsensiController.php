@@ -553,10 +553,9 @@ class AdminSesiAbsensiController extends Controller
             ->orderBy('nama_unit')
             ->get(['kode_unit', 'nama_unit']);
 
-        // 4. Kelas aktif
-        $kelas = DataKelas::where('status', 'AKTIF')
-            ->orderBy('nama_kelas')
-            ->get(['kode_kelas', 'nama_kelas', 'kode_unit', 'tahun_ajaran']);
+        // 4. Kelas aktif & non-aktif
+        $kelas = DataKelas::orderBy('nama_kelas')
+            ->get(['kode_kelas', 'nama_kelas', 'kode_unit', 'tahun_ajaran', 'status']);
 
         // 5. Tahun Ajaran
         $tahunAjaran = DataTahunAjaran::orderByDesc('kode_tahun')
@@ -579,10 +578,9 @@ class AdminSesiAbsensiController extends Controller
             ->orderBy('nama_unit')
             ->get(['kode_unit', 'nama_unit']);
 
-        // 2. Kelas aktif
-        $kelas = DataKelas::where('status', 'AKTIF')
-            ->orderBy('nama_kelas')
-            ->get(['kode_kelas', 'nama_kelas', 'kode_unit', 'tahun_ajaran']);
+        // 2. Kelas aktif & non-aktif
+        $kelas = DataKelas::orderBy('nama_kelas')
+            ->get(['kode_kelas', 'nama_kelas', 'kode_unit', 'tahun_ajaran', 'status']);
 
         // 3. Tahun Ajaran
         $tahunAjaran = DataTahunAjaran::orderByDesc('kode_tahun')
@@ -699,12 +697,22 @@ class AdminSesiAbsensiController extends Controller
             return $row;
         });
 
-        if ($request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL') {
-            $ta = $request->tahun_ajaran;
+        $hasTa = $request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL';
+        $hasUnit = $request->filled('kode_unit') && $request->kode_unit !== 'ALL';
+
+        if ($hasTa || $hasUnit) {
+            $query = \App\Models\DataKelasMapel::with(['mataPelajaran', 'kelas']);
             
-            $validCombinations = \App\Models\DataKelasMapel::with(['mataPelajaran', 'kelas'])
-                ->where('tahun_ajaran', $ta)
-                ->get()
+            if ($hasTa) {
+                $query->where('tahun_ajaran', $request->tahun_ajaran);
+            }
+            if ($hasUnit) {
+                $query->whereHas('kelas', function($q) use ($request) {
+                    $q->where('kode_unit', $request->kode_unit);
+                });
+            }
+
+            $validCombinations = $query->get()
                 ->map(function($km) {
                     $mapel = $km->mataPelajaran?->nama_mapel ?? '';
                     $kelas = $km->kelas?->nama_kelas ?? '';
@@ -728,30 +736,36 @@ class AdminSesiAbsensiController extends Controller
             ->orderByDesc('log_perubahan_absensi.diubah_pada')
             ->orderByDesc('log_perubahan_absensi.id_log');
 
-        if ($request->filled('tahun_ajaran') && $request->tahun_ajaran !== 'ALL') {
+        if ($hasTa || $hasUnit) {
             $ta = $request->tahun_ajaran;
-            $auditQuery->where(function($q) use ($ta) {
-                $q->where(function($q1) use ($ta) {
+            $unit = $request->kode_unit;
+
+            $auditQuery->where(function($q) use ($hasTa, $ta, $hasUnit, $unit) {
+                $q->where(function($q1) use ($hasTa, $ta, $hasUnit, $unit) {
                     $q1->where('tabel_terkait', 'absensi_santri')
-                       ->whereExists(function($q2) use ($ta) {
+                       ->whereExists(function($q2) use ($hasTa, $ta, $hasUnit, $unit) {
                            $q2->select(\Illuminate\Support\Facades\DB::raw(1))
                               ->from('absensi_santri')
                               ->join('sesi_absensi', 'absensi_santri.id_sesi', '=', 'sesi_absensi.id_sesi')
                               ->join('jadwal_pembelajaran', 'sesi_absensi.id_jadwal', '=', 'jadwal_pembelajaran.id_jadwal')
                               ->join('data_kelas_mapel', 'jadwal_pembelajaran.id_kelas_mapel', '=', 'data_kelas_mapel.id_kelas_mapel')
-                              ->whereColumn('log_perubahan_absensi.id_record', 'absensi_santri.id_absensi')
-                              ->where('data_kelas_mapel.tahun_ajaran', $ta);
+                              ->join('data_kelas', 'data_kelas_mapel.kode_kelas', '=', 'data_kelas.kode_kelas')
+                              ->whereColumn('log_perubahan_absensi.id_record', 'absensi_santri.id_absensi');
+                           if ($hasTa) $q2->where('data_kelas_mapel.tahun_ajaran', $ta);
+                           if ($hasUnit) $q2->where('data_kelas.kode_unit', $unit);
                        });
-                })->orWhere(function($q1) use ($ta) {
+                })->orWhere(function($q1) use ($hasTa, $ta, $hasUnit, $unit) {
                     $q1->where('tabel_terkait', 'absensi_pengajar')
-                       ->whereExists(function($q2) use ($ta) {
+                       ->whereExists(function($q2) use ($hasTa, $ta, $hasUnit, $unit) {
                            $q2->select(\Illuminate\Support\Facades\DB::raw(1))
                               ->from('absensi_pengajar')
                               ->join('sesi_absensi', 'absensi_pengajar.id_sesi', '=', 'sesi_absensi.id_sesi')
                               ->join('jadwal_pembelajaran', 'sesi_absensi.id_jadwal', '=', 'jadwal_pembelajaran.id_jadwal')
                               ->join('data_kelas_mapel', 'jadwal_pembelajaran.id_kelas_mapel', '=', 'data_kelas_mapel.id_kelas_mapel')
-                              ->whereColumn('log_perubahan_absensi.id_record', 'absensi_pengajar.id_abs_pengajar')
-                              ->where('data_kelas_mapel.tahun_ajaran', $ta);
+                              ->join('data_kelas', 'data_kelas_mapel.kode_kelas', '=', 'data_kelas.kode_kelas')
+                              ->whereColumn('log_perubahan_absensi.id_record', 'absensi_pengajar.id_abs_pengajar');
+                           if ($hasTa) $q2->where('data_kelas_mapel.tahun_ajaran', $ta);
+                           if ($hasUnit) $q2->where('data_kelas.kode_unit', $unit);
                        });
                 });
             });

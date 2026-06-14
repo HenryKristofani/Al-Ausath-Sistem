@@ -33,6 +33,26 @@ class DataJadwalPembelajaranController extends Controller
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', trim((string) $request->tahun_ajaran)))
             ->when($request->filled('hari'), fn ($q) => $q->where('hari', strtoupper(trim((string) $request->hari))))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper(trim((string) $request->status))))
+            ->when($request->filled('kode_unit'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel.kelas', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_unit', strtoupper(trim((string) $request->kode_unit)));
+                });
+            })
+            ->when($request->filled('kode_kelas'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_kelas', strtoupper(trim((string) $request->kode_kelas)));
+                });
+            })
+            ->when($request->filled('id_petugas'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel', function ($subQuery) use ($request) {
+                    $subQuery->where('id_petugas', (int) $request->id_petugas);
+                });
+            })
+            ->when($request->filled('kode_mapel'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_mapel', strtoupper(trim((string) $request->kode_mapel)));
+                });
+            })
             ->when($request->filled('nomor_induk'), function ($q) use ($request) {
                 $nomorInduk = trim((string) $request->nomor_induk);
                 $q->whereHas('kelasMapel.kelas.santri', function ($subQuery) use ($nomorInduk) {
@@ -80,6 +100,26 @@ class DataJadwalPembelajaranController extends Controller
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', trim((string) $request->tahun_ajaran)))
             ->when($request->filled('hari'), fn ($q) => $q->where('hari', strtoupper(trim((string) $request->hari))))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper(trim((string) $request->status))))
+            ->when($request->filled('kode_unit'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel.kelas', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_unit', strtoupper(trim((string) $request->kode_unit)));
+                });
+            })
+            ->when($request->filled('kode_kelas'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_kelas', strtoupper(trim((string) $request->kode_kelas)));
+                });
+            })
+            ->when($request->filled('id_petugas'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel', function ($subQuery) use ($request) {
+                    $subQuery->where('id_petugas', (int) $request->id_petugas);
+                });
+            })
+            ->when($request->filled('kode_mapel'), function ($q) use ($request) {
+                $q->whereHas('kelasMapel', function ($subQuery) use ($request) {
+                    $subQuery->where('kode_mapel', strtoupper(trim((string) $request->kode_mapel)));
+                });
+            })
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {

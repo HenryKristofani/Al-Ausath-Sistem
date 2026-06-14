@@ -174,6 +174,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         Route::prefix('santri')->group(function () {
             Route::get('/', [DataSantriController::class, 'index']);
+            Route::get('/stats', [DataSantriController::class, 'stats']);
             Route::post('/', [DataSantriController::class, 'store']);
             Route::get('/trash', [DataSantriController::class, 'trash']);
             Route::get('/{id}/dependency-summary', [DataSantriController::class, 'dependencySummary']);
