@@ -291,6 +291,149 @@ class NilaiMapelController extends Controller
     }
 
     /**
+     * Simpan Nilai Mapel Massal (Bulk Upsert)
+     *
+     * Menyimpan nilai mapel untuk banyak santri sekaligus dalam satu request.
+     * Semua data diproses dalam satu database transaction untuk efisiensi dan konsistensi.
+     */
+    public function bulkUpsert(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'kode_mapel'       => ['required', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
+            'kode_kelas'       => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'tahun_ajaran'     => ['required', 'string', 'max:20'],
+            'semester'         => ['required', 'integer', 'in:1,2'],
+            'id_petugas_input' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+
+            'items'                              => ['required', 'array', 'min:1'],
+            'items.*.nomor_induk'                => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'items.*.keterangan'                 => ['nullable', 'string'],
+            'items.*.tugas'                      => ['required', 'array', 'min:3'],
+            'items.*.tugas.*.nilai'              => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.tugas.*.jenis'              => ['required', 'string', 'in:PR,TUGAS_PENGGANTI,MODUL_KOMPETENSI'],
+            'items.*.ulangan'                    => ['required', 'array', 'min:3'],
+            'items.*.ulangan.*.nilai'            => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.ulangan.*.soal_disusun_pengajar' => ['required', 'boolean'],
+            'items.*.ulangan.*.diawasi_pengajar' => ['required', 'boolean'],
+            'items.*.ujian_akhir'                => ['required', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        // Resolve bobot sekali untuk semua item
+        $bobot = $this->resolveBobotGlobal(
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $bobot) {
+            return response()->json([
+                'message' => 'Bobot nilai belum diset untuk tahun ajaran dan semester ini.',
+            ], 422);
+        }
+
+        $bobotTugas      = ((float) $bobot->bobot_harian) / 100;
+        $bobotUlangan    = ((float) $bobot->bobot_uts) / 100;
+        $bobotUjianAkhir = ((float) $bobot->bobot_uas) / 100;
+
+        // Resolve KKM sekali untuk semua item
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        $savedCount  = 0;
+        $errorItems  = [];
+
+        \DB::transaction(function () use (
+            $validated, $bobot, $kkm,
+            $bobotTugas, $bobotUlangan, $bobotUjianAkhir,
+            &$savedCount, &$errorItems
+        ) {
+            foreach ($validated['items'] as $index => $item) {
+                $nomorInduk = $item['nomor_induk'];
+
+                // Cek santri dan kelas
+                $santri = DataSantri::where('nomor_induk', $nomorInduk)->first();
+                if (! $santri || (string) $santri->kode_kelas !== (string) $validated['kode_kelas']) {
+                    $errorItems[] = ['nomor_induk' => $nomorInduk, 'error' => 'Santri tidak ditemukan atau kode kelas tidak sesuai.'];
+                    continue;
+                }
+
+                // Cek rapor terbit
+                $raportTerbit = DataRaport::where('nomor_induk', $nomorInduk)
+                    ->where('tahun_ajaran', $validated['tahun_ajaran'])
+                    ->where('semester', $validated['semester'])
+                    ->where('status_raport', 'TERBIT')
+                    ->exists();
+
+                if ($raportTerbit) {
+                    $errorItems[] = ['nomor_induk' => $nomorInduk, 'error' => 'Raport sudah terbit.'];
+                    continue;
+                }
+
+                $nilaiTugas     = $this->averageComponent($item['tugas']);
+                $ulanganValid   = $this->filterValidUlangan($item['ulangan']);
+
+                if (count($ulanganValid) < 3) {
+                    $errorItems[] = ['nomor_induk' => $nomorInduk, 'error' => 'Minimal 3 ulangan valid.'];
+                    continue;
+                }
+
+                $nilaiUlangan    = $this->averageComponent($ulanganValid);
+                $nilaiUjianAkhir = (float) $item['ujian_akhir'];
+
+                $nilaiAkhirMentah = ($nilaiTugas * $bobotTugas)
+                    + ($nilaiUlangan * $bobotUlangan)
+                    + ($nilaiUjianAkhir * $bobotUjianAkhir);
+
+                $nilaiRaporBulat = $this->roundRaporInteger($nilaiAkhirMentah);
+                [$nilaiRaporTampil, $flagWarnaRapor] = $this->normalizeNilaiRapor($nilaiAkhirMentah, $nilaiRaporBulat);
+                $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+
+                $nilaiDetail = sprintf(
+                    'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
+                    implode(',', array_map(fn($i) => number_format((float) $i['nilai'], 2, '.', ''), $item['tugas'])),
+                    implode(',', array_map(fn($i) => number_format((float) $i['nilai'], 2, '.', ''), $item['ulangan'])),
+                    number_format($nilaiUjianAkhir, 2, '.', ''),
+                    number_format($this->roundHalfUp($nilaiAkhirMentah, 2), 2, '.', '')
+                );
+
+                DataNilaiSiswa::updateOrCreate(
+                    [
+                        'nomor_induk'  => $nomorInduk,
+                        'kode_mapel'   => $validated['kode_mapel'],
+                        'tahun_ajaran' => $validated['tahun_ajaran'],
+                        'semester'     => $validated['semester'],
+                    ],
+                    [
+                        'kode_kelas'        => $validated['kode_kelas'],
+                        'nilai_harian'      => $this->roundHalfUp($nilaiTugas, 2),
+                        'nilai_uts'         => $this->roundHalfUp($nilaiUlangan, 2),
+                        'nilai_uas'         => $this->roundHalfUp($nilaiUjianAkhir, 2),
+                        'nilai_akhir_mapel' => $this->roundHalfUp($nilaiAkhirMentah, 2),
+                        'nilai_rapor_tampil'=> $nilaiRaporTampil,
+                        'flag_warna_rapor'  => $flagWarnaRapor,
+                        'status_ketuntasan' => $statusKetuntasan,
+                        'keterangan'        => $item['keterangan'] ?? null,
+                        'nilai_detail'      => $nilaiDetail,
+                        'id_petugas_input'  => $validated['id_petugas_input'] ?? null,
+                    ]
+                );
+
+                $savedCount++;
+            }
+        });
+
+        return response()->json([
+            'message'     => "Berhasil menyimpan {$savedCount} nilai santri.",
+            'saved_count' => $savedCount,
+            'errors'      => $errorItems,
+        ]);
+    }
+
+
+    /**
      * Update Nilai Mapel
      *
      * Memperbarui komponen nilai mapel santri berdasarkan ID nilai yang spesifik.
