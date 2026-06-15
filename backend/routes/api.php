@@ -140,6 +140,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
+        Route::post('/nilai-akhlak/bulk', [NilaiAkhlakController::class, 'bulkUpsert']);
         Route::delete('/nilai-akhlak/{id}', [NilaiAkhlakController::class, 'destroy']);
 
         Route::get('/raport/keseharian', [RaportKeseharianController::class, 'index']);

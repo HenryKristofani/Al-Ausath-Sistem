@@ -155,6 +155,60 @@ class NilaiAkhlakController extends Controller
     }
 
     /**
+     * Simpan atau update nilai akhlak massal (Bulk Upsert).
+     *
+     * Menyimpan nilai akhlak untuk banyak santri sekaligus dalam satu request dan satu DB transaction.
+     */
+    public function bulkUpsert(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tahun_ajaran'     => ['required', 'string', 'max:20'],
+            'semester'         => ['required', 'integer', 'in:1,2'],
+            'aspek'            => ['nullable', 'string', 'max:80'],
+            'id_petugas_input' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+
+            'items'                   => ['required', 'array', 'min:1'],
+            'items.*.nomor_induk'     => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'items.*.nilai_angka'     => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.deskripsi'       => ['nullable', 'string'],
+        ]);
+
+        $aspek       = $validated['aspek'] ?? 'AKHLAK';
+        $savedCount  = 0;
+        $errorItems  = [];
+
+        \DB::transaction(function () use ($validated, $aspek, &$savedCount, &$errorItems) {
+            foreach ($validated['items'] as $item) {
+                $updateData = [
+                    'nilai_angka'      => $item['nilai_angka'],
+                    'predikat'         => '-',
+                    'deskripsi'        => $item['deskripsi'] ?? null,
+                    'id_petugas_input' => $validated['id_petugas_input'] ?? null,
+                ];
+
+                NilaiAkhlak::updateOrCreate(
+                    [
+                        'nomor_induk'  => $item['nomor_induk'],
+                        'tahun_ajaran' => $validated['tahun_ajaran'],
+                        'semester'     => $validated['semester'],
+                        'aspek'        => $aspek,
+                    ],
+                    $updateData
+                );
+
+                $savedCount++;
+            }
+        });
+
+        return response()->json([
+            'message'     => "Berhasil menyimpan {$savedCount} nilai akhlak santri.",
+            'saved_count' => $savedCount,
+            'errors'      => $errorItems,
+        ]);
+    }
+
+
+    /**
      * Hapus nilai akhlak.
      */
     public function destroy(int $id): JsonResponse
