@@ -220,6 +220,14 @@ class NilaiMapelController extends Controller
 
         $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
 
+        $nilaiDetail = sprintf(
+            'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['tugas'])),
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['ulangan'])),
+            number_format((float) $validated['ujian_akhir'], 2, '.', ''),
+            number_format($this->roundHalfUp($nilaiAkhirMentah, 2), 2, '.', '')
+        );
+
         $nilai = DataNilaiSiswa::updateOrCreate(
             [
                 'nomor_induk' => $validated['nomor_induk'],
@@ -237,6 +245,7 @@ class NilaiMapelController extends Controller
                 'flag_warna_rapor' => $flagWarnaRapor,
                 'status_ketuntasan' => $statusKetuntasan,
                 'keterangan' => $validated['keterangan'] ?? null,
+                'nilai_detail' => $nilaiDetail,
                 'id_petugas_input' => $validated['id_petugas_input'] ?? null,
             ]
         );
@@ -376,6 +385,14 @@ class NilaiMapelController extends Controller
 
         $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
 
+        $nilaiDetail = sprintf(
+            'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['tugas'])),
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['ulangan'])),
+            number_format((float) $validated['ujian_akhir'], 2, '.', ''),
+            number_format($this->roundHalfUp($nilaiAkhirMentah, 2), 2, '.', '')
+        );
+
         $nilai->update([
             'kode_kelas' => $validated['kode_kelas'],
             'nilai_harian' => $this->roundHalfUp($nilaiTugas, 2),
@@ -386,6 +403,7 @@ class NilaiMapelController extends Controller
             'flag_warna_rapor' => $flagWarnaRapor,
             'status_ketuntasan' => $statusKetuntasan,
             'keterangan' => $validated['keterangan'] ?? null,
+            'nilai_detail' => $nilaiDetail,
             'id_petugas_input' => $validated['id_petugas_input'] ?? null,
         ]);
 
