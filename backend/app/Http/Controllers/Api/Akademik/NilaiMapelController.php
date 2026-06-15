@@ -21,7 +21,10 @@ class NilaiMapelController extends Controller
     ];
 
     /**
-     * List nilai mapel per santri.
+     * List Nilai Mapel per Santri
+     *
+     * Mengambil daftar nilai mata pelajaran untuk seorang santri secara spesifik berdasarkan nomor induk.
+     * Mendukung pagination dan filter berdasarkan kode mapel, kode kelas, tahun ajaran, dan semester.
      */
     public function index(Request $request): JsonResponse
     {
@@ -47,7 +50,10 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * List nilai mapel untuk seluruh santri dalam satu kelas
+     * List Nilai Mapel Kelas
+     *
+     * Menampilkan daftar seluruh santri yang aktif beserta data nilainya dalam satu kelas.
+     * Digunakan oleh pengajar untuk melihat rekap nilai satu kelas pada mapel tertentu.
      */
     public function kelasIndex(Request $request): JsonResponse
     {
@@ -97,7 +103,10 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Detail nilai mapel.
+     * Detail Nilai Mapel
+     *
+     * Mengambil detail satu record nilai mata pelajaran berdasarkan kode mapel dan nomor induk santri.
+     * Mengembalikan data nilai terbaru (diurutkan berdasarkan tahun ajaran dan semester secara descending).
      */
     public function show(Request $request, string $kode_mapel): JsonResponse
     {
@@ -122,7 +131,11 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Simpan komponen nilai mapel sesuai kebijakan client flow.
+     * Simpan Nilai Mapel (Upsert)
+     *
+     * Menyimpan komponen nilai mapel santri (Tugas, Ulangan, Ujian Akhir) dan otomatis 
+     * menghitung persentase/bobot untuk mendapatkan nilai akhir, nilai rapor, dan status ketuntasan (KKM).
+     * Apabila data nilai pada semester dan tahun ajaran tersebut sudah ada, maka akan diupdate (Upsert).
      */
     public function upsert(Request $request): JsonResponse
     {
@@ -278,7 +291,10 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Edit/update nilai mapel berdasarkan `id_nilai`.
+     * Update Nilai Mapel
+     *
+     * Memperbarui komponen nilai mapel santri berdasarkan ID nilai yang spesifik.
+     * Berlaku validasi: jika raport sudah diterbitkan (status TERBIT), maka nilai tidak dapat diubah.
      */
     public function update(Request $request, int $id): JsonResponse
     {
@@ -414,7 +430,9 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Hapus nilai mapel berdasarkan id_nilai.
+     * Hapus Nilai Mapel
+     *
+     * Menghapus record nilai mata pelajaran dari database berdasarkan ID nilai spesifik.
      */
     public function destroy(int $id): JsonResponse
     {
