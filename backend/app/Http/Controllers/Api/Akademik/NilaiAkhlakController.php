@@ -127,6 +127,17 @@ class NilaiAkhlakController extends Controller
 
         $aspek = $validated['aspek'] ?? 'AKHLAK';
 
+        $updateData = [
+            'nilai_angka' => $validated['nilai_angka'],
+            // Backward compatibility untuk skema lama yang masih memiliki kolom predikat.
+            'predikat' => '-',
+            'deskripsi' => $validated['deskripsi'] ?? null,
+        ];
+
+        if (array_key_exists('id_petugas_input', $validated)) {
+            $updateData['id_petugas_input'] = $validated['id_petugas_input'];
+        }
+
         $nilai = NilaiAkhlak::updateOrCreate(
             [
                 'nomor_induk' => $validated['nomor_induk'],
@@ -134,18 +145,12 @@ class NilaiAkhlakController extends Controller
                 'semester' => $validated['semester'],
                 'aspek' => $aspek,
             ],
-            [
-                'nilai_angka' => $validated['nilai_angka'],
-                // Backward compatibility untuk skema lama yang masih memiliki kolom predikat.
-                'predikat' => '-',
-                'deskripsi' => $validated['deskripsi'] ?? null,
-                'id_petugas_input' => $validated['id_petugas_input'] ?? null,
-            ]
+            $updateData
         );
 
         return response()->json([
             'message' => 'Nilai akhlak berhasil disimpan.',
-            'data' => $nilai->fresh(['santri', 'petugas']),
+            'data' => $nilai,
         ]);
     }
 
