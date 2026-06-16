@@ -167,6 +167,9 @@
         $rataRataDisplay = number_format((float) $rataRataNilai, 2, ',', '.');
         $peringkatKelas = $raport->peringkat_kelas ?: '-';
         $totalSiswaKelas = $raport->total_siswa_kelas ?: '-';
+        $nilaiAkhlakRingkas = is_array($nilaiAkhlakRingkas ?? null) ? $nilaiAkhlakRingkas : null;
+        $hasNilaiAkhlak = !empty($nilaiAkhlakRingkas);
+        $mapelRowStart = $hasNilaiAkhlak ? 2 : 1;
         $tanggalTerbit = $raport->tanggal_terbit
         ? \Carbon\Carbon::parse($raport->tanggal_terbit)->translatedFormat('d F Y')
         : '-';
@@ -218,9 +221,19 @@
                 </tr>
             </thead>
             <tbody>
+                @if ($hasNilaiAkhlak)
+                <tr>
+                    <td>1</td>
+                    <td class="subject-name">{{ $nilaiAkhlakRingkas['label'] ?? 'Nilai Akhlak' }}</td>
+                    <td>{{ rtrim(rtrim(number_format((float) ($nilaiAkhlakRingkas['angka'] ?? 0), 2, ',', '.'), '0'), ',') }}</td>
+                    <td>{{ $nilaiAkhlakRingkas['huruf'] ?? '-' }}</td>
+                    <td class="subject-note">{{ $nilaiAkhlakRingkas['detail'] ?? $nilaiAkhlakRingkas['keterangan'] ?? '' }}</td>
+                </tr>
+                @endif
+
                 @forelse ($nilaiMapel as $index => $row)
                 <tr>
-                    <td>{{ $index + 1 }}</td>
+                    <td>{{ $index + $mapelRowStart }}</td>
                     <td class="subject-name">{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
                     <td>{{ rtrim(rtrim(number_format((float) ($row->nilai_rapor_tampil ?? 0), 2, ',', '.'), '0'), ',') }}</td>
                     <td>{{ $row->nilai_huruf ?? '' }}</td>
