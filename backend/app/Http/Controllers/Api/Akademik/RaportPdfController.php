@@ -180,12 +180,6 @@ class RaportPdfController extends Controller
 
         $nilaiMapel = $this->appendKonversiToNilaiMapel($nilaiMapel, $konversiRows);
 
-        $jumlahNilai = round($nilaiMapel->sum(fn($row) => (float) ($row->nilai_rapor_tampil ?? 0)), 2);
-        $jumlahMapel = $nilaiMapel->count();
-        $rataRataNilai = $jumlahMapel > 0
-            ? round($jumlahNilai / $jumlahMapel, 2)
-            : 0.0;
-
         $nilaiAkhlak = NilaiAkhlak::query()
             ->where('nomor_induk', $nomorInduk)
             ->where('tahun_ajaran', $tahunAjaran)
@@ -194,6 +188,7 @@ class RaportPdfController extends Controller
             ->get(['aspek', 'nilai_angka', 'deskripsi']);
 
         $nilaiAkhlakRingkas = $this->buildNilaiAkhlakRingkas($nilaiAkhlak);
+        $nilaiKeseluruhan = $this->calculateNilaiKeseluruhan($nilaiMapel, $nilaiAkhlakRingkas);
 
         return [
             'raport' => $raport,
@@ -204,8 +199,8 @@ class RaportPdfController extends Controller
             'nilaiMapel' => $nilaiMapel,
             'nilaiAkhlak' => $nilaiAkhlak,
             'nilaiAkhlakRingkas' => $nilaiAkhlakRingkas,
-            'jumlahNilai' => $jumlahNilai,
-            'rataRataNilai' => $rataRataNilai,
+            'jumlahNilai' => $nilaiKeseluruhan['jumlah_nilai'],
+            'rataRataNilai' => $nilaiKeseluruhan['rata_rata_nilai'],
         ];
     }
 
@@ -270,6 +265,34 @@ class RaportPdfController extends Controller
         $factor = 10 ** $precision;
 
         return floor(($value * $factor) + 0.5) / $factor;
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, object> $nilaiMapel
+     * @param array{angka:?float}|null $nilaiAkhlakRingkas
+     * @return array{jumlah_nilai: float, rata_rata_nilai: float, jumlah_komponen: int}
+     */
+    private function calculateNilaiKeseluruhan($nilaiMapel, ?array $nilaiAkhlakRingkas): array
+    {
+        $jumlahNilaiMapel = (float) $nilaiMapel->sum(fn($row) => (float) ($row->nilai_rapor_tampil ?? 0));
+        $jumlahKomponen = $nilaiMapel->count();
+        $jumlahNilaiAkhlak = (float) ($nilaiAkhlakRingkas['angka'] ?? 0);
+
+        if ($nilaiAkhlakRingkas !== null) {
+            $jumlahNilaiMapel += $jumlahNilaiAkhlak;
+            $jumlahKomponen++;
+        }
+
+        $jumlahNilai = $this->roundHalfUp($jumlahNilaiMapel, 2);
+        $rataRataNilai = $jumlahKomponen > 0
+            ? $this->roundHalfUp($jumlahNilai / $jumlahKomponen, 2)
+            : 0.0;
+
+        return [
+            'jumlah_nilai' => $jumlahNilai,
+            'rata_rata_nilai' => $rataRataNilai,
+            'jumlah_komponen' => $jumlahKomponen,
+        ];
     }
 
     /**

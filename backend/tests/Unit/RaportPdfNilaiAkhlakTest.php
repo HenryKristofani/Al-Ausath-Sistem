@@ -39,4 +39,27 @@ class RaportPdfNilaiAkhlakTest extends TestCase
         $this->assertSame('', $result['huruf']);
         $this->assertSame('Sangat baik; Baik', $result['detail']);
     }
+
+    #[Test]
+    public function nilai_keseluruhan_menggabungkan_mapel_dan_akhlak(): void
+    {
+        $controller = new RaportPdfController();
+
+        $method = new \ReflectionMethod($controller, 'calculateNilaiKeseluruhan');
+        $method->setAccessible(true);
+
+        $nilaiMapel = new Collection([
+            (object) ['nilai_rapor_tampil' => 80],
+            (object) ['nilai_rapor_tampil' => 90],
+        ]);
+
+        /** @var array{jumlah_nilai: float, rata_rata_nilai: float, jumlah_komponen: int} $result */
+        $result = $method->invoke($controller, $nilaiMapel, [
+            'angka' => 85.5,
+        ]);
+
+        $this->assertSame(255.5, $result['jumlah_nilai']);
+        $this->assertSame(85.17, $result['rata_rata_nilai']);
+        $this->assertSame(3, $result['jumlah_komponen']);
+    }
 }

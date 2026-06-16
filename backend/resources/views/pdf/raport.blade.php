@@ -98,6 +98,11 @@
             text-align: left;
         }
 
+        .subject-table td.subject-huruf {
+            text-align: left;
+            white-space: nowrap;
+        }
+
         .subject-table td.blank {
             color: transparent;
         }
@@ -170,6 +175,58 @@
         $nilaiAkhlakRingkas = is_array($nilaiAkhlakRingkas ?? null) ? $nilaiAkhlakRingkas : null;
         $hasNilaiAkhlak = !empty($nilaiAkhlakRingkas);
         $mapelRowStart = $hasNilaiAkhlak ? 2 : 1;
+        $terbilangNilai = function ($nilai) {
+            $angka = (int) round((float) $nilai);
+
+            if ($angka === 0) {
+                return 'Nol';
+            }
+
+            $words = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan'];
+
+            $convert = function (int $n) use (&$convert, $words): string {
+                if ($n === 0) {
+                    return '';
+                }
+
+                if ($n < 10) {
+                    return $words[$n];
+                }
+
+                if ($n === 10) {
+                    return 'Sepuluh';
+                }
+
+                if ($n === 11) {
+                    return 'Sebelas';
+                }
+
+                if ($n < 20) {
+                    return $words[$n - 10] . ' Belas';
+                }
+
+                if ($n < 100) {
+                    $puluhan = intdiv($n, 10);
+                    $satuan = $n % 10;
+
+                    $result = $words[$puluhan] . ' Puluh';
+
+                    if ($satuan > 0) {
+                        $result .= ' ' . $convert($satuan);
+                    }
+
+                    return $result;
+                }
+
+                if ($n === 100) {
+                    return 'Seratus';
+                }
+
+                return (string) $n;
+            };
+
+            return trim($convert($angka));
+        };
         $tanggalTerbit = $raport->tanggal_terbit
         ? \Carbon\Carbon::parse($raport->tanggal_terbit)->translatedFormat('d F Y')
         : '-';
@@ -211,13 +268,13 @@
             <thead>
                 <tr>
                     <th rowspan="2" width="6%">No</th>
-                    <th rowspan="2" width="29%">Mata Pelajaran</th>
-                    <th colspan="2" width="20%">Nilai</th>
-                    <th rowspan="2" width="45%">Keterangan</th>
+                    <th rowspan="2" width="26%">Mata Pelajaran</th>
+                    <th colspan="2" width="24%">Nilai</th>
+                    <th rowspan="2" width="44%">Keterangan</th>
                 </tr>
                 <tr>
-                    <th width="10%">Angka</th>
-                    <th width="10%">Huruf</th>
+                    <th width="8%">Angka</th>
+                    <th width="16%">Huruf</th>
                 </tr>
             </thead>
             <tbody>
@@ -226,7 +283,7 @@
                     <td>1</td>
                     <td class="subject-name">{{ $nilaiAkhlakRingkas['label'] ?? 'Nilai Akhlak' }}</td>
                     <td>{{ rtrim(rtrim(number_format((float) ($nilaiAkhlakRingkas['angka'] ?? 0), 2, ',', '.'), '0'), ',') }}</td>
-                    <td>{{ $nilaiAkhlakRingkas['huruf'] ?? '-' }}</td>
+                    <td class="subject-huruf">{{ $terbilangNilai($nilaiAkhlakRingkas['angka'] ?? 0) }}</td>
                     <td class="subject-note">{{ $nilaiAkhlakRingkas['detail'] ?? $nilaiAkhlakRingkas['keterangan'] ?? '' }}</td>
                 </tr>
                 @endif
@@ -236,7 +293,7 @@
                     <td>{{ $index + $mapelRowStart }}</td>
                     <td class="subject-name">{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
                     <td>{{ rtrim(rtrim(number_format((float) ($row->nilai_rapor_tampil ?? 0), 2, ',', '.'), '0'), ',') }}</td>
-                    <td>{{ $row->nilai_huruf ?? '' }}</td>
+                    <td class="subject-huruf">{{ $terbilangNilai($row->nilai_rapor_tampil ?? 0) }}</td>
                     <td class="subject-note">{{ $row->keterangan_mapel ?: ($row->predikat ?? '') }}</td>
                 </tr>
                 @empty
