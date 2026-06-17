@@ -492,10 +492,7 @@ class AdminSesiAbsensiController extends Controller
 
         // Filter tahun ajaran jika dikirim dari frontend (header global selector)
         if ($request->filled('tahun_ajaran')) {
-            $tahunAjaranFilter = $request->input('tahun_ajaran');
-            $jadwalQuery->whereHas('kelasMapel', function ($q) use ($tahunAjaranFilter) {
-                $q->where('tahun_ajaran', $tahunAjaranFilter);
-            });
+            $jadwalQuery->where('tahun_ajaran', $request->input('tahun_ajaran'));
         }
 
         $jadwal = $jadwalQuery->get(['id_jadwal', 'id_kelas_mapel', 'hari', 'jam_mulai', 'jam_selesai', 'ruangan', 'status', 'tahun_ajaran']);
@@ -519,7 +516,7 @@ class AdminSesiAbsensiController extends Controller
             'petugasPengganti:id_petugas,nama_lengkap',
         ])
         ->withCount('absensiSantri')
-        ->whereDate('tanggal', $today)
+        ->where('tanggal', $today)
         ->orderByDesc('id_sesi')
         ->get();
 
