@@ -111,6 +111,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/nilai-mapel', [NilaiMapelController::class, 'index']);
         Route::get('/nilai-mapel/kelas', [NilaiMapelController::class, 'kelasIndex']);
         Route::post('/nilai-mapel', [NilaiMapelController::class, 'upsert']);
+        Route::post('/nilai-mapel/bulk', [NilaiMapelController::class, 'bulkUpsert']);
         Route::get('/nilai-mapel/{kode_mapel}', [NilaiMapelController::class, 'show']);
         Route::put('/nilai-mapel/{id}', [NilaiMapelController::class, 'update']);
         Route::delete('/nilai-mapel/{id}', [NilaiMapelController::class, 'destroy']);
@@ -139,6 +140,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/nilai-akhlak', [NilaiAkhlakController::class, 'index']);
         Route::get('/nilai-akhlak/bar', [NilaiAkhlakController::class, 'bar']);
         Route::post('/nilai-akhlak', [NilaiAkhlakController::class, 'upsert']);
+        Route::post('/nilai-akhlak/bulk', [NilaiAkhlakController::class, 'bulkUpsert']);
         Route::delete('/nilai-akhlak/{id}', [NilaiAkhlakController::class, 'destroy']);
 
         Route::get('/raport/keseharian', [RaportKeseharianController::class, 'index']);

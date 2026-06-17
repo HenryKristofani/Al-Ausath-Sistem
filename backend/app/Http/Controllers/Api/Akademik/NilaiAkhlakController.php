@@ -127,6 +127,17 @@ class NilaiAkhlakController extends Controller
 
         $aspek = $validated['aspek'] ?? 'AKHLAK';
 
+        $updateData = [
+            'nilai_angka' => $validated['nilai_angka'],
+            // Backward compatibility untuk skema lama yang masih memiliki kolom predikat.
+            'predikat' => '-',
+            'deskripsi' => $validated['deskripsi'] ?? null,
+        ];
+
+        if (array_key_exists('id_petugas_input', $validated)) {
+            $updateData['id_petugas_input'] = $validated['id_petugas_input'];
+        }
+
         $nilai = NilaiAkhlak::updateOrCreate(
             [
                 'nomor_induk' => $validated['nomor_induk'],
@@ -134,20 +145,68 @@ class NilaiAkhlakController extends Controller
                 'semester' => $validated['semester'],
                 'aspek' => $aspek,
             ],
-            [
-                'nilai_angka' => $validated['nilai_angka'],
-                // Backward compatibility untuk skema lama yang masih memiliki kolom predikat.
-                'predikat' => '-',
-                'deskripsi' => $validated['deskripsi'] ?? null,
-                'id_petugas_input' => $validated['id_petugas_input'] ?? null,
-            ]
+            $updateData
         );
 
         return response()->json([
             'message' => 'Nilai akhlak berhasil disimpan.',
-            'data' => $nilai->fresh(['santri', 'petugas']),
+            'data' => $nilai,
         ]);
     }
+
+    /**
+     * Simpan atau update nilai akhlak massal (Bulk Upsert).
+     *
+     * Menyimpan nilai akhlak untuk banyak santri sekaligus dalam satu request dan satu DB transaction.
+     */
+    public function bulkUpsert(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tahun_ajaran'     => ['required', 'string', 'max:20'],
+            'semester'         => ['required', 'integer', 'in:1,2'],
+            'aspek'            => ['nullable', 'string', 'max:80'],
+            'id_petugas_input' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+
+            'items'                   => ['required', 'array', 'min:1'],
+            'items.*.nomor_induk'     => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'items.*.nilai_angka'     => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.deskripsi'       => ['nullable', 'string'],
+        ]);
+
+        $aspek       = $validated['aspek'] ?? 'AKHLAK';
+        $savedCount  = 0;
+        $errorItems  = [];
+
+        \DB::transaction(function () use ($validated, $aspek, &$savedCount, &$errorItems) {
+            foreach ($validated['items'] as $item) {
+                $updateData = [
+                    'nilai_angka'      => $item['nilai_angka'],
+                    'predikat'         => '-',
+                    'deskripsi'        => $item['deskripsi'] ?? null,
+                    'id_petugas_input' => $validated['id_petugas_input'] ?? null,
+                ];
+
+                NilaiAkhlak::updateOrCreate(
+                    [
+                        'nomor_induk'  => $item['nomor_induk'],
+                        'tahun_ajaran' => $validated['tahun_ajaran'],
+                        'semester'     => $validated['semester'],
+                        'aspek'        => $aspek,
+                    ],
+                    $updateData
+                );
+
+                $savedCount++;
+            }
+        });
+
+        return response()->json([
+            'message'     => "Berhasil menyimpan {$savedCount} nilai akhlak santri.",
+            'saved_count' => $savedCount,
+            'errors'      => $errorItems,
+        ]);
+    }
+
 
     /**
      * Hapus nilai akhlak.

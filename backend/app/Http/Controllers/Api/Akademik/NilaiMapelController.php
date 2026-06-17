@@ -21,7 +21,10 @@ class NilaiMapelController extends Controller
     ];
 
     /**
-     * List nilai mapel per santri.
+     * List Nilai Mapel per Santri
+     *
+     * Mengambil daftar nilai mata pelajaran untuk seorang santri secara spesifik berdasarkan nomor induk.
+     * Mendukung pagination dan filter berdasarkan kode mapel, kode kelas, tahun ajaran, dan semester.
      */
     public function index(Request $request): JsonResponse
     {
@@ -47,7 +50,10 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * List nilai mapel untuk seluruh santri dalam satu kelas
+     * List Nilai Mapel Kelas
+     *
+     * Menampilkan daftar seluruh santri yang aktif beserta data nilainya dalam satu kelas.
+     * Digunakan oleh pengajar untuk melihat rekap nilai satu kelas pada mapel tertentu.
      */
     public function kelasIndex(Request $request): JsonResponse
     {
@@ -97,7 +103,10 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Detail nilai mapel.
+     * Detail Nilai Mapel
+     *
+     * Mengambil detail satu record nilai mata pelajaran berdasarkan kode mapel dan nomor induk santri.
+     * Mengembalikan data nilai terbaru (diurutkan berdasarkan tahun ajaran dan semester secara descending).
      */
     public function show(Request $request, string $kode_mapel): JsonResponse
     {
@@ -122,7 +131,11 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Simpan komponen nilai mapel sesuai kebijakan client flow.
+     * Simpan Nilai Mapel (Upsert)
+     *
+     * Menyimpan komponen nilai mapel santri (Tugas, Ulangan, Ujian Akhir) dan otomatis 
+     * menghitung persentase/bobot untuk mendapatkan nilai akhir, nilai rapor, dan status ketuntasan (KKM).
+     * Apabila data nilai pada semester dan tahun ajaran tersebut sudah ada, maka akan diupdate (Upsert).
      */
     public function upsert(Request $request): JsonResponse
     {
@@ -171,6 +184,24 @@ class NilaiMapelController extends Controller
             ], 403);
         }
 
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $kkm) {
+            return response()->json([
+                'message' => $this->buildMissingKkmMessage(
+                    kodeMapel: $validated['kode_mapel'],
+                    kodeKelas: $validated['kode_kelas'],
+                    tahunAjaran: $validated['tahun_ajaran'],
+                    semester: (int) $validated['semester']
+                ),
+            ], 422);
+        }
+
         $nilaiTugas = $this->averageComponent($validated['tugas']);
 
         $ulanganValid = $this->filterValidUlangan($validated['ulangan']);
@@ -211,14 +242,15 @@ class NilaiMapelController extends Controller
             nilaiRaporBulat: $nilaiRaporBulat
         );
 
-        $kkm = $this->resolveKkm(
-            kodeMapel: $validated['kode_mapel'],
-            kodeKelas: $validated['kode_kelas'],
-            tahunAjaran: $validated['tahun_ajaran'],
-            semester: (int) $validated['semester']
-        );
+        $statusKetuntasan = $kkm->statusKetuntasan((float) $nilaiAkhirMentah);
 
-        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+        $nilaiDetail = sprintf(
+            'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['tugas'])),
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['ulangan'])),
+            number_format((float) $validated['ujian_akhir'], 2, '.', ''),
+            number_format($this->roundHalfUp($nilaiAkhirMentah, 2), 2, '.', '')
+        );
 
         $nilai = DataNilaiSiswa::updateOrCreate(
             [
@@ -237,6 +269,7 @@ class NilaiMapelController extends Controller
                 'flag_warna_rapor' => $flagWarnaRapor,
                 'status_ketuntasan' => $statusKetuntasan,
                 'keterangan' => $validated['keterangan'] ?? null,
+                'nilai_detail' => $nilaiDetail,
                 'id_petugas_input' => $validated['id_petugas_input'] ?? null,
             ]
         );
@@ -269,7 +302,163 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Edit/update nilai mapel berdasarkan `id_nilai`.
+     * Simpan Nilai Mapel Massal (Bulk Upsert)
+     *
+     * Menyimpan nilai mapel untuk banyak santri sekaligus dalam satu request.
+     * Semua data diproses dalam satu database transaction untuk efisiensi dan konsistensi.
+     */
+    public function bulkUpsert(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'kode_mapel'       => ['required', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
+            'kode_kelas'       => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'tahun_ajaran'     => ['required', 'string', 'max:20'],
+            'semester'         => ['required', 'integer', 'in:1,2'],
+            'id_petugas_input' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+
+            'items'                              => ['required', 'array', 'min:1'],
+            'items.*.nomor_induk'                => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'items.*.keterangan'                 => ['nullable', 'string'],
+            'items.*.tugas'                      => ['required', 'array', 'min:3'],
+            'items.*.tugas.*.nilai'              => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.tugas.*.jenis'              => ['required', 'string', 'in:PR,TUGAS_PENGGANTI,MODUL_KOMPETENSI'],
+            'items.*.ulangan'                    => ['required', 'array', 'min:3'],
+            'items.*.ulangan.*.nilai'            => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.ulangan.*.soal_disusun_pengajar' => ['required', 'boolean'],
+            'items.*.ulangan.*.diawasi_pengajar' => ['required', 'boolean'],
+            'items.*.ujian_akhir'                => ['required', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        // Resolve bobot sekali untuk semua item
+        $bobot = $this->resolveBobotGlobal(
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $bobot) {
+            return response()->json([
+                'message' => 'Bobot nilai belum diset untuk tahun ajaran dan semester ini.',
+            ], 422);
+        }
+
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $kkm) {
+            return response()->json([
+                'message' => $this->buildMissingKkmMessage(
+                    kodeMapel: $validated['kode_mapel'],
+                    kodeKelas: $validated['kode_kelas'],
+                    tahunAjaran: $validated['tahun_ajaran'],
+                    semester: (int) $validated['semester']
+                ),
+            ], 422);
+        }
+
+        $bobotTugas      = ((float) $bobot->bobot_harian) / 100;
+        $bobotUlangan    = ((float) $bobot->bobot_uts) / 100;
+        $bobotUjianAkhir = ((float) $bobot->bobot_uas) / 100;
+
+        $savedCount  = 0;
+        $errorItems  = [];
+
+        \DB::transaction(function () use (
+            $validated, $bobot, $kkm,
+            $bobotTugas, $bobotUlangan, $bobotUjianAkhir,
+            &$savedCount, &$errorItems
+        ) {
+            foreach ($validated['items'] as $index => $item) {
+                $nomorInduk = $item['nomor_induk'];
+
+                // Cek santri dan kelas
+                $santri = DataSantri::where('nomor_induk', $nomorInduk)->first();
+                if (! $santri || (string) $santri->kode_kelas !== (string) $validated['kode_kelas']) {
+                    $errorItems[] = ['nomor_induk' => $nomorInduk, 'error' => 'Santri tidak ditemukan atau kode kelas tidak sesuai.'];
+                    continue;
+                }
+
+                // Cek rapor terbit
+                $raportTerbit = DataRaport::where('nomor_induk', $nomorInduk)
+                    ->where('tahun_ajaran', $validated['tahun_ajaran'])
+                    ->where('semester', $validated['semester'])
+                    ->where('status_raport', 'TERBIT')
+                    ->exists();
+
+                if ($raportTerbit) {
+                    $errorItems[] = ['nomor_induk' => $nomorInduk, 'error' => 'Raport sudah terbit.'];
+                    continue;
+                }
+
+                $nilaiTugas     = $this->averageComponent($item['tugas']);
+                $ulanganValid   = $this->filterValidUlangan($item['ulangan']);
+
+                if (count($ulanganValid) < 3) {
+                    $errorItems[] = ['nomor_induk' => $nomorInduk, 'error' => 'Minimal 3 ulangan valid.'];
+                    continue;
+                }
+
+                $nilaiUlangan    = $this->averageComponent($ulanganValid);
+                $nilaiUjianAkhir = (float) $item['ujian_akhir'];
+
+                $nilaiAkhirMentah = ($nilaiTugas * $bobotTugas)
+                    + ($nilaiUlangan * $bobotUlangan)
+                    + ($nilaiUjianAkhir * $bobotUjianAkhir);
+
+                $nilaiRaporBulat = $this->roundRaporInteger($nilaiAkhirMentah);
+                [$nilaiRaporTampil, $flagWarnaRapor] = $this->normalizeNilaiRapor($nilaiAkhirMentah, $nilaiRaporBulat);
+                $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+
+                $nilaiDetail = sprintf(
+                    'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
+                    implode(',', array_map(fn($i) => number_format((float) $i['nilai'], 2, '.', ''), $item['tugas'])),
+                    implode(',', array_map(fn($i) => number_format((float) $i['nilai'], 2, '.', ''), $item['ulangan'])),
+                    number_format($nilaiUjianAkhir, 2, '.', ''),
+                    number_format($this->roundHalfUp($nilaiAkhirMentah, 2), 2, '.', '')
+                );
+
+                DataNilaiSiswa::updateOrCreate(
+                    [
+                        'nomor_induk'  => $nomorInduk,
+                        'kode_mapel'   => $validated['kode_mapel'],
+                        'tahun_ajaran' => $validated['tahun_ajaran'],
+                        'semester'     => $validated['semester'],
+                    ],
+                    [
+                        'kode_kelas'        => $validated['kode_kelas'],
+                        'nilai_harian'      => $this->roundHalfUp($nilaiTugas, 2),
+                        'nilai_uts'         => $this->roundHalfUp($nilaiUlangan, 2),
+                        'nilai_uas'         => $this->roundHalfUp($nilaiUjianAkhir, 2),
+                        'nilai_akhir_mapel' => $this->roundHalfUp($nilaiAkhirMentah, 2),
+                        'nilai_rapor_tampil'=> $nilaiRaporTampil,
+                        'flag_warna_rapor'  => $flagWarnaRapor,
+                        'status_ketuntasan' => $statusKetuntasan,
+                        'keterangan'        => $item['keterangan'] ?? null,
+                        'nilai_detail'      => $nilaiDetail,
+                        'id_petugas_input'  => $validated['id_petugas_input'] ?? null,
+                    ]
+                );
+
+                $savedCount++;
+            }
+        });
+
+        return response()->json([
+            'message'     => "Berhasil menyimpan {$savedCount} nilai santri.",
+            'saved_count' => $savedCount,
+            'errors'      => $errorItems,
+        ]);
+    }
+
+
+    /**
+     * Update Nilai Mapel
+     *
+     * Memperbarui komponen nilai mapel santri berdasarkan ID nilai yang spesifik.
+     * Berlaku validasi: jika raport sudah diterbitkan (status TERBIT), maka nilai tidak dapat diubah.
      */
     public function update(Request $request, int $id): JsonResponse
     {
@@ -327,6 +516,24 @@ class NilaiMapelController extends Controller
             ], 403);
         }
 
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $kkm) {
+            return response()->json([
+                'message' => $this->buildMissingKkmMessage(
+                    kodeMapel: $validated['kode_mapel'],
+                    kodeKelas: $validated['kode_kelas'],
+                    tahunAjaran: $validated['tahun_ajaran'],
+                    semester: (int) $validated['semester']
+                ),
+            ], 422);
+        }
+
         $nilaiTugas = $this->averageComponent($validated['tugas']);
 
         $ulanganValid = $this->filterValidUlangan($validated['ulangan']);
@@ -367,14 +574,15 @@ class NilaiMapelController extends Controller
             nilaiRaporBulat: $nilaiRaporBulat
         );
 
-        $kkm = $this->resolveKkm(
-            kodeMapel: $validated['kode_mapel'],
-            kodeKelas: $validated['kode_kelas'],
-            tahunAjaran: $validated['tahun_ajaran'],
-            semester: (int) $validated['semester']
-        );
+        $statusKetuntasan = $kkm->statusKetuntasan((float) $nilaiAkhirMentah);
 
-        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+        $nilaiDetail = sprintf(
+            'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['tugas'])),
+            implode(',', array_map(fn($item) => number_format((float) $item['nilai'], 2, '.', ''), $validated['ulangan'])),
+            number_format((float) $validated['ujian_akhir'], 2, '.', ''),
+            number_format($this->roundHalfUp($nilaiAkhirMentah, 2), 2, '.', '')
+        );
 
         $nilai->update([
             'kode_kelas' => $validated['kode_kelas'],
@@ -386,6 +594,7 @@ class NilaiMapelController extends Controller
             'flag_warna_rapor' => $flagWarnaRapor,
             'status_ketuntasan' => $statusKetuntasan,
             'keterangan' => $validated['keterangan'] ?? null,
+            'nilai_detail' => $nilaiDetail,
             'id_petugas_input' => $validated['id_petugas_input'] ?? null,
         ]);
 
@@ -396,7 +605,9 @@ class NilaiMapelController extends Controller
     }
 
     /**
-     * Hapus nilai mapel berdasarkan id_nilai.
+     * Hapus Nilai Mapel
+     *
+     * Menghapus record nilai mata pelajaran dari database berdasarkan ID nilai spesifik.
      */
     public function destroy(int $id): JsonResponse
     {
@@ -499,5 +710,54 @@ class NilaiMapelController extends Controller
             })
             ->orderByRaw('CASE WHEN kode_unit IS NULL THEN 1 ELSE 0 END')
             ->first();
+    }
+
+    private function buildMissingKkmMessage(string $kodeMapel, string $kodeKelas, string $tahunAjaran, int $semester): string
+    {
+        $availableSemesters = $this->availableKkmSemesters($kodeMapel, $kodeKelas, $tahunAjaran);
+
+        return $this->formatMissingKkmMessage($semester, $availableSemesters);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function availableKkmSemesters(string $kodeMapel, string $kodeKelas, string $tahunAjaran): array
+    {
+        $kelas = DataKelas::query()->where('kode_kelas', $kodeKelas)->first();
+
+        if (! $kelas) {
+            return [];
+        }
+
+        $kodeUnit = $kelas->kode_unit;
+
+        return KkmMapel::query()
+            ->where('kode_mapel', $kodeMapel)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where(function ($query) use ($kodeUnit) {
+                $query->where('kode_unit', $kodeUnit)
+                    ->orWhereNull('kode_unit');
+            })
+            ->orderBy('semester')
+            ->pluck('semester')
+            ->map(fn ($semester) => (int) $semester)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param array<int, int> $availableSemesters
+     */
+    private function formatMissingKkmMessage(int $semester, array $availableSemesters): string
+    {
+        $message = "KKM mapel untuk semester {$semester} belum tersedia. Silakan buat KKM semester {$semester} terlebih dahulu.";
+
+        if (! empty($availableSemesters)) {
+            $message .= ' Semester yang sudah tersedia: ' . implode(', ', $availableSemesters) . '.';
+        }
+
+        return $message;
     }
 }

@@ -24,6 +24,7 @@ class DataNilaiSiswa extends Model
         'flag_warna_rapor',
         'status_ketuntasan',
         'keterangan',
+        'nilai_detail',
         'id_petugas_input',
     ];
 
