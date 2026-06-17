@@ -81,6 +81,7 @@ class RaportPdfController extends Controller
                 'santri' => $payload['santri'],
                 'nilai_mapel' => $payload['nilaiMapel'],
                 'nilai_akhlak' => $payload['nilaiAkhlak'],
+                'nilai_akhlak_ringkas' => $payload['nilaiAkhlakRingkas'],
             ],
         ]);
     }
@@ -126,7 +127,7 @@ class RaportPdfController extends Controller
     }
 
     /**
-     * @return array{raport: DataRaport, santri: DataSantri, nilaiMapel: \Illuminate\Support\Collection<int, object>, nilaiAkhlak: \Illuminate\Support\Collection<int, object>}
+     * @return array{raport: DataRaport, santri: DataSantri, kelas: DataKelas|null, unit: mixed, waliKelas: DataPetugas|null, nilaiMapel: \Illuminate\Support\Collection<int, object>, nilaiAkhlak: \Illuminate\Support\Collection<int, object>, nilaiAkhlakRingkas: array<string, mixed>|null, jumlahNilai: float, rataRataNilai: float}
      */
     private function buildRaportPayload(string $nomorInduk, string $tahunAjaran, int $semester): array
     {
@@ -179,18 +180,15 @@ class RaportPdfController extends Controller
 
         $nilaiMapel = $this->appendKonversiToNilaiMapel($nilaiMapel, $konversiRows);
 
-        $jumlahNilai = round($nilaiMapel->sum(fn($row) => (float) ($row->nilai_rapor_tampil ?? 0)), 2);
-        $jumlahMapel = $nilaiMapel->count();
-        $rataRataNilai = $jumlahMapel > 0
-            ? round($jumlahNilai / $jumlahMapel, 2)
-            : 0.0;
-
         $nilaiAkhlak = NilaiAkhlak::query()
             ->where('nomor_induk', $nomorInduk)
             ->where('tahun_ajaran', $tahunAjaran)
             ->where('semester', $semester)
             ->orderBy('aspek')
             ->get(['aspek', 'nilai_angka', 'deskripsi']);
+
+        $nilaiAkhlakRingkas = $this->buildNilaiAkhlakRingkas($nilaiAkhlak);
+        $nilaiKeseluruhan = $this->calculateNilaiKeseluruhan($nilaiMapel, $nilaiAkhlakRingkas);
 
         return [
             'raport' => $raport,
@@ -200,8 +198,9 @@ class RaportPdfController extends Controller
             'waliKelas' => $waliKelas,
             'nilaiMapel' => $nilaiMapel,
             'nilaiAkhlak' => $nilaiAkhlak,
-            'jumlahNilai' => $jumlahNilai,
-            'rataRataNilai' => $rataRataNilai,
+            'nilaiAkhlakRingkas' => $nilaiAkhlakRingkas,
+            'jumlahNilai' => $nilaiKeseluruhan['jumlah_nilai'],
+            'rataRataNilai' => $nilaiKeseluruhan['rata_rata_nilai'],
         ];
     }
 
@@ -258,6 +257,70 @@ class RaportPdfController extends Controller
         return [
             'nilai_huruf' => null,
             'predikat' => null,
+        ];
+    }
+
+    private function roundHalfUp(float $value, int $precision): float
+    {
+        $factor = 10 ** $precision;
+
+        return floor(($value * $factor) + 0.5) / $factor;
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, object> $nilaiMapel
+     * @param array{angka:?float}|null $nilaiAkhlakRingkas
+     * @return array{jumlah_nilai: float, rata_rata_nilai: float, jumlah_komponen: int}
+     */
+    private function calculateNilaiKeseluruhan($nilaiMapel, ?array $nilaiAkhlakRingkas): array
+    {
+        $jumlahNilaiMapel = (float) $nilaiMapel->sum(fn($row) => (float) ($row->nilai_rapor_tampil ?? 0));
+        $jumlahKomponen = $nilaiMapel->count();
+        $jumlahNilaiAkhlak = (float) ($nilaiAkhlakRingkas['angka'] ?? 0);
+
+        if ($nilaiAkhlakRingkas !== null) {
+            $jumlahNilaiMapel += $jumlahNilaiAkhlak;
+            $jumlahKomponen++;
+        }
+
+        $jumlahNilai = $this->roundHalfUp($jumlahNilaiMapel, 2);
+        $rataRataNilai = $jumlahKomponen > 0
+            ? $this->roundHalfUp($jumlahNilai / $jumlahKomponen, 2)
+            : 0.0;
+
+        return [
+            'jumlah_nilai' => $jumlahNilai,
+            'rata_rata_nilai' => $rataRataNilai,
+            'jumlah_komponen' => $jumlahKomponen,
+        ];
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, object> $nilaiAkhlak
+     * @return array{label:string, angka:?float, huruf:?string, keterangan:?string, detail:string}|null
+     */
+    private function buildNilaiAkhlakRingkas($nilaiAkhlak): ?array
+    {
+        if ($nilaiAkhlak->isEmpty()) {
+            return null;
+        }
+
+        $angkaRataRata = $this->roundHalfUp((float) $nilaiAkhlak->avg('nilai_angka'), 2);
+
+        $detail = $nilaiAkhlak->map(function ($row) {
+            return trim((string) ($row->deskripsi ?? ''));
+        })->filter()->implode('; ');
+
+        if ($detail === '') {
+            $detail = '-';
+        }
+
+        return [
+            'label' => 'Akhlaq',
+            'angka' => $angkaRataRata,
+            'huruf' => '',
+            'keterangan' => $detail,
+            'detail' => $detail,
         ];
     }
 

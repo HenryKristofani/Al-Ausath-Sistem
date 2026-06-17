@@ -184,6 +184,24 @@ class NilaiMapelController extends Controller
             ], 403);
         }
 
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $kkm) {
+            return response()->json([
+                'message' => $this->buildMissingKkmMessage(
+                    kodeMapel: $validated['kode_mapel'],
+                    kodeKelas: $validated['kode_kelas'],
+                    tahunAjaran: $validated['tahun_ajaran'],
+                    semester: (int) $validated['semester']
+                ),
+            ], 422);
+        }
+
         $nilaiTugas = $this->averageComponent($validated['tugas']);
 
         $ulanganValid = $this->filterValidUlangan($validated['ulangan']);
@@ -224,14 +242,7 @@ class NilaiMapelController extends Controller
             nilaiRaporBulat: $nilaiRaporBulat
         );
 
-        $kkm = $this->resolveKkm(
-            kodeMapel: $validated['kode_mapel'],
-            kodeKelas: $validated['kode_kelas'],
-            tahunAjaran: $validated['tahun_ajaran'],
-            semester: (int) $validated['semester']
-        );
-
-        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+        $statusKetuntasan = $kkm->statusKetuntasan((float) $nilaiAkhirMentah);
 
         $nilaiDetail = sprintf(
             'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
@@ -330,17 +341,27 @@ class NilaiMapelController extends Controller
             ], 422);
         }
 
-        $bobotTugas      = ((float) $bobot->bobot_harian) / 100;
-        $bobotUlangan    = ((float) $bobot->bobot_uts) / 100;
-        $bobotUjianAkhir = ((float) $bobot->bobot_uas) / 100;
-
-        // Resolve KKM sekali untuk semua item
         $kkm = $this->resolveKkm(
             kodeMapel: $validated['kode_mapel'],
             kodeKelas: $validated['kode_kelas'],
             tahunAjaran: $validated['tahun_ajaran'],
             semester: (int) $validated['semester']
         );
+
+        if (! $kkm) {
+            return response()->json([
+                'message' => $this->buildMissingKkmMessage(
+                    kodeMapel: $validated['kode_mapel'],
+                    kodeKelas: $validated['kode_kelas'],
+                    tahunAjaran: $validated['tahun_ajaran'],
+                    semester: (int) $validated['semester']
+                ),
+            ], 422);
+        }
+
+        $bobotTugas      = ((float) $bobot->bobot_harian) / 100;
+        $bobotUlangan    = ((float) $bobot->bobot_uts) / 100;
+        $bobotUjianAkhir = ((float) $bobot->bobot_uas) / 100;
 
         $savedCount  = 0;
         $errorItems  = [];
@@ -495,6 +516,24 @@ class NilaiMapelController extends Controller
             ], 403);
         }
 
+        $kkm = $this->resolveKkm(
+            kodeMapel: $validated['kode_mapel'],
+            kodeKelas: $validated['kode_kelas'],
+            tahunAjaran: $validated['tahun_ajaran'],
+            semester: (int) $validated['semester']
+        );
+
+        if (! $kkm) {
+            return response()->json([
+                'message' => $this->buildMissingKkmMessage(
+                    kodeMapel: $validated['kode_mapel'],
+                    kodeKelas: $validated['kode_kelas'],
+                    tahunAjaran: $validated['tahun_ajaran'],
+                    semester: (int) $validated['semester']
+                ),
+            ], 422);
+        }
+
         $nilaiTugas = $this->averageComponent($validated['tugas']);
 
         $ulanganValid = $this->filterValidUlangan($validated['ulangan']);
@@ -535,14 +574,7 @@ class NilaiMapelController extends Controller
             nilaiRaporBulat: $nilaiRaporBulat
         );
 
-        $kkm = $this->resolveKkm(
-            kodeMapel: $validated['kode_mapel'],
-            kodeKelas: $validated['kode_kelas'],
-            tahunAjaran: $validated['tahun_ajaran'],
-            semester: (int) $validated['semester']
-        );
-
-        $statusKetuntasan = $kkm?->statusKetuntasan((float) $nilaiAkhirMentah);
+        $statusKetuntasan = $kkm->statusKetuntasan((float) $nilaiAkhirMentah);
 
         $nilaiDetail = sprintf(
             'Tugas:[%s];Ulangan:[%s];UjianAkhir:%s;NilaiAkhirMapel:%s',
@@ -678,5 +710,54 @@ class NilaiMapelController extends Controller
             })
             ->orderByRaw('CASE WHEN kode_unit IS NULL THEN 1 ELSE 0 END')
             ->first();
+    }
+
+    private function buildMissingKkmMessage(string $kodeMapel, string $kodeKelas, string $tahunAjaran, int $semester): string
+    {
+        $availableSemesters = $this->availableKkmSemesters($kodeMapel, $kodeKelas, $tahunAjaran);
+
+        return $this->formatMissingKkmMessage($semester, $availableSemesters);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function availableKkmSemesters(string $kodeMapel, string $kodeKelas, string $tahunAjaran): array
+    {
+        $kelas = DataKelas::query()->where('kode_kelas', $kodeKelas)->first();
+
+        if (! $kelas) {
+            return [];
+        }
+
+        $kodeUnit = $kelas->kode_unit;
+
+        return KkmMapel::query()
+            ->where('kode_mapel', $kodeMapel)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where(function ($query) use ($kodeUnit) {
+                $query->where('kode_unit', $kodeUnit)
+                    ->orWhereNull('kode_unit');
+            })
+            ->orderBy('semester')
+            ->pluck('semester')
+            ->map(fn ($semester) => (int) $semester)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param array<int, int> $availableSemesters
+     */
+    private function formatMissingKkmMessage(int $semester, array $availableSemesters): string
+    {
+        $message = "KKM mapel untuk semester {$semester} belum tersedia. Silakan buat KKM semester {$semester} terlebih dahulu.";
+
+        if (! empty($availableSemesters)) {
+            $message .= ' Semester yang sudah tersedia: ' . implode(', ', $availableSemesters) . '.';
+        }
+
+        return $message;
     }
 }
