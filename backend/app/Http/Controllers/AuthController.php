@@ -369,6 +369,13 @@ class AuthController extends Controller
                     'tanggal_pengumuman' => $this->resolveTanggalPengumuman($pendaftar),
                     'nama_gelombang' => $pendaftar->period?->nama_gelombang ?: 'Gelombang Umum',
                     'tahun_ajaran' => $pendaftar->period?->tahun_ajaran ?: '2026/2027',
+                    // POIN 4: Expose URL bukti ortu/guru yang sudah tersimpan
+                    // agar dashboard santri bisa menampilkan preview
+                    'bukti_ortu_guru_url' => $pendaftar->bukti_ortu_guru_path
+                        ? asset('storage/' . $pendaftar->bukti_ortu_guru_path)
+                        : null,
+                    'bukti_ortu_guru_verified' => (bool) $pendaftar->bukti_ortu_guru_verified,
+                    'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
                 ],
                 'flow' => $this->buildPpdbFlowState($pendaftar),
             ],
@@ -503,6 +510,12 @@ class AuthController extends Controller
                 'pilihan_uang_gedung' => $pendaftar->pilihan_uang_gedung ? (int) $pendaftar->pilihan_uang_gedung : null,
                 'pilihan_infaq_bulanan' => $pendaftar->pilihan_infaq_bulanan ? (int) $pendaftar->pilihan_infaq_bulanan : null,
                 'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
+                // POIN 4: Expose bukti ortu/guru agar halaman infaq bisa menampilkan
+                // status upload yang sudah tersimpan sebelumnya
+                'bukti_ortu_guru_url' => $pendaftar->bukti_ortu_guru_path
+                    ? asset('storage/' . $pendaftar->bukti_ortu_guru_path)
+                    : null,
+                'bukti_ortu_guru_verified' => (bool) $pendaftar->bukti_ortu_guru_verified,
                 'flow' => $flow,
                 'pembayaran_ppdb' => $flow['pembayaran_ppdb'] ?? null,
             ],
@@ -1121,6 +1134,8 @@ class AuthController extends Controller
             'file_kk_path' => 'kk',
             'file_surat_rekomendasi_path' => 'surat_rekomendasi',
             'surat_pernyataan_file_path' => 'surat_pernyataan',
+            // POIN 4: Sync bukti anak guru ke tabel ppdb_berkas agar konsisten
+            'bukti_ortu_guru_path' => 'bukti_ortu_guru',
         ];
 
         foreach ($jenisByField as $field => $jenisBerkas) {

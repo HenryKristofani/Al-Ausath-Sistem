@@ -563,32 +563,55 @@ class PembayaranSppController extends Controller
 
     /**
      * Download PDF Kwitansi Pembayaran SPP/PPDB.
+     *
+     * POIN 11 — OPTIMASI: File PDF di-cache di disk — hanya di-generate ulang
+     * jika belum ada. Response header Cache-Control ditambahkan agar browser
+     * tidak request ulang untuk file yang sama.
      */
     public function downloadKwitansi(int $id): mixed
     {
-        $pembayaran = PembayaranSpp::with(['santri.kelas.unit', 'pendaftarPpdb.akun', 'setting', 'kwitansi'])->findOrFail($id);
+        $pembayaran = PembayaranSpp::with([
+            'santri:id_santri,nama_lengkap_santri,nomor_induk,kode_kelas,is_anak_guru',
+            'santri.kelas:id_kelas,kode_kelas,nama_kelas,kode_unit',
+            'santri.kelas.unit:id_unit,kode_unit,nama_unit',
+            'pendaftarPpdb:id_pendaftaran,nama_calon,nomor_induk_generated,no_pendaftaran_final,no_pendaftaran,jenjang,program_pendaftaran,kode_kelas_diterima,id_akun',
+            'pendaftarPpdb.akun:id_akun,email',
+            'setting:id_setting,keterangan,jumlah,periode,id_kategori_tagihan',
+            'setting.kategoriTagihan:id_kategori_tagihan,nama_tagihan',
+            'kwitansi:id_kwitansi,id_pembayaran,id_petugas,jenis,jumlah,file_path_pdf',
+        ])->findOrFail($id);
 
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
         $kwitansi = $pembayaran->kwitansi;
 
         if (!$kwitansi) {
             $user = auth()->user();
             $idPetugas = ($user instanceof \App\Models\DataPetugas) ? $user->id_petugas : null;
-            
+
             $kwitansi = KwitansiPdf::create([
                 'id_pembayaran' => $pembayaran->id_pembayaran,
-                'id_petugas' => $idPetugas ?? $pembayaran->id_petugas_verifikator ?? null,
-                'jenis' => 'spp',
-                'jumlah' => $pembayaran->nominal_bayar,
+                'id_petugas'    => $idPetugas ?? $pembayaran->id_petugas_verifikator ?? null,
+                'jenis'         => 'spp',
+                'jumlah'        => $pembayaran->nominal_bayar,
                 'file_path_pdf' => 'kwitansi/spp/' . $pembayaran->id_pembayaran . '/kwitansi-' . $pembayaran->id_pembayaran . '.pdf',
             ]);
         }
 
-        $disk = \Illuminate\Support\Facades\Storage::disk('public');
-        if (!$disk->exists((string) $kwitansi->file_path_pdf)) {
+        // Generate PDF hanya jika belum ada di disk (cache on-disk)
+        $filePath = (string) $kwitansi->file_path_pdf;
+        if (!$disk->exists($filePath)) {
             $this->ensureKwitansiPdfFile($pembayaran, $kwitansi);
         }
 
-        return response()->download($disk->path((string) $kwitansi->file_path_pdf));
+        $absolutePath = $disk->path($filePath);
+        $fileName = 'Kwitansi-' . $id . '.pdf';
+
+        return response()->download($absolutePath, $fileName, [
+            'Content-Type'  => 'application/pdf',
+            // Browser cache 24 jam — tidak perlu download ulang jika file sama
+            'Cache-Control' => 'private, max-age=86400',
+            'Pragma'        => 'private',
+        ]);
     }
 
     /**

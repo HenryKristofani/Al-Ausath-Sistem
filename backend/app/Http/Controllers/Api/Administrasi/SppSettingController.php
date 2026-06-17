@@ -11,6 +11,7 @@ use App\Support\SppBillingService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class SppSettingController extends Controller
@@ -157,15 +158,20 @@ class SppSettingController extends Controller
 
     /**
      * Provision tagihan SPP untuk santri aktif berdasarkan setting yang tersedia.
+    /**
+     * Provision tagihan SPP untuk santri aktif berdasarkan setting yang tersedia.
+     *
+     * POIN 12 — OPTIMASI: Gunakan chunk() agar tidak load semua santri ke memori
+     * sekaligus, dan reset static year cache antar-chunk agar tidak stale.
      */
     public function provisionBills(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'id_santri' => ['nullable', 'integer', 'exists:data_santri,id_santri'],
-            'kode_kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
-            'id_unit' => ['nullable', 'integer', 'exists:data_unit,id_unit'],
+            'id_santri'      => ['nullable', 'integer', 'exists:data_santri,id_santri'],
+            'kode_kelas'     => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'id_unit'        => ['nullable', 'integer', 'exists:data_unit,id_unit'],
             'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
-            'jenjang' => ['nullable', 'string', 'max:20'],
+            'jenjang'        => ['nullable', 'string', 'max:20'],
         ]);
 
         $query = DataSantri::query()->with(['kelas.unit']);
@@ -203,28 +209,32 @@ class SppSettingController extends Controller
             });
         }
 
-        $santriList = $query->orderBy('nama_lengkap_santri')->get();
         $service = app(SppBillingService::class);
-
         $processed = 0;
-        foreach ($santriList as $santri) {
-            /** @var DataSantri $santri */
-            $service->provisionBillingForActiveSantri($santri);
-            $processed++;
-        }
+
+        // OPTIMASI: chunk 100 santri per batch — hemat memori & DB connection
+        $query->orderBy('id_santri')->chunk(100, function ($batch) use ($service, &$processed) {
+            foreach ($batch as $santri) {
+                /** @var DataSantri $santri */
+                $service->provisionBillingForActiveSantri($santri);
+                $processed++;
+            }
+            // Reset static year cache setiap chunk agar tidak stale
+            SppBillingService::resetCache();
+        });
 
         return response()->json([
             'message' => $processed > 0
-                ? 'Provision tagihan SPP berhasil dijalankan.'
+                ? "Provision tagihan SPP berhasil: {$processed} santri diproses."
                 : 'Tidak ada santri aktif yang cocok untuk diproses.',
             'data' => [
                 'processed' => $processed,
-                'filters' => [
-                    'id_santri' => $validated['id_santri'] ?? null,
-                    'kode_kelas' => $validated['kode_kelas'] ?? null,
-                    'id_unit' => $validated['id_unit'] ?? null,
+                'filters'   => [
+                    'id_santri'      => $validated['id_santri'] ?? null,
+                    'kode_kelas'     => $validated['kode_kelas'] ?? null,
+                    'id_unit'        => $validated['id_unit'] ?? null,
                     'id_golongan_spp' => $validated['id_golongan_spp'] ?? null,
-                    'jenjang' => $validated['jenjang'] ?? null,
+                    'jenjang'        => $validated['jenjang'] ?? null,
                 ],
             ],
         ]);
@@ -232,6 +242,10 @@ class SppSettingController extends Controller
 
     /**
      * Generate tagihan SPP per periode untuk setting tertentu.
+     *
+     * POIN 12 — OPTIMASI: Diganti dari N×M firstOrCreate individual
+     * menjadi satu SELECT untuk cek existing + satu bulk INSERT.
+     * Dari O(N×M) query → O(2) query, jauh lebih cepat untuk ratusan santri.
      */
     public function generateTagihanPeriode(Request $request, int $id): JsonResponse
     {
@@ -256,6 +270,7 @@ class SppSettingController extends Controller
 
         $setting = SppSetting::with(['kategoriTagihan', 'golonganSpp', 'unit', 'kelas.unit'])->findOrFail($id);
 
+        // ── Bangun query santri ───────────────────────────────────────────────
         $santriQuery = DataSantri::query()->with(['kelas.unit']);
 
         if (Schema::hasColumn('data_santri', 'is_deleted')) {
@@ -273,34 +288,40 @@ class SppSettingController extends Controller
         }
 
         if (!empty($setting->kode_kelas)) {
-            $santriQuery->when($hasFilter, fn ($query) => $query->orWhere('kode_kelas', $setting->kode_kelas), fn ($query) => $query->where('kode_kelas', $setting->kode_kelas));
+            $santriQuery->when($hasFilter, fn ($q) => $q->orWhere('kode_kelas', $setting->kode_kelas), fn ($q) => $q->where('kode_kelas', $setting->kode_kelas));
             $hasFilter = true;
         }
 
         if (!empty($setting->id_unit)) {
-            $santriQuery->when($hasFilter, fn ($query) => $query->orWhereHas('kelas.unit', function ($unitQuery) use ($setting) {
-                $unitQuery->where('id_unit', $setting->id_unit);
-            }), fn ($query) => $query->whereHas('kelas.unit', function ($unitQuery) use ($setting) {
-                $unitQuery->where('id_unit', $setting->id_unit);
-            }));
+            $santriQuery->when($hasFilter,
+                fn ($q) => $q->orWhereHas('kelas.unit', fn ($u) => $u->where('id_unit', $setting->id_unit)),
+                fn ($q) => $q->whereHas('kelas.unit', fn ($u) => $u->where('id_unit', $setting->id_unit))
+            );
             $hasFilter = true;
         }
 
         if (!empty($setting->jenjang)) {
             $jenjang = strtoupper(trim((string) $setting->jenjang));
-            $santriQuery->when($hasFilter, fn ($query) => $query->orWhereHas('kelas.unit', function ($unitQuery) use ($jenjang) {
-                $unitQuery->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]);
-            }), fn ($query) => $query->whereHas('kelas.unit', function ($unitQuery) use ($jenjang) {
-                $unitQuery->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]);
-            }));
+            $santriQuery->when($hasFilter,
+                fn ($q) => $q->orWhereHas('kelas.unit', fn ($u) => $u->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang])),
+                fn ($q) => $q->whereHas('kelas.unit', fn ($u) => $u->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]))
+            );
             $hasFilter = true;
         }
 
         if (!empty($setting->id_golongan_spp)) {
-            $santriQuery->when($hasFilter, fn ($query) => $query->orWhere('id_golongan_spp', $setting->id_golongan_spp), fn ($query) => $query->where('id_golongan_spp', $setting->id_golongan_spp));
+            $santriQuery->when($hasFilter,
+                fn ($q) => $q->orWhere('id_golongan_spp', $setting->id_golongan_spp),
+                fn ($q) => $q->where('id_golongan_spp', $setting->id_golongan_spp)
+            );
         }
 
-        $santriList = $santriQuery->orderBy('nama_lengkap_santri')->get();
+        // Hanya ambil kolom yang dibutuhkan — tidak perlu SELECT *
+        $santriList = $santriQuery
+            ->select(['id_santri', 'is_anak_guru'])
+            ->orderBy('id_santri')
+            ->get();
+
         $periods = $this->buildPeriodLabels(
             (int) $validated['bulan_mulai'],
             (int) $validated['tahun_mulai'],
@@ -308,44 +329,75 @@ class SppSettingController extends Controller
             (int) $validated['tahun_selesai'],
         );
 
-        $createdCount = 0;
-        foreach ($santriList as $santri) {
-            $nominal = (float) ($setting->jumlah ?? 0);
-            if ($santri->is_anak_guru) {
-                $nominal = (float) ($nominal * 0.5);
-            }
+        if ($santriList->isEmpty() || empty($periods)) {
+            return response()->json([
+                'message' => 'Tidak ada santri aktif atau periode yang cocok.',
+                'data' => ['jumlah_tagihan_baru' => 0, 'jumlah_santri' => 0, 'jumlah_periode' => count($periods), 'periode' => $periods],
+            ]);
+        }
 
+        $santriIds = $santriList->pluck('id_santri')->all();
+
+        // ── OPTIMASI: Satu query untuk ambil semua tagihan existing ──────────
+        $existingSet = \App\Models\PembayaranSpp::query()
+            ->whereIn('id_santri', $santriIds)
+            ->where('id_setting', $setting->id_setting)
+            ->whereNull('id_pendaftaran')
+            ->whereIn('bulan', $periods)
+            ->select(['id_santri', 'bulan'])
+            ->get()
+            ->mapWithKeys(fn ($row) => ["{$row->id_santri}::{$row->bulan}" => true])
+            ->all();
+
+        // ── Bangun batch rows yang belum ada ─────────────────────────────────
+        $now = now()->toDateTimeString();
+        $idSettingVal = $setting->id_setting;
+
+        // Map is_anak_guru per santri untuk nominal kalkulasi
+        $isAnakGuruMap = $santriList->pluck('is_anak_guru', 'id_santri')->all();
+        $baseNominal = (float) ($setting->jumlah ?? 0);
+
+        $rows = [];
+        foreach ($santriIds as $idSantri) {
+            $nominal = $isAnakGuruMap[$idSantri] ? $baseNominal * 0.5 : $baseNominal;
             foreach ($periods as $period) {
-                $created = \App\Models\PembayaranSpp::firstOrCreate(
-                    [
-                        'id_santri' => $santri->id_santri,
-                        'id_setting' => $setting->id_setting,
-                        'id_pendaftaran' => null,
-                        'bulan' => $period,
-                    ],
-                    [
-                        'nominal_bayar' => $nominal,
-                        'tanggal_bayar' => null,
-                        'metode_bayar' => null,
-                        'status' => 'menunggu_pembayaran',
-                    ]
-                );
-
-                if ($created->wasRecentlyCreated) {
-                    $createdCount++;
+                if (isset($existingSet["{$idSantri}::{$period}"])) {
+                    continue; // Sudah ada, skip
                 }
+                $rows[] = [
+                    'id_santri'       => $idSantri,
+                    'id_setting'      => $idSettingVal,
+                    'id_pendaftaran'  => null,
+                    'bulan'           => $period,
+                    'nominal_bayar'   => $nominal,
+                    'tanggal_bayar'   => null,
+                    'metode_bayar'    => null,
+                    'status'          => 'menunggu_pembayaran',
+                    'created_at'      => $now,
+                ];
+            }
+        }
+
+        $createdCount = 0;
+
+        if (!empty($rows)) {
+            // ── OPTIMASI: Satu bulk INSERT mengganti ratusan firstOrCreate ───
+            // Chunk 500 baris per INSERT untuk menghindari batas parameter DB
+            foreach (array_chunk($rows, 500) as $chunk) {
+                \Illuminate\Support\Facades\DB::table('pembayaran_spp')->insert($chunk);
+                $createdCount += count($chunk);
             }
         }
 
         return response()->json([
             'message' => $createdCount > 0
-                ? 'Generate tagihan periode berhasil dijalankan.'
-                : 'Tidak ada tagihan baru yang dibuat.',
+                ? "Generate tagihan berhasil: {$createdCount} tagihan baru dibuat."
+                : 'Tidak ada tagihan baru yang dibuat (semua sudah ada).',
             'data' => [
                 'jumlah_tagihan_baru' => $createdCount,
-                'jumlah_santri' => $santriList->count(),
-                'jumlah_periode' => count($periods),
-                'periode' => $periods,
+                'jumlah_santri'       => $santriList->count(),
+                'jumlah_periode'      => count($periods),
+                'periode'             => $periods,
             ],
         ]);
     }

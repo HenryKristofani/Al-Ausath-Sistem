@@ -14,6 +14,15 @@ class SppBillingService
     protected static bool $activeYearLoaded = false;
 
     /**
+     * Reset static cache — dipanggil antar chunk agar active year tidak stale.
+     */
+    public static function resetCache(): void
+    {
+        self::$cachedActiveYear = null;
+        self::$activeYearLoaded = false;
+    }
+
+    /**
      * Provision tagihan SPP untuk santri aktif secara idempotent.
      * 
      * LOGIC:

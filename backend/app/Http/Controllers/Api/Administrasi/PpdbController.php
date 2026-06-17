@@ -1140,6 +1140,8 @@ class PpdbController extends Controller
 
     /**
      * Endpoint to list available classes for PPDB admission.
+     * POIN 2: Hanya menampilkan kelas tingkat 1 untuk santri baru
+     * (MI/MTs/MA → hanya kelas 1, PAUD/TK → semua kelas).
      */
     public function availableKelas(Request $request): JsonResponse
     {
@@ -1173,6 +1175,27 @@ class PpdbController extends Controller
 
         if ($tahunAjaran) {
             $query->where('tahun_ajaran', $tahunAjaran);
+        }
+
+        // POIN 2: Filter hanya kelas 1 (tingkat penerimaan pertama) untuk
+        // jenjang MI, MTs, MA. Santri baru tidak mungkin langsung masuk kelas 2+.
+        // PAUD dan TK tidak difilter karena hanya punya satu tingkat.
+        $isJenjangBerjenjang = in_array($unitCode, ['MI', 'MTS', 'MA'], true);
+        if ($isJenjangBerjenjang) {
+            $query->where(function ($q) {
+                // Cek dari nama_kelas atau kode_kelas yang mengandung angka 1 di depan
+                $q->where(function ($sub) {
+                    // nama_kelas dimulai dengan "1" diikuti spasi/huruf/tanda baca
+                    $sub->whereRaw("nama_kelas REGEXP '^1[^0-9]'")
+                        ->orWhereRaw("nama_kelas REGEXP '^1$'")
+                        ->orWhereRaw("LOWER(nama_kelas) LIKE 'kelas 1 %'")
+                        ->orWhereRaw("LOWER(nama_kelas) LIKE 'kelas 1%'");
+                })->orWhere(function ($sub) {
+                    // kode_kelas dimulai dengan "1"
+                    $sub->whereRaw("kode_kelas REGEXP '^1[^0-9]'")
+                        ->orWhereRaw("kode_kelas REGEXP '^1$'");
+                });
+            });
         }
 
         $classes = $query->get();
