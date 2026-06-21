@@ -520,6 +520,9 @@ class PpdbController extends Controller
             $request->merge(['hasil' => $hasilInput]);
         }
 
+        // In the new flow, there is no registration payment step before acceptance.
+        // Therefore, we bypass the check for registration fee payment.
+        /*
         if ($this->isStatusDiterima($hasilInput)) {
             if (!$this->isPembayaranPpdbLunas($idPendaftaran)) {
                 return response()->json([
@@ -527,6 +530,7 @@ class PpdbController extends Controller
                 ], 422);
             }
         }
+        */
 
         $validated = $request->validate([
             'id_petugas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
@@ -766,16 +770,136 @@ class PpdbController extends Controller
         ], 201);
     }
 
-    private function createTagihanPpdbIfNeeded(PpdbPendaftar $pendaftar, array $overrides = []): PembayaranSpp
+    private function createTagihanPpdbIfNeeded(PpdbPendaftar $pendaftar, array $overrides = []): ?PembayaranSpp
     {
+        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        
+        $configs = [
+            'PAUD' => [
+                'uang_pangkal_a' => 1000000,
+                'uang_pangkal_b' => 1500000,
+                'perlengkapan' => 300000,
+                'uang_modul' => 0,
+                'infaq_bulanan_a' => 200000,
+                'infaq_bulanan_b' => 250000,
+            ],
+            'PRATAHFIDZ' => [
+                'uang_pangkal_a' => 1000000,
+                'uang_pangkal_b' => 1500000,
+                'perlengkapan' => 1200000,
+                'uang_modul' => 0,
+                'infaq_bulanan_a' => 300000,
+                'infaq_bulanan_b' => 350000,
+            ],
+            'MTS' => [
+                'uang_pangkal_a' => 1500000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 875000, // meja, sekat, almari, kasur
+                'uang_modul' => 250000,
+                'infaq_bulanan_a' => 600000,
+                'infaq_bulanan_b' => 650000,
+            ],
+            'MA' => [
+                'uang_pangkal_a' => 1500000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 875000,
+                'uang_modul' => 250000,
+                'infaq_bulanan_a' => 650000,
+                'infaq_bulanan_b' => 700000,
+            ],
+            'MTQU' => [
+                'uang_pangkal_a' => 1800000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 0,
+                'uang_modul' => 200000,
+                'infaq_bulanan_a' => 350000,
+                'infaq_bulanan_b' => 400000,
+            ],
+        ];
+
+        $configInfaq = $configs[$jenjang] ?? null;
+
+        // If choices are present, use the advanced selection logic
+        if ($configInfaq && $pendaftar->pilihan_uang_gedung && $pendaftar->pilihan_infaq_bulanan) {
+            // Nominal yang dipilih pendaftar
+            $nominalUangPangkal = $pendaftar->pilihan_uang_gedung == 1 
+                ? $configInfaq['uang_pangkal_a'] 
+                : $configInfaq['uang_pangkal_b'];
+            
+            $nominalInfaqBulanan = $pendaftar->pilihan_infaq_bulanan == 1
+                ? $configInfaq['infaq_bulanan_a']
+                : $configInfaq['infaq_bulanan_b'];
+            
+            // Apply diskon anak guru HANYA untuk Uang Pangkal
+            if ($pendaftar->is_anak_guru) {
+                $nominalUangPangkal = $nominalUangPangkal * 0.5; // 50% diskon
+            }
+            
+            // Gabungkan Uang Pangkal + Perlengkapan + SPP Bulanan Pertama menjadi SATU tagihan
+            $totalTagihanGabungan = $nominalUangPangkal + $configInfaq['perlengkapan'] + $nominalInfaqBulanan;
+            
+            // Create/Update the combined tagihan
+            $settingGabungan = SppSetting::firstOrCreate(
+                [
+                    'jenjang' => $pendaftar->jenjang,
+                    'keterangan' => 'Uang Gedung + Perlengkapan + SPP Pertama',
+                    'periode' => optional($pendaftar->period)->nama_periode ?? now()->format('Y'),
+                ],
+                [
+                    'nominal' => $totalTagihanGabungan,
+                    'aktif' => true,
+                ]
+            );
+
+            $tagihanGabungan = PembayaranSpp::firstOrCreate(
+                [
+                    'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                    'id_setting' => $settingGabungan->id_setting,
+                ],
+                [
+                    'id_santri' => $pendaftar->id_santri ?? null,
+                    'nominal_bayar' => $totalTagihanGabungan,
+                    'status' => 'menunggu_pembayaran',
+                ]
+            );
+
+            // Buat tagihan Uang Modul terpisah (jika ada)
+            if ($configInfaq['uang_modul'] > 0) {
+                $settingModul = SppSetting::firstOrCreate(
+                    [
+                        'jenjang' => $pendaftar->jenjang,
+                        'keterangan' => 'Uang Modul Semester Ganjil',
+                        'periode' => optional($pendaftar->period)->nama_periode ?? now()->format('Y'),
+                    ],
+                    [
+                        'nominal' => $configInfaq['uang_modul'],
+                        'aktif' => true,
+                    ]
+                );
+
+                PembayaranSpp::firstOrCreate(
+                    [
+                        'id_pendaftaran' => $pendaftar->id_pendaftaran,
+                        'id_setting' => $settingModul->id_setting,
+                    ],
+                    [
+                        'id_santri' => $pendaftar->id_santri ?? null,
+                        'nominal_bayar' => $configInfaq['uang_modul'],
+                        'status' => 'menunggu_pembayaran',
+                    ]
+                );
+            }
+
+            return $tagihanGabungan;
+        }
+
+        // FALLBACK: Old generic tagihan logic
         $existing = PembayaranSpp::where('id_pendaftaran', $pendaftar->id_pendaftaran)->first();
         if ($existing) {
             return $existing;
         }
 
-        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
         $setting = null;
-
         if (!empty($overrides['id_setting'])) {
             $setting = SppSetting::find($overrides['id_setting']);
         } elseif ($jenjang) {
@@ -789,7 +913,6 @@ class PpdbController extends Controller
 
         return PembayaranSpp::create([
             'id_pendaftaran' => $pendaftar->id_pendaftaran,
-            // id_santri diisi langsung jika pendaftar sudah terintegrasi ke DataSantri
             'id_santri' => $pendaftar->id_santri ?? null,
             'id_setting' => $setting?->id_setting ?? ($overrides['id_setting'] ?? null),
             'nominal_bayar' => $nominal,
@@ -865,6 +988,29 @@ class PpdbController extends Controller
 
         $setting = $query->orderByDesc('id_setting')->first();
 
+        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran ?: '')));
+        $configs = [
+            'PAUD' => [
+                'infaq_bulanan_a' => 200000,
+                'infaq_bulanan_b' => 250000,
+            ],
+            'PRATAHFIDZ' => [
+                'infaq_bulanan_a' => 300000,
+                'infaq_bulanan_b' => 350000,
+            ],
+            'MTS' => [
+                'infaq_bulanan_a' => 600000,
+                'infaq_bulanan_b' => 650000,
+            ],
+            'MTQU' => [
+                'infaq_bulanan_a' => 350000,
+                'infaq_bulanan_b' => 400000,
+            ],
+        ];
+
+        $config = $configs[$jenjang] ?? $configs['MTS'];
+        $nominalInfaqVal = $nominalInfaq == 1 ? $config['infaq_bulanan_a'] : $config['infaq_bulanan_b'];
+
         // 3. Buat atau dapatkan tagihan infaq menggunakan firstOrCreate untuk idempotency
         $tagihan = PembayaranSpp::firstOrCreate(
             [
@@ -874,9 +1020,8 @@ class PpdbController extends Controller
                 'id_setting'      => $setting?->id_setting,
             ],
             [
-                // 4. Nilai tagihan: gunakan pilihan_infaq_bulanan apa adanya (infaq tidak didiskon untuk anak guru)
-                // Infaq tidak didiskon untuk anak guru — nominal diambil langsung dari pilihan pendaftar
-                'nominal_bayar' => $nominalInfaq,
+                // 4. Nilai tagihan: gunakan pilihan_infaq_bulanan yang sudah di-resolve ke nominal sebenarnya
+                'nominal_bayar' => $nominalInfaqVal,
                 'status'        => 'menunggu_pembayaran',
             ]
         );

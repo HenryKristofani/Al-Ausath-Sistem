@@ -771,6 +771,14 @@ class AuthController extends Controller
                 'infaq_bulanan_a' => 600_000,
                 'infaq_bulanan_b' => 650_000,
             ],
+            'MA' => [
+                'uang_pangkal_a' => 1_500_000,
+                'uang_pangkal_b' => 2_000_000,
+                'perlengkapan' => 875_000,
+                'uang_modul' => 250_000,
+                'infaq_bulanan_a' => 650_000,
+                'infaq_bulanan_b' => 700_000,
+            ],
             'MTQU' => [
                 'uang_pangkal_a' => 1_800_000,
                 'uang_pangkal_b' => 2_000_000,
@@ -1653,32 +1661,12 @@ class AuthController extends Controller
         }
 
         // ── Step determination ───────────────────────────────────────────
-        // Infaq step: wajib dilewati setelah form/tes selesai, sebelum pembayaran PPDB.
-        // Ditandai dengan pilihan_uang_gedung yang masih null.
-        $infaqBelumDiisi = empty($pendaftar->pilihan_uang_gedung);
-        $infaqStepRequired = $pendaftaranSelesai && $infaqBelumDiisi;
+        $infaqStepRequired = false;
+        $showPembayaranPpdb = false;
 
         $step = 'lengkapi-form';
         if ($showTesPage) {
             $step = 'tes';
-        } elseif ($pendaftaranSelesai && $infaqBelumDiisi) {
-            // Setelah form/tes selesai, WAJIB mengisi infaq sebelum lanjut ke pembayaran
-            $step = 'infaq';
-        } elseif ($showPembayaranPpdb && !$isPaymentVerified) {
-            $step = 'pembayaran-ppdb';
-        } elseif ($showPembayaranPpdb && $isStatusDiterima && $isPaymentVerified) {
-            // Post-acceptance flow: uang pangkal → SPP → siap-menjadi-santri
-            if ($statusUangPangkal === 'gagal') {
-                $step = 'gagal-bayar-uang-pangkal';
-            } elseif (!in_array($statusUangPangkal, ['dp', 'lunas'], true)) {
-                $step = 'pembayaran-uang-pangkal';
-            } elseif ($statusSpp === 'gagal') {
-                $step = 'gagal-bayar-spp';
-            } elseif (!in_array($statusSpp, ['dp', 'lunas'], true)) {
-                $step = 'pembayaran-spp';
-            } else {
-                $step = 'siap-menjadi-santri';
-            }
         } elseif ($pendaftaranSelesai && $isPengumumanDibuka) {
             $step = 'pengumuman';
         } elseif ($pendaftaranSelesai) {
