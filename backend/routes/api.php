@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\DataMaster\DataSantriController;
 use App\Http\Controllers\Api\DataMaster\DataPetugasController;
 use App\Http\Controllers\Api\DataMaster\DataTahunAjaranController;
 use App\Http\Controllers\Api\DataMaster\DataUnitController;
+use App\Http\Controllers\Api\DataMaster\DataWaliSantriController;
 use App\Http\Controllers\Api\Administrasi\PembayaranSppController;
 use App\Http\Controllers\Api\Administrasi\DashboardController;
 use App\Http\Controllers\Api\Administrasi\PpdbController;
@@ -197,6 +198,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/{id}', [DataSantriController::class, 'show']);
             Route::put('/{id}', [DataSantriController::class, 'update']);
             Route::delete('/{id}', [DataSantriController::class, 'destroy']);
+        });
+
+        Route::prefix('wali-santri')->group(function () {
+            Route::get('/{nomor_induk}', [DataWaliSantriController::class, 'show']);
         });
 
         Route::prefix('akun-santri')->group(function () {
