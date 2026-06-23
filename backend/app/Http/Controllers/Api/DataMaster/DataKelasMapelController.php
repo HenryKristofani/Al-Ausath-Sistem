@@ -143,6 +143,10 @@ class DataKelasMapelController extends Controller
             $this->validateParentActive($merged['kode_kelas'], $merged['kode_mapel']);
         }
 
+        if (array_key_exists('id_petugas', $validated) && $validated['id_petugas'] !== null && $validated['id_petugas'] != $kelasMapel->id_petugas) {
+            $this->validatePengajarConflict($validated['id_petugas'], $merged['tahun_ajaran'], $kelasMapel->id_kelas_mapel);
+        }
+
         \Illuminate\Support\Facades\DB::transaction(function () use ($kelasMapel, $validated) {
             $kelasMapel->update($validated);
 
@@ -263,6 +267,18 @@ class DataKelasMapelController extends Controller
                 ->where('tahun_ajaran', $payload['tahun_ajaran'])
                 ->where('semester', $payload['semester'])
                 ->first();
+
+            if ($existing && !empty($payload['id_petugas']) && $existing->id_petugas != $payload['id_petugas']) {
+                try {
+                    $this->validatePengajarConflict((int) $payload['id_petugas'], $payload['tahun_ajaran'], $existing->id_kelas_mapel);
+                } catch (ValidationException $exception) {
+                    $failed[] = [
+                        'line' => $lineNumber,
+                        'errors' => $exception->errors()['id_petugas'] ?? ['Pengajar bentrok dengan jadwal lain.'],
+                    ];
+                    continue;
+                }
+            }
 
             if ($existing) {
                 $existing->update($payload);
@@ -494,6 +510,43 @@ class DataKelasMapelController extends Controller
             throw ValidationException::withMessages([
                 'status' => ["Tidak dapat mengaktifkan kelas mapel karena mata pelajaran terkait ({$mapel->nama_mapel}) masih NONAKTIF."],
             ]);
+        }
+    }
+
+    private function validatePengajarConflict(int $idPetugas, string $tahunAjaran, int $idKelasMapel): void
+    {
+        $jadwalList = \App\Models\JadwalPembelajaran::where('id_kelas_mapel', $idKelasMapel)
+            ->where('status', 'AKTIF')
+            ->get();
+
+        if ($jadwalList->isEmpty()) {
+            return;
+        }
+
+        foreach ($jadwalList as $jadwal) {
+            $conflict = \App\Models\JadwalPembelajaran::with('kelasMapel')
+                ->whereHas('kelasMapel', function ($q) use ($idPetugas, $idKelasMapel) {
+                    $q->where('id_petugas', $idPetugas)
+                      ->where('id_kelas_mapel', '!=', $idKelasMapel);
+                })
+                ->where('status', 'AKTIF')
+                ->where('tahun_ajaran', $tahunAjaran)
+                ->where('hari', $jadwal->hari)
+                ->where(function ($query) use ($jadwal) {
+                    $query->where('jam_mulai', '<', $jadwal->jam_selesai)
+                          ->where('jam_selesai', '>', $jadwal->jam_mulai);
+                })
+                ->first();
+
+            if ($conflict) {
+                $kelasConflict = $conflict->kelasMapel ? $conflict->kelasMapel->kode_kelas : 'lain';
+                $mapelConflict = $conflict->kelasMapel ? $conflict->kelasMapel->kode_mapel : '';
+                throw ValidationException::withMessages([
+                    'id_petugas' => [
+                        "Pengajar bentrok! Pengajar sudah memiliki jadwal {$mapelConflict} di kelas {$kelasConflict} pada hari {$jadwal->hari} jam " . substr($conflict->jam_mulai, 0, 5) . " - " . substr($conflict->jam_selesai, 0, 5) . "."
+                    ],
+                ]);
+            }
         }
     }
 }
