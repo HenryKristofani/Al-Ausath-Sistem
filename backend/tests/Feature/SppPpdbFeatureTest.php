@@ -331,22 +331,7 @@ class SppPpdbFeatureTest extends TestCase
             'jenjang' => 'SMP',
         ]);
 
-        // 1. Ditolak (422) karena pembayaran administrasi belum lunas
-        $response422 = $this->putJson("/api/administrasi/ppdb/pendaftar/{$pendaftar->id_pendaftaran}/verifikasi", [
-            'hasil' => 'diterima',
-            'kode_kelas_diterima' => $kelas?->kode_kelas,
-        ]);
-        $response422->assertStatus(422)
-                    ->assertJsonFragment(['message' => 'Pendaftar belum bisa diterima. Pembayaran administrasi PPDB belum lunas atau belum diverifikasi.']);
-
-        // 2. Tambahkan pembayaran administrasi yang sudah terverifikasi
-        PembayaranSpp::create([
-            'id_pendaftaran' => $pendaftar->id_pendaftaran,
-            'nominal_bayar' => 100000,
-            'status' => 'terverifikasi',
-        ]);
-
-        // 3. Verifikasi "diterima" sekarang harus berhasil (200)
+        // Verifikasi "diterima" sekarang harus berhasil langsung (200) tanpa payment lunas
         $responseSuccess = $this->putJson("/api/administrasi/ppdb/pendaftar/{$pendaftar->id_pendaftaran}/verifikasi", [
             'hasil' => 'diterima',
             'kode_kelas_diterima' => $kelas?->kode_kelas,

@@ -472,7 +472,9 @@ class PembayaranController extends Controller
             'rincian_tagihan' => $item->bulan 
                 ? (($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: 'SPP') . ' - ' . $item->bulan) 
                 : ($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'Tagihan SPP' : 'Tagihan PPDB')),
-            'jenis_tagihan'   => empty($item->id_pendaftaran) ? 'SPP' : 'PPDB',
+            'jenis_tagihan'   => !empty($item->jenis_tagihan)
+                ? strtolower($item->jenis_tagihan)
+                : (empty($item->id_pendaftaran) ? 'spp' : 'ppdb'),
             'jumlah_tagihan'  => (float) ($item->nominal_bayar ?? 0),
             'jumlah_dibayar'  => $this->isPaidStatus((string) $item->status) ? (float) ($item->nominal_bayar ?? 0) : 0,
             'jumlah_tunggakan' => $this->isPaidStatus((string) $item->status) ? 0 : (float) ($item->nominal_bayar ?? 0),
@@ -511,7 +513,7 @@ class PembayaranController extends Controller
             'nomor_invoice'   => "INV-BEBAS-" . str_pad((string) $item->id_admin_bebas, 5, '0', STR_PAD_LEFT),
             'periode_tagihan' => $item->tahun_ajaran ?? null,
             'rincian_tagihan' => $item->deskripsi ?: 'Administrasi Bebas',
-            'jenis_tagihan'   => 'BEBAS',
+            'jenis_tagihan'   => 'bebas',
             'jumlah_tagihan'  => (float) ($item->total_tagihan ?? 0),
             'jumlah_dibayar'  => (float) (($item->total_tagihan ?? 0) - ($item->sisa ?? 0)),
             'jumlah_tunggakan' => (float) ($item->sisa ?? 0),
@@ -626,7 +628,7 @@ class PembayaranController extends Controller
             'nomor_invoice'   => "INV-PPDB-{$row->id_tagihan}",
             'periode_tagihan' => $row->periode_tagihan ?? null,
             'rincian_tagihan' => $row->nama_tagihan ?? 'Tagihan Infaq PPDB',
-            'jenis_tagihan'   => 'PPDB',
+            'jenis_tagihan'   => 'ppdb',
             'jumlah_tagihan'  => $nominalTagihan,
             'jumlah_dibayar'  => $isPaid ? $jumlahTerbayar : 0,
             'jumlah_tunggakan' => $isPaid ? 0 : max($nominalTagihan - $jumlahTerbayar, 0),
@@ -1118,8 +1120,8 @@ class PembayaranController extends Controller
             'id'              => $item->id_pembayaran,
             'nomor_invoice'   => $this->buildNomorInvoice($item->id_pembayaran),
             'jenis_tagihan'   => empty($item->id_pendaftaran)
-                ? (strtoupper((string) ($item->jenis_tagihan ?? 'SPP')))
-                : 'PPDB',
+                ? (strtolower((string) ($item->jenis_tagihan ?? 'spp')))
+                : 'ppdb',
             'rincian_tagihan' => $item->bulan
                 ? (($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'SPP' : 'PPDB')) . ' — ' . $item->bulan)
                 : ($item->setting?->kategoriTagihan?->nama_tagihan ?: $item->setting?->keterangan ?: (empty($item->id_pendaftaran) ? 'Tagihan SPP' : 'Tagihan PPDB')),
@@ -1146,7 +1148,7 @@ class PembayaranController extends Controller
         $bebasTagihan = $bebasItems->map(fn (\App\Models\AdministrasiBebas $item) => [
             'id'              => $item->id_admin_bebas,
             'nomor_invoice'   => 'INV-BEBAS-' . str_pad((string) $item->id_admin_bebas, 5, '0', STR_PAD_LEFT),
-            'jenis_tagihan'   => 'BEBAS',
+            'jenis_tagihan'   => 'bebas',
             'rincian_tagihan' => $item->deskripsi ?: 'Administrasi Bebas',
             'periode_tagihan' => $item->tahun_ajaran,
             'bulan'           => null,
