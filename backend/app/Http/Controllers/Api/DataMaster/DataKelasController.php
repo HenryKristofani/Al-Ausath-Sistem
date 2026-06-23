@@ -6,6 +6,7 @@ use App\Exports\DataKelasExport;
 use App\Http\Controllers\Controller;
 use App\Imports\DataKelasImport;
 use App\Models\DataKelas;
+use App\Models\DataPetugas;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class DataKelasController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = DataKelas::query()
-            ->with(['unit', 'tahunAjaranRelasi'])
+            ->with(['unit', 'tahunAjaranRelasi', 'waliKelas'])
             ->withCount([
                 'santri as jumlah_santri',
                 'santriAktif as jumlah_santri_aktif',
@@ -110,6 +111,7 @@ class DataKelasController extends Controller
             ],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
+            'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
         ]);
 
         $validated['kode_unit'] = strtoupper($validated['kode_unit']);
@@ -156,7 +158,7 @@ class DataKelasController extends Controller
             $data = DataKelas::create($validated);
         }
 
-        $data->load(['unit', 'tahunAjaranRelasi']);
+        $data->load(['unit', 'tahunAjaranRelasi', 'waliKelas']);
         $data->loadCount([
             'santri as jumlah_santri',
             'santriAktif as jumlah_santri_aktif',
@@ -176,7 +178,7 @@ class DataKelasController extends Controller
     public function show(int $id): JsonResponse
     {
         $data = DataKelas::query()
-            ->with(['unit', 'tahunAjaranRelasi'])
+            ->with(['unit', 'tahunAjaranRelasi', 'waliKelas'])
             ->withCount([
                 'santri as jumlah_santri',
                 'santriAktif as jumlah_santri_aktif',
@@ -216,6 +218,7 @@ class DataKelasController extends Controller
             ],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
+            'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
         ]);
 
         if (array_key_exists('kode_unit', $validated) && $validated['kode_unit'] !== null) {
@@ -275,7 +278,7 @@ class DataKelasController extends Controller
             }
         });
 
-        $kelas->load(['unit', 'tahunAjaranRelasi']);
+        $kelas->load(['unit', 'tahunAjaranRelasi', 'waliKelas']);
         $kelas->loadCount([
             'santri as jumlah_santri',
             'santriAktif as jumlah_santri_aktif',
@@ -328,7 +331,7 @@ class DataKelasController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = DataKelas::query()
-            ->with(['unit', 'tahunAjaranRelasi'])
+            ->with(['unit', 'tahunAjaranRelasi', 'waliKelas'])
             ->withCount([
                 'santri as jumlah_santri',
                 'santriAktif as jumlah_santri_aktif',
@@ -378,7 +381,7 @@ class DataKelasController extends Controller
             'deleted_at' => null,
         ]);
 
-        $kelas->load(['unit', 'tahunAjaranRelasi']);
+        $kelas->load(['unit', 'tahunAjaranRelasi', 'waliKelas']);
         $kelas->loadCount([
             'santri as jumlah_santri',
             'santriAktif as jumlah_santri_aktif',
@@ -531,6 +534,7 @@ class DataKelasController extends Controller
                 ],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
                 'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
+                'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             ]);
 
             if ($validator->fails()) {
@@ -585,7 +589,7 @@ class DataKelasController extends Controller
         fclose($handle);
 
         $affectedKelas = DataKelas::query()
-            ->with(['unit', 'tahunAjaranRelasi'])
+            ->with(['unit', 'tahunAjaranRelasi', 'waliKelas'])
             ->withCount([
                 'santri as jumlah_santri',
                 'santriAktif as jumlah_santri_aktif',
@@ -640,6 +644,7 @@ class DataKelasController extends Controller
             'tahun_ajaran',
             'status',
             'status_ppdb',
+            'id_wali_kelas',
         ];
 
         return response()->streamDownload(function () use ($headers) {
@@ -693,6 +698,7 @@ class DataKelasController extends Controller
             'tahun_ajaran' => $rowData['tahun_ajaran'] ?? null,
             'status' => $rowData['status'] ?? null,
             'status_ppdb' => $rowData['status_ppdb'] ?? null,
+            'id_wali_kelas' => $rowData['id_wali_kelas'] ?? null,
         ];
     }
 

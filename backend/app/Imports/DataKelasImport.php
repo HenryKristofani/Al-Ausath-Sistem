@@ -41,6 +41,7 @@ class DataKelasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 'tahun_ajaran' => $this->rowValue($row, 'tahun_ajaran'),
                 'status' => $this->rowValue($row, 'status'),
                 'status_ppdb' => $this->rowValue($row, 'status_ppdb'),
+                'id_wali_kelas' => $this->rowValue($row, 'id_wali_kelas'),
             ];
 
             if ($this->isEmptyRow($payload)) {
@@ -60,6 +61,7 @@ class DataKelasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 ],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
                 'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
+                'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             ]);
 
             if ($validator->fails()) {

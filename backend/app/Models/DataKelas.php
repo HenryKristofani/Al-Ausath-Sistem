@@ -9,7 +9,7 @@ class DataKelas extends Model
     protected $table = 'data_kelas';
     protected $primaryKey = 'id_kelas';
 
-        protected $fillable = [
+    protected $fillable = [
         'kode_unit',
         'kode_kelas',
         'nama_kelas',
@@ -17,6 +17,7 @@ class DataKelas extends Model
         'tahun_ajaran',
         'status',
         'status_ppdb',
+        'id_wali_kelas',
             'is_deleted',
             'deleted_at',
     ];
@@ -57,6 +58,12 @@ class DataKelas extends Model
     public function tahunAjaranRelasi()
     {
         return $this->belongsTo(DataTahunAjaran::class, 'tahun_ajaran', 'kode_tahun');
+    }
+
+    // Relasi ke DataPetugas (wali kelas)
+    public function waliKelas()
+    {
+        return $this->belongsTo(DataPetugas::class, 'id_wali_kelas', 'id_petugas');
     }
 }
 

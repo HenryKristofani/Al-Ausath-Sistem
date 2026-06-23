@@ -26,6 +26,10 @@ class DataPetugasController extends Controller
         $perPage = (int) $request->query('per_page', 10);
 
         $query = DataPetugas::query()
+            ->with(['kelasWali' => function ($q) {
+                $q->where('is_deleted', false)
+                  ->whereRaw("UPPER(status) = 'AKTIF'");
+            }])
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
             ->when($request->filled('peran_akun'), fn ($q) => $q->whereJsonContains('peran_akun', $request->peran_akun))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -81,7 +85,10 @@ class DataPetugasController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $data = DataPetugas::findOrFail($id);
+        $data = DataPetugas::with(['kelasWali' => function ($q) {
+            $q->where('is_deleted', false)
+              ->whereRaw("UPPER(status) = 'AKTIF'");
+        }])->findOrFail($id);
 
         return response()->json(['data' => $data]);
     }
@@ -127,6 +134,16 @@ class DataPetugasController extends Controller
                         'message' => 'Tidak dapat menonaktifkan petugas karena masih aktif mengajar mata pelajaran kelas.',
                     ], 422);
                 }
+
+                $hasActiveWaliKelas = \App\Models\DataKelas::where('id_wali_kelas', $petugas->id_petugas)
+                    ->where('is_deleted', false)
+                    ->whereRaw('UPPER(status) = ?', ['AKTIF'])
+                    ->exists();
+                if ($hasActiveWaliKelas) {
+                    return response()->json([
+                        'message' => 'Tidak dapat menonaktifkan petugas karena masih menjadi wali kelas aktif.',
+                    ], 422);
+                }
             }
         }
 
@@ -162,6 +179,13 @@ class DataPetugasController extends Controller
         if ($hasSesi) {
             return response()->json([
                 'message' => 'Tidak dapat menghapus petugas karena memiliki riwayat sesi absensi.',
+            ], 422);
+        }
+
+        $hasWaliKelas = \App\Models\DataKelas::where('id_wali_kelas', $petugas->id_petugas)->exists();
+        if ($hasWaliKelas) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus petugas karena menjadi wali kelas.',
             ], 422);
         }
 
@@ -250,7 +274,6 @@ class DataPetugasController extends Controller
                 'nama_lengkap' => ['required', 'string', 'max:200'],
                 'peran_akun' => ['required', 'array', 'min:1'],
                 'peran_akun.*' => ['required', 'string', Rule::in(DataPetugas::PERAN_AKUN_OPTIONS)],
-                'pilihan_unit' => ['nullable', 'string', 'max:10'],
                 'alamat_email' => ['required', 'email', 'max:100'],
                 'nomor_telepon' => ['nullable', 'string', 'max:20'],
                 'password' => ['nullable', 'string', 'min:6'],
@@ -291,7 +314,6 @@ class DataPetugasController extends Controller
                 'nomor_induk' => $payload['nomor_induk'],
                 'nama_lengkap' => $payload['nama_lengkap'],
                 'peran_akun' => $payload['peran_akun'],
-                'pilihan_unit' => $payload['pilihan_unit'],
                 'alamat_email' => $payload['alamat_email'],
                 'nomor_telepon' => $payload['nomor_telepon'],
                 'status' => strtoupper($payload['status'] ?? 'AKTIF'),
@@ -348,7 +370,6 @@ class DataPetugasController extends Controller
             'nomor_induk',
             'nama_lengkap',
             'peran_akun',
-            'pilihan_unit',
             'alamat_email',
             'nomor_telepon',
             'password',
@@ -402,7 +423,6 @@ class DataPetugasController extends Controller
             'nomor_induk' => $rowData['nomor_induk'] ?? null,
             'nama_lengkap' => $rowData['nama_lengkap'] ?? null,
             'peran_akun' => $rowData['peran_akun'] ?? null,
-            'pilihan_unit' => $rowData['pilihan_unit'] ?? null,
             'alamat_email' => $rowData['alamat_email'] ?? null,
             'nomor_telepon' => $rowData['nomor_telepon'] ?? null,
             'password' => $rowData['password'] ?? null,

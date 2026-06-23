@@ -46,5 +46,10 @@ class DataPetugas extends Authenticatable
     {
         return $this->password_hash;
     }
+
+    public function kelasWali()
+    {
+        return $this->hasMany(DataKelas::class, 'id_wali_kelas', 'id_petugas');
+    }
 }
 
