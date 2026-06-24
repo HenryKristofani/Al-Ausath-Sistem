@@ -82,26 +82,15 @@ class DashboardPresensiController extends Controller
         
         $santriAbsensi = $santriAbsensiQuery->select('a.nomor_induk', 'a.status_kehadiran')->get();
             
-        // Rekap unik per santri pada periode
-        $santriStatusHarian = [];
-        foreach ($santriAbsensi as $abs) {
-            $ni = $abs->nomor_induk;
-            if (!isset($santriStatusHarian[$ni])) {
-                $santriStatusHarian[$ni] = $abs->status_kehadiran;
-            } else {
-                if ($abs->status_kehadiran == 'HADIR' && $santriStatusHarian[$ni] != 'HADIR') {
-                    $santriStatusHarian[$ni] = 'HADIR';
-                }
-            }
-        }
-        
         $santriHadir = 0; $santriSakit = 0; $santriIzin = 0; $santriAlfa = 0;
-        foreach($santriStatusHarian as $status) {
-            if ($status == 'HADIR') $santriHadir++;
-            if ($status == 'SAKIT') $santriSakit++;
-            if ($status == 'IZIN') $santriIzin++;
-            if ($status == 'ALFA') $santriAlfa++;
+        foreach ($santriAbsensi as $abs) {
+            $status = strtoupper($abs->status_kehadiran);
+            if ($status === 'HADIR') $santriHadir++;
+            elseif ($status === 'SAKIT') $santriSakit++;
+            elseif ($status === 'IZIN') $santriIzin++;
+            elseif ($status === 'ALFA' || $status === 'TIDAK HADIR') $santriAlfa++;
         }
+        $totalSantriRecords = $santriHadir + $santriSakit + $santriIzin + $santriAlfa;
 
         // 2. Guru Stats
         $totalGuruQuery = DB::table('data_petugas')
@@ -156,22 +145,15 @@ class DashboardPresensiController extends Controller
         
         $guruAbsensi = $guruAbsensiQuery->select('a.id_petugas', 'a.status_kehadiran')->get();
             
-        $guruStatusHarian = [];
-        foreach ($guruAbsensi as $abs) {
-            $id = $abs->id_petugas;
-            if (!isset($guruStatusHarian[$id])) {
-                $guruStatusHarian[$id] = $abs->status_kehadiran;
-            } else {
-                if ($abs->status_kehadiran == 'HADIR') $guruStatusHarian[$id] = 'HADIR';
-            }
-        }
         $guruHadir = 0; $guruSakit = 0; $guruIzin = 0; $guruAlfa = 0;
-        foreach($guruStatusHarian as $status) {
-            if ($status == 'HADIR') $guruHadir++;
-            if ($status == 'SAKIT') $guruSakit++;
-            if ($status == 'IZIN') $guruIzin++;
-            if ($status == 'ALFA') $guruAlfa++;
+        foreach ($guruAbsensi as $abs) {
+            $status = strtoupper($abs->status_kehadiran);
+            if ($status === 'HADIR') $guruHadir++;
+            elseif ($status === 'SAKIT') $guruSakit++;
+            elseif ($status === 'IZIN') $guruIzin++;
+            elseif ($status === 'ALFA' || $status === 'TIDAK HADIR') $guruAlfa++;
         }
+        $totalGuruRecords = $guruHadir + $guruSakit + $guruIzin + $guruAlfa;
         $guruTidakHadir = $guruSakit + $guruIzin + $guruAlfa;
 
         // 3. Per Kelas (Based on sesi absensi in date range)
@@ -192,15 +174,17 @@ class DashboardPresensiController extends Controller
         }
 
         $perKelas = $perKelasQuery->selectRaw("
+                k.kode_kelas,
                 k.nama_kelas as kelas,
                 u.nama_unit as jenjang,
+                COUNT(DISTINCT s.id_sesi) as total_pertemuan,
                 COUNT(DISTINCT ds.nomor_induk) as total,
-                SUM(CASE WHEN a.status_kehadiran = 'HADIR' THEN 1 ELSE 0 END) as hadir,
-                SUM(CASE WHEN a.status_kehadiran = 'SAKIT' THEN 1 ELSE 0 END) as sakit,
-                SUM(CASE WHEN a.status_kehadiran = 'IZIN' THEN 1 ELSE 0 END) as izin,
-                SUM(CASE WHEN a.status_kehadiran = 'ALFA' THEN 1 ELSE 0 END) as alfa
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'HADIR' THEN 1 ELSE 0 END) as hadir,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'SAKIT' THEN 1 ELSE 0 END) as sakit,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'IZIN' THEN 1 ELSE 0 END) as izin,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'ALFA' THEN 1 ELSE 0 END) as alfa
             ")
-            ->groupBy('k.nama_kelas', 'u.nama_unit', 'k.kode_kelas')
+            ->groupBy('k.kode_kelas', 'k.nama_kelas', 'u.nama_unit')
             ->orderBy('u.nama_unit')
             ->orderBy('k.nama_kelas')
             ->get()->map(function($item) {
@@ -266,41 +250,90 @@ class DashboardPresensiController extends Controller
                 p.nama_lengkap as nama,
                 p.nomor_induk as nip,
                 p.peran_akun as jabatan,
-                MAX(a.status_kehadiran) as status,
-                MAX(COALESCE(a.menit_terlambat, 0)) as menit_terlambat,
-                MAX(a.keterangan) as keterangan,
-                COUNT(DISTINCT s.id_sesi) as mapelHariIni
+                COUNT(DISTINCT s.id_sesi) as total_pertemuan,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'HADIR' THEN 1 ELSE 0 END) as jumlah_hadir,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'SAKIT' THEN 1 ELSE 0 END) as jumlah_sakit,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'IZIN' THEN 1 ELSE 0 END) as jumlah_izin,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'ALFA' THEN 1 ELSE 0 END) as jumlah_alfa,
+                MAX(COALESCE(a.menit_terlambat, 0)) as menit_terlambat
             ")
             ->groupBy('p.id_petugas', 'p.nama_lengkap', 'p.nomor_induk', 'p.peran_akun')
             ->orderBy('p.nama_lengkap')
             ->get()->map(function($item) {
-                $item->jamMasuk = '-';
-                if ($item->status == 'HADIR') {
-                    $item->jamMasuk = $item->menit_terlambat > 0 ? "+{$item->menit_terlambat}m" : 'Tepat';
+                $total = $item->total_pertemuan;
+                $item->persentase_kehadiran = $total > 0 ? round(($item->jumlah_hadir / $total) * 100, 1) : 0;
+                // backward-compat: expose dominant status for legacy badge
+                if ($item->jumlah_hadir === $total) {
+                    $item->status = 'HADIR';
+                } elseif ($item->jumlah_hadir > 0) {
+                    $item->status = 'HADIR'; // has at least some attendance
+                } elseif ($item->jumlah_sakit > 0) {
+                    $item->status = 'SAKIT';
+                } elseif ($item->jumlah_izin > 0) {
+                    $item->status = 'IZIN';
+                } else {
+                    $item->status = 'ALFA';
                 }
+                return $item;
+            });
+
+        // 6. Trend Kehadiran
+        $trendQuery = DB::table('absensi_santri as a')
+            ->join('sesi_absensi as s', 'a.id_sesi', '=', 's.id_sesi')
+            ->join('data_santri as ds', 'a.nomor_induk', '=', 'ds.nomor_induk')
+            ->join('data_kelas as k', 'ds.kode_kelas', '=', 'k.kode_kelas')
+            ->when($useDate, fn($q) => $q->whereBetween('s.tanggal', [$startDate, $endDate]));
+
+        if ($kodeKelas) {
+            $trendQuery->where('k.kode_kelas', $kodeKelas);
+        } elseif ($kodeUnit) {
+            $trendQuery->where('k.kode_unit', $kodeUnit);
+        }
+        if ($tahunAjaran) {
+            $trendQuery->where('k.tahun_ajaran', $tahunAjaran);
+        }
+
+        $trendData = $trendQuery->selectRaw("
+                s.tanggal,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'HADIR' THEN 1 ELSE 0 END) as hadir,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'SAKIT' THEN 1 ELSE 0 END) as sakit,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'IZIN' THEN 1 ELSE 0 END) as izin,
+                SUM(CASE WHEN UPPER(a.status_kehadiran) = 'ALFA' THEN 1 ELSE 0 END) as alfa,
+                COUNT(a.id_absensi) as total_entri
+            ")
+            ->groupBy('s.tanggal')
+            ->orderBy('s.tanggal')
+            ->get()->map(function($item) {
+                $item->percentage = $item->total_entri > 0 ? round(($item->hadir / $item->total_entri) * 100, 1) : 0;
                 return $item;
             });
 
         return response()->json([
             'summary' => [
                 'santri' => [
-                    'total' => $totalSantri,
+                    'total_aktif' => $totalSantri,
+                    'total' => $totalSantriRecords,
                     'hadir' => $santriHadir,
                     'sakit' => $santriSakit,
                     'izin' => $santriIzin,
                     'alfa' => $santriAlfa,
-                    'percentage' => $totalSantri > 0 ? round(($santriHadir / $totalSantri) * 100, 1) : 0,
+                    'percentage' => $totalSantriRecords > 0 ? round(($santriHadir / $totalSantriRecords) * 100, 1) : 0,
                 ],
                 'guru' => [
-                    'total' => $totalGuru,
+                    'total_aktif' => $totalGuru,
+                    'total' => $totalGuruRecords,
                     'hadir' => $guruHadir,
+                    'sakit' => $guruSakit,
+                    'izin' => $guruIzin,
+                    'alfa' => $guruAlfa,
                     'tidakHadir' => $guruTidakHadir,
-                    'percentage' => $totalGuru > 0 ? round(($guruHadir / $totalGuru) * 100, 1) : 0,
+                    'percentage' => $totalGuruRecords > 0 ? round(($guruHadir / $totalGuruRecords) * 100, 1) : 0,
                 ]
             ],
             'perKelas' => $perKelas,
             'perMapel' => $perMapel,
             'guru' => $guruList,
+            'trend' => $trendData,
         ]);
     }
 }
