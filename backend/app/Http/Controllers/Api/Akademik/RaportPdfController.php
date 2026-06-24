@@ -190,12 +190,23 @@ class RaportPdfController extends Controller
         $nilaiAkhlakRingkas = $this->buildNilaiAkhlakRingkas($nilaiAkhlak);
         $nilaiKeseluruhan = $this->calculateNilaiKeseluruhan($nilaiMapel, $nilaiAkhlakRingkas);
 
+        $namaWaliSantri = null;
+        if ($santri->jenis_kelamin === 'L') {
+            $namaWaliSantri = $santri->nama_ayah_kandung;
+        } elseif ($santri->jenis_kelamin === 'P') {
+            $namaWaliSantri = $santri->nama_ibu_kandung;
+        }
+        if (empty($namaWaliSantri)) {
+            $namaWaliSantri = $santri->nama_wali;
+        }
+
         return [
             'raport' => $raport,
             'santri' => $santri,
             'kelas' => $kelas,
             'unit' => $kelas?->unit,
             'waliKelas' => $waliKelas,
+            'namaWaliSantri' => $namaWaliSantri,
             'nilaiMapel' => $nilaiMapel,
             'nilaiAkhlak' => $nilaiAkhlak,
             'nilaiAkhlakRingkas' => $nilaiAkhlakRingkas,

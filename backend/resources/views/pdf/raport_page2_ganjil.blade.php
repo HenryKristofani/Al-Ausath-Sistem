@@ -119,6 +119,7 @@
                         <div>Mengetahui</div>
                         <div>Orang Tua / Wali</div>
                         <div class="signature-line" style="margin-top: 50px;"></div>
+                        <div style="margin-top: 10px;">( {{ $namaWaliSantri ?? '...................................' }} )</div>
                     </td>
                     <td width="50%" class="text-center">
                         <div>Diberikan di Karanganyar, {{ $tanggalTerbit }}</div>

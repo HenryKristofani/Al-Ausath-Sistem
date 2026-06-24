@@ -167,6 +167,17 @@ class RaportGenerateController extends Controller
             ->where('semester', $validated['semester'])
             ->first();
 
+        // Resolve id_wali_kelas:
+        // Prioritas 1: nilai yang sudah tersimpan di raport sebelumnya (tidak ditimpa).
+        // Prioritas 2: ambil otomatis dari data_kelas berdasarkan kode_kelas santri.
+        $idWaliKelas = $existing?->id_wali_kelas;
+        if (empty($idWaliKelas)) {
+            $idWaliKelas = DataKelas::query()
+                ->where('kode_kelas', $santri->kode_kelas)
+                ->whereNotNull('id_wali_kelas')
+                ->value('id_wali_kelas');
+        }
+
         $raport = DataRaport::updateOrCreate(
             [
                 'nomor_induk' => $validated['nomor_induk'],
@@ -185,7 +196,7 @@ class RaportGenerateController extends Controller
                 'keseharian_kerapian' => $existing?->keseharian_kerapian,
                 'keseharian_keterampilan' => $existing?->keseharian_keterampilan,
                 'catatan_wali' => $existing?->catatan_wali,
-                'id_wali_kelas' => $existing?->id_wali_kelas,
+                'id_wali_kelas' => $idWaliKelas,
                 'status_raport' => 'DRAFT',
             ]
         );

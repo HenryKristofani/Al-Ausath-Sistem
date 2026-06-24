@@ -147,7 +147,7 @@
                         <div>Mengetahui</div>
                         <div>Orang Tua / Wali</div>
                         <div class="signature-line" style="margin-top: 50px;"></div>
-                        <div style="margin-top: 5px;">( ................................... )</div>
+                        <div style="margin-top: 5px;">( {{ $namaWaliSantri ?? '...................................' }} )</div>
                     </td>
                     <td width="33.33%" class="text-center" style="border: none; vertical-align: bottom;">
                         <div>&nbsp;</div>
