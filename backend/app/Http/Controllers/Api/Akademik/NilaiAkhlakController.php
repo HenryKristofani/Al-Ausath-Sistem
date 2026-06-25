@@ -46,13 +46,19 @@ class NilaiAkhlakController extends Controller
             'tahun_ajaran' => ['nullable', 'string', 'max:20'],
             'semester' => ['nullable', 'integer', 'in:1,2'],
             'aspek' => ['nullable', 'string', 'max:80'],
+            'kode_kelas' => ['nullable', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
         ]);
 
         $query = NilaiAkhlak::query()
             ->with(['santri', 'petugas'])
-            ->when(array_key_exists('tahun_ajaran', $validated), fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
-            ->when(array_key_exists('semester', $validated), fn($q) => $q->where('semester', $validated['semester']))
-            ->when(array_key_exists('aspek', $validated), fn($q) => $q->where('aspek', $validated['aspek']))
+            ->when(array_key_exists('tahun_ajaran', $validated) && $validated['tahun_ajaran'], fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
+            ->when(array_key_exists('semester', $validated) && $validated['semester'], fn($q) => $q->where('semester', $validated['semester']))
+            ->when(array_key_exists('aspek', $validated) && $validated['aspek'], fn($q) => $q->where('aspek', $validated['aspek']))
+            ->when(array_key_exists('kode_kelas', $validated) && $validated['kode_kelas'], function($q) use ($validated) {
+                $q->whereHas('santri', function($sq) use ($validated) {
+                    $sq->where('kode_kelas', $validated['kode_kelas']);
+                });
+            })
             ->orderByDesc('id_akhlak');
 
         return response()->json($query->paginate($perPage));
