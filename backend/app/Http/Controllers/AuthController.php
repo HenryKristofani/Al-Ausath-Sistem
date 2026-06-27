@@ -697,13 +697,19 @@ class AuthController extends Controller
             return;
         }
 
-        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        $rawJenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        $jenjang = match ($rawJenjang) {
+            'MI', 'SD' => 'PRATAHFIDZ',
+            'SMP', 'MTS' => 'MTS',
+            'SMA', 'MA' => 'MA',
+            default => $rawJenjang,
+        };
         
         // Konfigurasi nominal infaq per jenjang
         $configInfaq = $this->getInfaqConfig($jenjang);
         
         if (!$configInfaq) {
-            \Log::warning("Konfigurasi infaq tidak ditemukan untuk jenjang: {$jenjang}");
+            \Log::warning("Konfigurasi infaq tidak ditemukan untuk jenjang: {$rawJenjang} (mapped to {$jenjang})");
             return;
         }
 
@@ -828,14 +834,18 @@ class AuthController extends Controller
                 'status' => 'menunggu_pembayaran',
                 'metode_bayar' => null,
                 'tanggal_bayar' => null,
+                'jenis_tagihan' => 'ppdb',
             ]
         );
         
         // Tambahkan field custom untuk DP jika belum ada
         if (!$tagihan->wasRecentlyCreated && $tagihan->status === 'menunggu_pembayaran') {
             // Update nominal jika ada perubahan
-            if ($tagihan->nominal_bayar != $nominal) {
-                $tagihan->update(['nominal_bayar' => $nominal]);
+            if ($tagihan->nominal_bayar != $nominal || $tagihan->jenis_tagihan !== 'ppdb') {
+                $tagihan->update([
+                    'nominal_bayar' => $nominal,
+                    'jenis_tagihan' => 'ppdb',
+                ]);
             }
         }
         
@@ -1664,13 +1674,36 @@ class AuthController extends Controller
         $infaqStepRequired = false;
         $showPembayaranPpdb = false;
 
-        $step = 'lengkapi-form';
-        if ($showTesPage) {
-            $step = 'tes';
-        } elseif ($pendaftaranSelesai && $isPengumumanDibuka) {
+        // Biaya administrasi PPDB dianggap sudah disubmit jika statusnya
+        // 'menunggu_verifikasi', 'terverifikasi', 'lunas', atau 'dp'.
+        $ppdbAdminPaid = in_array(
+            $pembayaranPpdb['status'] ?? null,
+            ['menunggu_verifikasi', 'menunggu_konfirmasi', 'terverifikasi', 'lunas', 'dp'],
+            true
+        );
+
+        $isStatusDitolak = in_array($statusVerifikasi, ['ditolak', 'rejected', 'tidak_diterima', 'tidak diterima', 'gagal'], true);
+
+        if ($isStatusDiterima) {
+            $step = 'siap-menjadi-santri';
+        } elseif ($isStatusDitolak) {
             $step = 'pengumuman';
-        } elseif ($pendaftaranSelesai) {
-            $step = 'menunggu-pengumuman';
+        } else {
+            $step = 'lengkapi-form';
+            if ($showTesPage) {
+                $step = 'tes';
+            } elseif ($pendaftaranSelesai && (is_null($pendaftar->pilihan_uang_gedung) || is_null($pendaftar->pilihan_infaq_bulanan))) {
+                $step = 'infaq';
+                $infaqStepRequired = true;
+            } elseif ($pendaftaranSelesai && !$ppdbAdminPaid) {
+                // Wajib bayar biaya administrasi PPDB dulu sebelum bisa lihat pengumuman
+                $step = 'pembayaran-ppdb';
+                $showPembayaranPpdb = true;
+            } elseif ($pendaftaranSelesai && $isPengumumanDibuka) {
+                $step = 'pengumuman';
+            } elseif ($pendaftaranSelesai) {
+                $step = 'menunggu-pengumuman';
+            }
         }
 
         return [

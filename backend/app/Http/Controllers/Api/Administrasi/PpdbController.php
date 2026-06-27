@@ -772,7 +772,13 @@ class PpdbController extends Controller
 
     private function createTagihanPpdbIfNeeded(PpdbPendaftar $pendaftar, array $overrides = []): ?PembayaranSpp
     {
-        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        $rawJenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        $jenjang = match ($rawJenjang) {
+            'MI', 'SD' => 'PRATAHFIDZ',
+            'SMP', 'MTS' => 'MTS',
+            'SMA', 'MA' => 'MA',
+            default => $rawJenjang,
+        };
         
         $configs = [
             'PAUD' => [
@@ -860,6 +866,7 @@ class PpdbController extends Controller
                     'id_santri' => $pendaftar->id_santri ?? null,
                     'nominal_bayar' => $totalTagihanGabungan,
                     'status' => 'menunggu_pembayaran',
+                    'jenis_tagihan' => 'ppdb',
                 ]
             );
 
@@ -886,6 +893,7 @@ class PpdbController extends Controller
                         'id_santri' => $pendaftar->id_santri ?? null,
                         'nominal_bayar' => $configInfaq['uang_modul'],
                         'status' => 'menunggu_pembayaran',
+                        'jenis_tagihan' => 'ppdb',
                     ]
                 );
             }
@@ -919,6 +927,7 @@ class PpdbController extends Controller
             'tanggal_bayar' => $overrides['tanggal_bayar'] ?? null,
             'metode_bayar' => $overrides['metode_bayar'] ?? null,
             'status' => 'menunggu_pembayaran',
+            'jenis_tagihan' => 'ppdb',
         ]);
     }
 
@@ -959,7 +968,7 @@ class PpdbController extends Controller
             $query->where('aktif', true);
         }
 
-        // Cocokkan dengan jenjang atau unit santri
+        // Cocokkan dengan jenjang or unit santri
         if ($kelas) {
             $query->where(function ($q) use ($kelas) {
                 if (!empty($kelas->kode_unit)) {
@@ -988,7 +997,14 @@ class PpdbController extends Controller
 
         $setting = $query->orderByDesc('id_setting')->first();
 
-        $jenjang = strtoupper(trim((string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran ?: '')));
+        $rawJenjang = strtoupper(trim((string) ($pendaftar->jenjang ?: $pendaftar->program_pendaftaran ?: '')));
+        $jenjang = match ($rawJenjang) {
+            'MI', 'SD' => 'PRATAHFIDZ',
+            'SMP', 'MTS' => 'MTS',
+            'SMA', 'MA' => 'MA',
+            default => $rawJenjang,
+        };
+
         $configs = [
             'PAUD' => [
                 'infaq_bulanan_a' => 200000,
@@ -1001,6 +1017,10 @@ class PpdbController extends Controller
             'MTS' => [
                 'infaq_bulanan_a' => 600000,
                 'infaq_bulanan_b' => 650000,
+            ],
+            'MA' => [
+                'infaq_bulanan_a' => 650000,
+                'infaq_bulanan_b' => 700000,
             ],
             'MTQU' => [
                 'infaq_bulanan_a' => 350000,
@@ -1018,6 +1038,7 @@ class PpdbController extends Controller
                 'id_pendaftaran'  => $pendaftar->id_pendaftaran,
                 'bulan'           => null,
                 'id_setting'      => $setting?->id_setting,
+                'jenis_tagihan'   => 'infaq',
             ],
             [
                 // 4. Nilai tagihan: gunakan pilihan_infaq_bulanan yang sudah di-resolve ke nominal sebenarnya
