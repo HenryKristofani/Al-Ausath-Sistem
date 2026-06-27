@@ -141,6 +141,47 @@ class RekapAbsensiController extends Controller
         });
     }
 
+    public function rekapMapelSantri(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tanggal_mulai'  => ['nullable', 'date'],
+            'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'nomor_induk'    => ['required', 'string', 'max:20'],
+            'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $rows = DB::table('absensi_santri as a')
+            ->join('sesi_absensi as s', 's.id_sesi', '=', 'a.id_sesi')
+            ->join('data_santri as ds', 'ds.nomor_induk', '=', 'a.nomor_induk')
+            ->leftJoin('jadwal_pembelajaran as j', 'j.id_jadwal', '=', 's.id_jadwal')
+            ->leftJoin('data_kelas_mapel as km', 'km.id_kelas_mapel', '=', 'j.id_kelas_mapel')
+            ->leftJoin('data_mata_pelajaran as m', 'm.kode_mapel', '=', 'km.kode_mapel')
+            ->where('s.status_sesi', '!=', 'BATAL')
+            ->where('ds.nomor_induk', $validated['nomor_induk'])
+            ->whereNotNull('m.nama_mapel')
+            ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereDate('s.tanggal', '>=', $validated['tanggal_mulai']))
+            ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereDate('s.tanggal', '<=', $validated['tanggal_selesai']))
+            ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->where('km.tahun_ajaran', $validated['tahun_ajaran']))
+            ->selectRaw('m.nama_mapel')
+            ->selectRaw('COUNT(*) as total_pertemuan')
+            ->selectRaw("SUM(CASE WHEN UPPER(a.status_kehadiran) = 'HADIR' THEN 1 ELSE 0 END) as jumlah_hadir")
+            ->selectRaw("SUM(CASE WHEN UPPER(a.status_kehadiran) = 'IZIN' THEN 1 ELSE 0 END) as jumlah_izin")
+            ->selectRaw("SUM(CASE WHEN UPPER(a.status_kehadiran) = 'SAKIT' THEN 1 ELSE 0 END) as jumlah_sakit")
+            ->selectRaw("SUM(CASE WHEN UPPER(a.status_kehadiran) = 'ALFA' THEN 1 ELSE 0 END) as jumlah_alfa")
+            ->groupBy('m.nama_mapel')
+            ->orderBy('m.nama_mapel')
+            ->get();
+
+        $rows->transform(function ($item) {
+            $total = (int) $item->total_pertemuan;
+            $hadir = (int) $item->jumlah_hadir;
+            $item->persentase_kehadiran = $total > 0 ? round(($hadir / $total) * 100, 2) : 0;
+            return $item;
+        });
+
+        return response()->json(['data' => $rows]);
+    }
+
     public function queryRekapKelas(Request $request)
     {
         $validated = $request->validate([

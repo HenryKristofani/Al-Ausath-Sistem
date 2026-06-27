@@ -298,6 +298,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/guru-panel/init', [AdminSesiAbsensiController::class, 'guruPanelInit']);
             
             Route::get('/rekap/santri', [RekapAbsensiController::class, 'rekapSantri']);
+            Route::get('/rekap/santri/mapel', [RekapAbsensiController::class, 'rekapMapelSantri']);
             Route::get('/rekap/santri/export', [RekapAbsensiController::class, 'exportSantri']);
             Route::get('/rekap/kelas', [RekapAbsensiController::class, 'rekapKelas']);
             Route::get('/rekap/kelas/export', [RekapAbsensiController::class, 'exportKelas']);
