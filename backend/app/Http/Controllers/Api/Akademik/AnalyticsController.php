@@ -69,6 +69,8 @@ class AnalyticsController extends Controller
                 'terendah' => $stats->terendah ?? 0,
                 'jumlah_santri' => $stats->jumlah_santri ?? 0,
             ];
+        })->filter(function ($item) {
+            return $item['jumlah_santri'] > 0;
         });
 
         return response()->json([
