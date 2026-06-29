@@ -238,6 +238,10 @@ class EkskulController extends Controller
                 'ekskul.unit:kode_unit,nama_unit',
             ])
             ->when($request->filled('id_ekskul'), fn($q) => $q->where('id_ekskul', $request->id_ekskul))
+            ->when($request->filled('id_santri'), fn($q) => $q->where('id_santri', $request->id_santri))
+            ->when($request->filled('nomor_induk'), function ($q) use ($request) {
+                $q->whereHas('santri', fn($sq) => $sq->where('nomor_induk', $request->nomor_induk));
+            })
             ->when($request->filled('kode_unit'), function ($q) use ($request) {
                 $q->whereHas('ekskul', fn($eq) => $eq->where('kode_unit', strtoupper($request->kode_unit)));
             })
