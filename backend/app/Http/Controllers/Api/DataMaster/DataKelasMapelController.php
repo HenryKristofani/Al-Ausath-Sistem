@@ -27,7 +27,21 @@ class DataKelasMapelController extends Controller
             ->with(['kelas', 'mataPelajaran', 'petugas'])
             ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', strtoupper($request->kode_kelas)))
             ->when($request->filled('kode_mapel'), fn ($q) => $q->where('kode_mapel', strtoupper($request->kode_mapel)))
-            ->when($request->filled('id_petugas'), fn ($q) => $q->where('id_petugas', (int) $request->id_petugas))
+            ->when($request->filled('id_petugas'), function ($q) use ($request) {
+                $petugasId = (int) $request->id_petugas;
+                
+                if ($request->boolean('include_wali')) {
+                    $kelasWali = \App\Models\DataKelas::where('id_wali_kelas', $petugasId)->pluck('kode_kelas')->toArray();
+                    return $q->where(function ($sub) use ($petugasId, $kelasWali) {
+                        $sub->where('id_petugas', $petugasId);
+                        if (!empty($kelasWali)) {
+                            $sub->orWhereIn('kode_kelas', $kelasWali);
+                        }
+                    });
+                }
+                
+                return $q->where('id_petugas', $petugasId);
+            })
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', $request->tahun_ajaran))
             ->when($request->filled('semester'), fn ($q) => $q->where('semester', (int) $request->semester))
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))

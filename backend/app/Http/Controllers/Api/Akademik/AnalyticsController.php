@@ -35,8 +35,21 @@ class AnalyticsController extends Controller
             'semester' => ['nullable', 'integer', 'in:1,2'],
         ]);
 
-        // Ambil daftar kelas yang diajar petugas
-        $kelasMapel = DataKelasMapel::where('id_petugas', $petugasId)
+        // Ambil daftar kelas yang di-wali-kan oleh petugas
+        $kelasWali = \App\Models\DataKelas::where('id_wali_kelas', $petugasId)
+            ->when(!empty($validated['tahun_ajaran']), 
+                fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
+            ->pluck('kode_kelas')
+            ->toArray();
+
+        // Ambil daftar kelas mapel yang diajar petugas ATAU bagian dari kelas perwaliannya
+        $kelasMapel = DataKelasMapel::query()
+            ->where(function ($query) use ($petugasId, $kelasWali) {
+                $query->where('id_petugas', $petugasId);
+                if (!empty($kelasWali)) {
+                    $query->orWhereIn('kode_kelas', $kelasWali);
+                }
+            })
             ->when(!empty($validated['tahun_ajaran']), 
                 fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
             ->when(!empty($validated['semester']), 
@@ -69,6 +82,8 @@ class AnalyticsController extends Controller
                 'terendah' => $stats->terendah ?? 0,
                 'jumlah_santri' => $stats->jumlah_santri ?? 0,
             ];
+        })->filter(function ($item) {
+            return $item['jumlah_santri'] > 0;
         });
 
         return response()->json([
@@ -96,10 +111,23 @@ class AnalyticsController extends Controller
             'kode_kelas' => ['nullable', 'string', 'max:10'],
         ]);
 
-        // Query nilai per mapel yang diajar
+        // Kelas yang di-wali-kan
+        $kelasWali = \App\Models\DataKelas::where('id_wali_kelas', $petugasId)
+            ->when(!empty($validated['tahun_ajaran']), 
+                fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
+            ->pluck('kode_kelas')
+            ->toArray();
+
+        // Query nilai per mapel yang diajar atau di-wali-kan
         $query = DataNilaiSiswa::query()
             ->joinSub(
-                DataKelasMapel::where('id_petugas', $petugasId)
+                DataKelasMapel::query()
+                    ->where(function ($q) use ($petugasId, $kelasWali) {
+                        $q->where('id_petugas', $petugasId);
+                        if (!empty($kelasWali)) {
+                            $q->orWhereIn('kode_kelas', $kelasWali);
+                        }
+                    })
                     ->select('kode_kelas', 'kode_mapel'),
                 'kelas_mapel',
                 function ($join) {
@@ -166,10 +194,23 @@ class AnalyticsController extends Controller
             'kode_mapel' => ['nullable', 'string', 'max:20'],
         ]);
 
-        // Query nilai santri dari mapel yang diajar
+        // Kelas yang di-wali-kan
+        $kelasWali = \App\Models\DataKelas::where('id_wali_kelas', $petugasId)
+            ->when(!empty($validated['tahun_ajaran']), 
+                fn($q) => $q->where('tahun_ajaran', $validated['tahun_ajaran']))
+            ->pluck('kode_kelas')
+            ->toArray();
+
+        // Query nilai santri dari mapel yang diajar atau di-wali-kan
         $query = DataNilaiSiswa::query()
             ->joinSub(
-                DataKelasMapel::where('id_petugas', $petugasId)
+                DataKelasMapel::query()
+                    ->where(function ($q) use ($petugasId, $kelasWali) {
+                        $q->where('id_petugas', $petugasId);
+                        if (!empty($kelasWali)) {
+                            $q->orWhereIn('kode_kelas', $kelasWali);
+                        }
+                    })
                     ->select('kode_kelas', 'kode_mapel'),
                 'kelas_mapel',
                 function ($join) {

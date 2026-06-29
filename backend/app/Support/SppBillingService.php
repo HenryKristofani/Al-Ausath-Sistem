@@ -35,7 +35,7 @@ class SppBillingService
     public function provisionBillingForActiveSantri(DataSantri $santri): void
     {
         // Early exit: skip if santri inactive
-        if ($santri->is_deleted || strtoupper((string) $santri->status) !== 'AKTIF') {
+        if (!empty($santri->is_deleted) || strtoupper((string) $santri->status) !== 'AKTIF') {
             Log::debug("Skipping santri {$santri->id_santri}: deleted={$santri->is_deleted}, status={$santri->status}");
             return;
         }
@@ -89,18 +89,22 @@ class SppBillingService
                     $query->orWhere('id_golongan_spp', $santri->id_golongan_spp);
                 }
             })
-            ->when($periodCandidates->isNotEmpty(), function ($query) use ($periodCandidates) {
-                $query->where(function ($periodQuery) use ($periodCandidates) {
+            ->where(function ($query) use ($periodCandidates) {
+                // Settings with NULL periode apply to ALL academic years (universal)
+                $query->whereNull('periode');
+
+                // Also include settings that match the active academic year candidates
+                if ($periodCandidates->isNotEmpty()) {
                     foreach ($periodCandidates as $period) {
-                        $periodQuery->orWhere('periode', $period);
-                        
-                        // Handle year-only matches
+                        $query->orWhere('periode', $period);
+
+                        // Handle year-only matches (e.g. "2027" matches "2027/2028")
                         if (preg_match('/\d{4}/', $period, $matches)) {
                             $year = $matches[0];
-                            $periodQuery->orWhere('periode', 'like', "%{$year}%");
+                            $query->orWhere('periode', 'like', "%{$year}%");
                         }
                     }
-                });
+                }
             })
             ->get();
 
