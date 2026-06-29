@@ -782,14 +782,14 @@ class PpdbController extends Controller
         
         $configs = [
             'PAUD' => [
-                'uang_pangkal_a' => 1000000,
-                'uang_pangkal_b' => 1500000,
+                'uang_pangkal_a' => 500000,
+                'uang_pangkal_b' => 500000,
                 'perlengkapan' => 300000,
                 'uang_modul' => 0,
                 'infaq_bulanan_a' => 200000,
                 'infaq_bulanan_b' => 250000,
             ],
-            'PRATAHFIDZ' => [
+            'TK' => [
                 'uang_pangkal_a' => 1000000,
                 'uang_pangkal_b' => 1500000,
                 'perlengkapan' => 1200000,
@@ -797,18 +797,26 @@ class PpdbController extends Controller
                 'infaq_bulanan_a' => 300000,
                 'infaq_bulanan_b' => 350000,
             ],
+            'PRATAHFIDZ' => [
+                'uang_pangkal_a' => 1800000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 0,
+                'uang_modul' => 200000,
+                'infaq_bulanan_a' => 350000,
+                'infaq_bulanan_b' => 400000,
+            ],
             'MTS' => [
                 'uang_pangkal_a' => 1500000,
                 'uang_pangkal_b' => 2000000,
-                'perlengkapan' => 875000, // meja, sekat, almari, kasur
+                'perlengkapan' => 875000, ## diperjelas saja biayanya apa saja 
                 'uang_modul' => 250000,
-                'infaq_bulanan_a' => 600000,
+                'infaq_bulanan_a' => 600000, 
                 'infaq_bulanan_b' => 650000,
             ],
             'MA' => [
                 'uang_pangkal_a' => 1500000,
                 'uang_pangkal_b' => 2000000,
-                'perlengkapan' => 875000,
+                'perlengkapan' => 875000, 
                 'uang_modul' => 250000,
                 'infaq_bulanan_a' => 650000,
                 'infaq_bulanan_b' => 700000,
@@ -816,10 +824,10 @@ class PpdbController extends Controller
             'MTQU' => [
                 'uang_pangkal_a' => 1800000,
                 'uang_pangkal_b' => 2000000,
-                'perlengkapan' => 0,
+                'perlengkapan' => 0, ##opsionall ditambahi biaya meja belajar dll
                 'uang_modul' => 200000,
-                'infaq_bulanan_a' => 350000,
-                'infaq_bulanan_b' => 400000,
+                'infaq_bulanan_a' => 650000,
+                'infaq_bulanan_b' => 700000,
             ],
         ];
 
@@ -1010,9 +1018,13 @@ class PpdbController extends Controller
                 'infaq_bulanan_a' => 200000,
                 'infaq_bulanan_b' => 250000,
             ],
-            'PRATAHFIDZ' => [
+            'TK' => [
                 'infaq_bulanan_a' => 300000,
                 'infaq_bulanan_b' => 350000,
+            ],
+            'PRATAHFIDZ' => [
+                'infaq_bulanan_a' => 350000,
+                'infaq_bulanan_b' => 400000,
             ],
             'MTS' => [
                 'infaq_bulanan_a' => 600000,
@@ -1023,8 +1035,8 @@ class PpdbController extends Controller
                 'infaq_bulanan_b' => 700000,
             ],
             'MTQU' => [
-                'infaq_bulanan_a' => 350000,
-                'infaq_bulanan_b' => 400000,
+                'infaq_bulanan_a' => 650000,
+                'infaq_bulanan_b' => 700000,
             ],
         ];
 

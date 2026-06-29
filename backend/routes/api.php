@@ -78,6 +78,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/tes', [AuthController::class, 'tesStatusPpdb']);
         Route::get('/pembayaran', [AuthController::class, 'pembayaranStatusPpdb']);
         Route::get('/infaq', [AuthController::class, 'infaqPpdb']);
+        Route::get('/billing', [AuthController::class, 'billingPpdb']);
         Route::get('/available-kelas', [PpdbController::class, 'availableKelas']);
         Route::post('/pendaftaran/tambah-siswa', [AuthController::class, 'tambahSiswaPpdb']);
         Route::put('/form', [AuthController::class, 'updateFormPpdb']);
