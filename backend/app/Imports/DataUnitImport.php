@@ -36,10 +36,8 @@ class DataUnitImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $payload = [
                 'kode_unit' => $this->rowValue($row, 'kode_unit'),
                 'nama_unit' => $this->rowValue($row, 'nama_unit'),
-                'nomor_urut' => $this->rowValue($row, 'nomor_urut'),
                 'keterangan' => $this->rowValue($row, 'keterangan'),
                 'status' => $this->rowValue($row, 'status'),
-                'status_ppdb' => $this->rowValue($row, 'status_ppdb'),
             ];
 
             if ($this->isEmptyRow($payload)) {
@@ -49,10 +47,8 @@ class DataUnitImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $validator = Validator::make($payload, [
                 'kode_unit' => ['required', 'string', 'max:10'],
                 'nama_unit' => ['required', 'string', 'max:100'],
-                'nomor_urut' => ['nullable', 'integer'],
                 'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-                'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);
 
             if ($validator->fails()) {
@@ -67,10 +63,6 @@ class DataUnitImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
 
             if (!empty($payload['status'])) {
                 $payload['status'] = strtoupper((string) $payload['status']);
-            }
-
-            if (!empty($payload['status_ppdb'])) {
-                $payload['status_ppdb'] = strtoupper((string) $payload['status_ppdb']);
             }
 
             $existing = DataUnit::where('kode_unit', (string) $payload['kode_unit'])->first();

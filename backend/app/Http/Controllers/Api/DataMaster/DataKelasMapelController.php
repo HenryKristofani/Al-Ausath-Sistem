@@ -228,6 +228,25 @@ class DataKelasMapelController extends Controller
             $payload = $this->mapKelasMapelPayload($rowData);
             $payload = $this->normalizeKelasMapelInput($payload);
 
+            // Konversi nama_petugas ke id_petugas
+            if (!empty($payload['nama_petugas'])) {
+                $petugas = \App\Models\DataPetugas::where('nama_lengkap', trim($payload['nama_petugas']))
+                    ->where('status', 'AKTIF')
+                    ->first();
+                if ($petugas) {
+                    $payload['id_petugas'] = $petugas->id_petugas;
+                } else {
+                    $failed[] = [
+                        'line' => $lineNumber,
+                        'errors' => ['Pengajar dengan nama "' . $payload['nama_petugas'] . '" tidak ditemukan atau tidak aktif.'],
+                    ];
+                    continue;
+                }
+            } else {
+                $payload['id_petugas'] = null;
+            }
+            unset($payload['nama_petugas']);
+
             $validator = Validator::make($payload, [
                 'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
                 'kode_mapel' => ['required', 'string', 'max:20', 'exists:data_mata_pelajaran,kode_mapel'],
@@ -337,7 +356,7 @@ class DataKelasMapelController extends Controller
         $headers = [
             'kode_kelas',
             'kode_mapel',
-            'id_petugas',
+            'nama_petugas',
             'tahun_ajaran',
             'semester',
             'buku_acuan',
@@ -353,7 +372,7 @@ class DataKelasMapelController extends Controller
                     fputcsv($output, [
                         $row->kode_kelas,
                         $row->kode_mapel,
-                        $row->id_petugas,
+                        $row->petugas ? $row->petugas->nama_lengkap : null,
                         $row->tahun_ajaran,
                         $row->semester,
                         $row->buku_acuan,
@@ -376,7 +395,7 @@ class DataKelasMapelController extends Controller
         $headers = [
             'kode_kelas',
             'kode_mapel',
-            'id_petugas',
+            'nama_petugas',
             'tahun_ajaran',
             'semester',
             'buku_acuan',
@@ -429,7 +448,7 @@ class DataKelasMapelController extends Controller
         return [
             'kode_kelas' => $rowData['kode_kelas'] ?? null,
             'kode_mapel' => $rowData['kode_mapel'] ?? null,
-            'id_petugas' => $rowData['id_petugas'] ?? null,
+            'nama_petugas' => $rowData['nama_petugas'] ?? null,
             'tahun_ajaran' => $rowData['tahun_ajaran'] ?? null,
             'semester' => $rowData['semester'] ?? null,
             'buku_acuan' => $rowData['buku_acuan'] ?? null,

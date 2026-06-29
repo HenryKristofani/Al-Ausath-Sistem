@@ -520,6 +520,25 @@ class DataKelasController extends Controller
             }
 
             $payload = $this->mapKelasPayload($rowData);
+            
+            // Konversi wali_kelas string ke id_wali_kelas
+            if (!empty($payload['wali_kelas'])) {
+                $petugas = \App\Models\DataPetugas::where('nama_lengkap', trim($payload['wali_kelas']))
+                    ->where('status', 'AKTIF')
+                    ->first();
+                if ($petugas) {
+                    $payload['id_wali_kelas'] = $petugas->id_petugas;
+                } else {
+                    $failed[] = [
+                        'line' => $lineNumber,
+                        'errors' => ['Wali kelas dengan nama "' . $payload['wali_kelas'] . '" tidak ditemukan atau tidak aktif. Harap pastikan nama sama persis.'],
+                    ];
+                    continue;
+                }
+            } else {
+                $payload['id_wali_kelas'] = null;
+            }
+            unset($payload['wali_kelas']);
 
             $validator = Validator::make($payload, [
                 'kode_unit' => ['required', 'string', 'max:10', 'exists:data_unit,kode_unit'],
@@ -533,7 +552,6 @@ class DataKelasController extends Controller
                     Rule::exists('data_tahun_ajaran', 'kode_tahun')->where(fn ($q) => $q->where('is_deleted', false)),
                 ],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-                'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
                 'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             ]);
 
@@ -552,9 +570,7 @@ class DataKelasController extends Controller
                 $payload['status'] = strtoupper($payload['status']);
             }
 
-            if (!empty($payload['status_ppdb'])) {
-                $payload['status_ppdb'] = strtoupper($payload['status_ppdb']);
-            }
+
 
             $payload['is_deleted'] = false;
             $payload['deleted_at'] = null;
@@ -624,7 +640,6 @@ class DataKelasController extends Controller
                 kodeUnit: $request->filled('kode_unit') ? (string) $request->kode_unit : null,
                 tahunAjaran: $request->filled('tahun_ajaran') ? (string) $request->tahun_ajaran : null,
                 status: $request->filled('status') ? (string) $request->status : null,
-                statusPpdb: $request->filled('status_ppdb') ? (string) $request->status_ppdb : null,
                 keyword: $request->filled('q') ? (string) $request->q : null,
             ),
             'data-kelas-' . now()->format('Ymd_His') . '.xlsx'
@@ -643,8 +658,7 @@ class DataKelasController extends Controller
             'nama_jurusan',
             'tahun_ajaran',
             'status',
-            'status_ppdb',
-            'id_wali_kelas',
+            'wali_kelas',
         ];
 
         return response()->streamDownload(function () use ($headers) {
@@ -697,8 +711,7 @@ class DataKelasController extends Controller
             'nama_jurusan' => $rowData['nama_jurusan'] ?? null,
             'tahun_ajaran' => $rowData['tahun_ajaran'] ?? null,
             'status' => $rowData['status'] ?? null,
-            'status_ppdb' => $rowData['status_ppdb'] ?? null,
-            'id_wali_kelas' => $rowData['id_wali_kelas'] ?? null,
+            'wali_kelas' => $rowData['wali_kelas'] ?? null,
         ];
     }
 

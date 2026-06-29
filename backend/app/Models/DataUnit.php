@@ -9,13 +9,11 @@ class DataUnit extends Model
     protected $table = 'data_unit';
     protected $primaryKey = 'id_unit';
 
-        protected $fillable = [
+    protected $fillable = [
         'kode_unit',
         'nama_unit',
-        'nomor_urut',
         'keterangan',
         'status',
-        'status_ppdb',
     ];
 
     public function kelas()

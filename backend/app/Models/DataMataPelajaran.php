@@ -14,7 +14,6 @@ class DataMataPelajaran extends Model
         'nama_mapel',
         'kode_unit',
         'kelompok_mapel',
-        'urutan',
         'keterangan',
         'status',
     ];

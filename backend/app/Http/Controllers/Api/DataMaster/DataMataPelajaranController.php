@@ -37,7 +37,6 @@ class DataMataPelajaranController extends Controller
                         ->orWhere('kelompok_mapel', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('urutan')
             ->orderBy('nama_mapel');
 
         return response()->json($query->paginate($perPage));
@@ -55,7 +54,6 @@ class DataMataPelajaranController extends Controller
             'nama_mapel' => ['required', 'string', 'max:200'],
             'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
             'kelompok_mapel' => ['nullable', 'string', 'max:50'],
-            'urutan' => ['nullable', 'integer'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
@@ -99,7 +97,6 @@ class DataMataPelajaranController extends Controller
             'nama_mapel' => ['sometimes', 'string', 'max:200'],
             'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
             'kelompok_mapel' => ['nullable', 'string', 'max:50'],
-            'urutan' => ['nullable', 'integer'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
@@ -219,7 +216,6 @@ class DataMataPelajaranController extends Controller
                 'nama_mapel' => ['required', 'string', 'max:200'],
                 'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
                 'kelompok_mapel' => ['nullable', 'string', 'max:50'],
-                'urutan' => ['nullable', 'integer'],
                 'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);
@@ -283,7 +279,6 @@ class DataMataPelajaranController extends Controller
             'nama_mapel',
             'kode_unit',
             'kelompok_mapel',
-            'urutan',
             'keterangan',
             'status',
         ];
@@ -336,7 +331,6 @@ class DataMataPelajaranController extends Controller
             'nama_mapel' => $rowData['nama_mapel'] ?? null,
             'kode_unit' => $rowData['kode_unit'] ?? null,
             'kelompok_mapel' => $rowData['kelompok_mapel'] ?? null,
-            'urutan' => $rowData['urutan'] ?? null,
             'keterangan' => $rowData['keterangan'] ?? null,
             'status' => $rowData['status'] ?? null,
         ];

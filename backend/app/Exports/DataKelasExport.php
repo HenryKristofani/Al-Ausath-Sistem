@@ -14,7 +14,6 @@ class DataKelasExport implements FromCollection, WithHeadings, ShouldAutoSize
         private readonly ?string $kodeUnit,
         private readonly ?string $tahunAjaran,
         private readonly ?string $status,
-        private readonly ?string $statusPpdb,
         private readonly ?string $keyword,
     ) {
     }
@@ -22,6 +21,7 @@ class DataKelasExport implements FromCollection, WithHeadings, ShouldAutoSize
     public function collection(): Collection
     {
         return DataKelas::query()
+            ->with(['waliKelas'])
             ->withCount([
                 'santri as jumlah_santri',
                 'santriAktif as jumlah_santri_aktif',
@@ -32,7 +32,6 @@ class DataKelasExport implements FromCollection, WithHeadings, ShouldAutoSize
             ->when(!empty($this->kodeUnit), fn ($q) => $q->where('kode_unit', strtoupper($this->kodeUnit)))
             ->when(!empty($this->tahunAjaran), fn ($q) => $q->where('tahun_ajaran', $this->tahunAjaran))
             ->when(!empty($this->status), fn ($q) => $q->where('status', strtoupper($this->status)))
-            ->when(!empty($this->statusPpdb), fn ($q) => $q->where('status_ppdb', strtoupper($this->statusPpdb)))
             ->when(!empty($this->keyword), function ($q) {
                 $keyword = $this->keyword;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -52,8 +51,7 @@ class DataKelasExport implements FromCollection, WithHeadings, ShouldAutoSize
                 'nama_jurusan' => $kelas->nama_jurusan,
                 'tahun_ajaran' => $kelas->tahun_ajaran,
                 'status' => $kelas->status,
-                'status_ppdb' => $kelas->status_ppdb,
-                'id_wali_kelas' => $kelas->id_wali_kelas,
+                'wali_kelas' => $kelas->waliKelas?->nama_lengkap ?? null,
                 'jumlah_santri' => $kelas->jumlah_santri,
                 'jumlah_santri_aktif' => $kelas->jumlah_santri_aktif,
                 'jumlah_santri_lulus' => $kelas->jumlah_santri_lulus,
@@ -70,8 +68,7 @@ class DataKelasExport implements FromCollection, WithHeadings, ShouldAutoSize
             'nama_jurusan',
             'tahun_ajaran',
             'status',
-            'status_ppdb',
-            'id_wali_kelas',
+            'wali_kelas',
             'jumlah_santri',
             'jumlah_santri_aktif',
             'jumlah_santri_lulus',
