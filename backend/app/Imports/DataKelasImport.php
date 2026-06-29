@@ -40,7 +40,6 @@ class DataKelasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 'nama_jurusan' => $this->rowValue($row, 'nama_jurusan'),
                 'tahun_ajaran' => $this->rowValue($row, 'tahun_ajaran'),
                 'status' => $this->rowValue($row, 'status'),
-                'status_ppdb' => $this->rowValue($row, 'status_ppdb'),
                 'id_wali_kelas' => $this->rowValue($row, 'id_wali_kelas'),
             ];
 
@@ -60,7 +59,6 @@ class DataKelasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                     Rule::exists('data_tahun_ajaran', 'kode_tahun')->where(fn ($q) => $q->where('is_deleted', false)),
                 ],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-                'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
                 'id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
             ]);
 
@@ -81,9 +79,7 @@ class DataKelasImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 $payload['status'] = strtoupper((string) $payload['status']);
             }
 
-            if (!empty($payload['status_ppdb'])) {
-                $payload['status_ppdb'] = strtoupper((string) $payload['status_ppdb']);
-            }
+
 
             $existing = DataKelas::where('kode_kelas', (string) $payload['kode_kelas'])
                 ->where('is_deleted', false)

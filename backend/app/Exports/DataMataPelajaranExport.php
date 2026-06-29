@@ -33,14 +33,12 @@ class DataMataPelajaranExport implements FromCollection, WithHeadings, ShouldAut
                         ->orWhere('kelompok_mapel', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('urutan')
             ->orderBy('nama_mapel')
             ->get([
                 'kode_mapel',
                 'nama_mapel',
                 'kode_unit',
                 'kelompok_mapel',
-                'urutan',
                 'keterangan',
                 'status',
             ]);
@@ -53,7 +51,6 @@ class DataMataPelajaranExport implements FromCollection, WithHeadings, ShouldAut
             'nama_mapel',
             'kode_unit',
             'kelompok_mapel',
-            'urutan',
             'keterangan',
             'status',
         ];

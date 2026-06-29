@@ -33,7 +33,6 @@ class DataMataPelajaranImport implements ToCollection, WithHeadingRow, SkipsEmpt
                 'nama_mapel' => $this->rowValue($row, 'nama_mapel'),
                 'kode_unit' => $this->rowValue($row, 'kode_unit'),
                 'kelompok_mapel' => $this->rowValue($row, 'kelompok_mapel'),
-                'urutan' => $this->rowValue($row, 'urutan'),
                 'keterangan' => $this->rowValue($row, 'keterangan'),
                 'status' => $this->rowValue($row, 'status'),
             ];
@@ -49,7 +48,6 @@ class DataMataPelajaranImport implements ToCollection, WithHeadingRow, SkipsEmpt
                 'nama_mapel' => ['required', 'string', 'max:200'],
                 'kode_unit' => ['nullable', 'string', 'max:10', 'exists:data_unit,kode_unit'],
                 'kelompok_mapel' => ['nullable', 'string', 'max:50'],
-                'urutan' => ['nullable', 'integer'],
                 'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);

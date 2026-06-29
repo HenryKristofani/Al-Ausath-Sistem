@@ -25,11 +25,10 @@ class DataUnitController extends Controller
 
         $query = DataUnit::query()
             ->withCount([
-                'kelas as jumlah_kelas',
-                'santri as jumlah_santri',
+                'kelas as jumlah_kelas' => fn ($q) => $q->where('data_kelas.status', 'AKTIF')->where('data_kelas.is_deleted', false),
+                'santri as jumlah_santri' => fn ($q) => $q->where('data_santri.status', 'AKTIF')->where('data_santri.is_deleted', false),
             ])
             ->when($request->filled('status'), fn ($q) => $q->where('status', strtoupper($request->status)))
-            ->when($request->filled('status_ppdb'), fn ($q) => $q->where('status_ppdb', strtoupper($request->status_ppdb)))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $keyword = $request->q;
                 $q->where(function ($subQuery) use ($keyword) {
@@ -38,7 +37,7 @@ class DataUnitController extends Controller
                         ->orWhere('nama_unit', 'like', "%{$keyword}%");
                 });
             })
-            ->orderBy('nomor_urut')
+            ->orderBy('kode_unit')
             ->orderBy('nama_unit');
 
         return response()->json($query->paginate($perPage));
@@ -52,10 +51,8 @@ class DataUnitController extends Controller
         $validated = $request->validate([
             'kode_unit' => ['required', 'string', 'max:10', 'unique:data_unit,kode_unit'],
             'nama_unit' => ['required', 'string', 'max:100'],
-            'nomor_urut' => ['nullable', 'integer'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-            'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
         $validated['kode_unit'] = strtoupper($validated['kode_unit']);
@@ -64,14 +61,10 @@ class DataUnitController extends Controller
             $validated['status'] = strtoupper($validated['status']);
         }
 
-        if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
-            $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
-        }
-
         $data = DataUnit::create($validated);
         $data->loadCount([
-            'kelas as jumlah_kelas',
-            'santri as jumlah_santri',
+            'kelas as jumlah_kelas' => fn ($q) => $q->where('data_kelas.status', 'AKTIF')->where('data_kelas.is_deleted', false),
+            'santri as jumlah_santri' => fn ($q) => $q->where('data_santri.status', 'AKTIF')->where('data_santri.is_deleted', false),
         ]);
 
         return response()->json([
@@ -87,8 +80,8 @@ class DataUnitController extends Controller
     {
         $data = DataUnit::query()
             ->withCount([
-                'kelas as jumlah_kelas',
-                'santri as jumlah_santri',
+                'kelas as jumlah_kelas' => fn ($q) => $q->where('data_kelas.status', 'AKTIF')->where('data_kelas.is_deleted', false),
+                'santri as jumlah_santri' => fn ($q) => $q->where('data_santri.status', 'AKTIF')->where('data_santri.is_deleted', false),
             ])
             ->findOrFail($id);
 
@@ -110,10 +103,8 @@ class DataUnitController extends Controller
                 Rule::unique('data_unit', 'kode_unit')->ignore($unit->id_unit, 'id_unit'),
             ],
             'nama_unit' => ['sometimes', 'string', 'max:100'],
-            'nomor_urut' => ['nullable', 'integer'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-            'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
         ]);
 
         if (array_key_exists('kode_unit', $validated) && $validated['kode_unit'] !== null) {
@@ -134,15 +125,10 @@ class DataUnitController extends Controller
                 }
             }
         }
-
-        if (array_key_exists('status_ppdb', $validated) && $validated['status_ppdb'] !== null) {
-            $validated['status_ppdb'] = strtoupper($validated['status_ppdb']);
-        }
-
         $unit->update($validated);
         $unit->loadCount([
-            'kelas as jumlah_kelas',
-            'santri as jumlah_santri',
+            'kelas as jumlah_kelas' => fn ($q) => $q->where('data_kelas.status', 'AKTIF')->where('data_kelas.is_deleted', false),
+            'santri as jumlah_santri' => fn ($q) => $q->where('data_santri.status', 'AKTIF')->where('data_santri.is_deleted', false),
         ]);
 
         return response()->json([
@@ -199,11 +185,11 @@ class DataUnitController extends Controller
             $result = $import->result();
             $affectedUnits = DataUnit::query()
                 ->withCount([
-                    'kelas as jumlah_kelas',
-                    'santri as jumlah_santri',
+                    'kelas as jumlah_kelas' => fn ($q) => $q->where('data_kelas.status', 'AKTIF')->where('data_kelas.is_deleted', false),
+                    'santri as jumlah_santri' => fn ($q) => $q->where('data_santri.status', 'AKTIF')->where('data_santri.is_deleted', false),
                 ])
                 ->whereIn('kode_unit', $import->affectedKodeUnit())
-                ->orderBy('nomor_urut')
+                ->orderBy('kode_unit')
                 ->orderBy('nama_unit')
                 ->get();
 
@@ -254,10 +240,8 @@ class DataUnitController extends Controller
             $validator = Validator::make($payload, [
                 'kode_unit' => ['required', 'string', 'max:10'],
                 'nama_unit' => ['required', 'string', 'max:100'],
-                'nomor_urut' => ['nullable', 'integer'],
                 'keterangan' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
-                'status_ppdb' => ['nullable', 'string', Rule::in(['AKTIF', 'NONAKTIF'])],
             ]);
 
             if ($validator->fails()) {
@@ -272,10 +256,6 @@ class DataUnitController extends Controller
 
             if (!empty($payload['status'])) {
                 $payload['status'] = strtoupper($payload['status']);
-            }
-
-            if (!empty($payload['status_ppdb'])) {
-                $payload['status_ppdb'] = strtoupper($payload['status_ppdb']);
             }
 
             $existing = DataUnit::where('kode_unit', $payload['kode_unit'])->first();
@@ -296,11 +276,11 @@ class DataUnitController extends Controller
 
         $affectedUnits = DataUnit::query()
             ->withCount([
-                'kelas as jumlah_kelas',
-                'santri as jumlah_santri',
+                'kelas as jumlah_kelas' => fn ($q) => $q->where('data_kelas.status', 'AKTIF')->where('data_kelas.is_deleted', false),
+                'santri as jumlah_santri' => fn ($q) => $q->where('data_santri.status', 'AKTIF')->where('data_santri.is_deleted', false),
             ])
             ->whereIn('kode_unit', array_values($affectedKodeUnit))
-            ->orderBy('nomor_urut')
+            ->orderBy('kode_unit')
             ->orderBy('nama_unit')
             ->get();
 
@@ -324,7 +304,6 @@ class DataUnitController extends Controller
         return Excel::download(
             new DataUnitExport(
                 status: $request->filled('status') ? (string) $request->status : null,
-                statusPpdb: $request->filled('status_ppdb') ? (string) $request->status_ppdb : null,
                 keyword: $request->filled('q') ? (string) $request->q : null,
             ),
             'data-unit-' . now()->format('Ymd_His') . '.xlsx'
@@ -368,10 +347,8 @@ class DataUnitController extends Controller
         return [
             'kode_unit' => $rowData['kode_unit'] ?? null,
             'nama_unit' => $rowData['nama_unit'] ?? null,
-            'nomor_urut' => $rowData['nomor_urut'] ?? null,
             'keterangan' => $rowData['keterangan'] ?? null,
             'status' => $rowData['status'] ?? null,
-            'status_ppdb' => $rowData['status_ppdb'] ?? null,
         ];
     }
 }

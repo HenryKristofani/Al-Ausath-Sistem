@@ -16,7 +16,6 @@ class DataKelas extends Model
         'nama_jurusan',
         'tahun_ajaran',
         'status',
-        'status_ppdb',
         'id_wali_kelas',
             'is_deleted',
             'deleted_at',

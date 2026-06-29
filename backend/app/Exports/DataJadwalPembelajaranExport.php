@@ -7,8 +7,9 @@ use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithMapping;
 
-class DataJadwalPembelajaranExport implements FromCollection, WithHeadings, ShouldAutoSize
+class DataJadwalPembelajaranExport implements FromCollection, WithHeadings, ShouldAutoSize, WithMapping
 {
     public function __construct(
         private readonly ?int $idKelasMapel,
@@ -22,6 +23,7 @@ class DataJadwalPembelajaranExport implements FromCollection, WithHeadings, Shou
     public function collection(): Collection
     {
         return JadwalPembelajaran::query()
+            ->with(['kelasMapel.kelas', 'kelasMapel.mataPelajaran'])
             ->when($this->idKelasMapel !== null, fn ($q) => $q->where('id_kelas_mapel', $this->idKelasMapel))
             ->when(!empty($this->tahunAjaran), fn ($q) => $q->where('tahun_ajaran', trim((string) $this->tahunAjaran)))
             ->when(!empty($this->hari), fn ($q) => $q->where('hari', strtoupper(trim((string) $this->hari))))
@@ -40,27 +42,34 @@ class DataJadwalPembelajaranExport implements FromCollection, WithHeadings, Shou
             ->orderBy('tahun_ajaran')
             ->orderBy('hari')
             ->orderBy('jam_mulai')
-            ->get([
-                'id_kelas_mapel',
-                'tahun_ajaran',
-                'hari',
-                'jam_mulai',
-                'jam_selesai',
-                'ruangan',
-                'status',
-            ]);
+            ->get();
+    }
+
+    public function map($row): array
+    {
+        return [
+            $row->kelasMapel->kelas->nama_kelas ?? '-',
+            $row->kelasMapel->mataPelajaran->nama_mapel ?? '-',
+            $row->hari,
+            $row->jam_mulai,
+            $row->jam_selesai,
+            ($row->kelasMapel->tahun_ajaran ?? '-') . '/' . ($row->kelasMapel->semester ?? '-'),
+            $row->ruangan,
+            $row->status,
+        ];
     }
 
     public function headings(): array
     {
         return [
-            'id_kelas_mapel',
-            'tahun_ajaran',
-            'hari',
-            'jam_mulai',
-            'jam_selesai',
-            'ruangan',
-            'status',
+            'KELAS',
+            'MAPEL',
+            'HARI',
+            'JAM MULAI',
+            'JAM SELESAI',
+            'TAHUN/SEM',
+            'RUANG',
+            'STATUS',
         ];
     }
 }

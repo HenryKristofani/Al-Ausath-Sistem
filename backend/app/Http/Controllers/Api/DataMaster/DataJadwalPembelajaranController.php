@@ -322,6 +322,30 @@ class DataJadwalPembelajaranController extends Controller
             $payload = $this->mapJadwalPayload($rowData);
             $payload = $this->normalizeJadwalInput($payload);
 
+            // Lookup id_kelas_mapel from kode_kelas and kode_mapel
+            if (!empty($payload['kode_kelas']) && !empty($payload['kode_mapel'])) {
+                $kelasMapel = \App\Models\DataKelasMapel::where('kode_kelas', trim($payload['kode_kelas']))
+                    ->where('kode_mapel', trim($payload['kode_mapel']))
+                    ->where('status', 'AKTIF')
+                    ->first();
+                if ($kelasMapel) {
+                    $payload['id_kelas_mapel'] = $kelasMapel->id_kelas_mapel;
+                } else {
+                    $failed[] = [
+                        'line' => $lineNumber,
+                        'errors' => ["Kelas Mapel dengan Kode Kelas '{$payload['kode_kelas']}' dan Kode Mapel '{$payload['kode_mapel']}' tidak ditemukan atau tidak aktif."],
+                    ];
+                    continue;
+                }
+            } else {
+                $failed[] = [
+                    'line' => $lineNumber,
+                    'errors' => ['Kolom kode_kelas dan kode_mapel wajib diisi.'],
+                ];
+                continue;
+            }
+            unset($payload['kode_kelas'], $payload['kode_mapel']);
+
             $validator = Validator::make($payload, [
                 'id_kelas_mapel' => ['required', 'integer', 'exists:data_kelas_mapel,id_kelas_mapel'],
                 'tahun_ajaran' => [
@@ -398,7 +422,8 @@ class DataJadwalPembelajaranController extends Controller
     public function importTemplate(): StreamedResponse
     {
         $headers = [
-            'id_kelas_mapel',
+            'kode_kelas',
+            'kode_mapel',
             'tahun_ajaran',
             'hari',
             'jam_mulai',
@@ -451,7 +476,8 @@ class DataJadwalPembelajaranController extends Controller
     private function mapJadwalPayload(array $rowData): array
     {
         return [
-            'id_kelas_mapel' => $rowData['id_kelas_mapel'] ?? null,
+            'kode_kelas' => $rowData['kode_kelas'] ?? null,
+            'kode_mapel' => $rowData['kode_mapel'] ?? null,
             'tahun_ajaran' => $rowData['tahun_ajaran'] ?? null,
             'hari' => $rowData['hari'] ?? null,
             'jam_mulai' => $rowData['jam_mulai'] ?? null,

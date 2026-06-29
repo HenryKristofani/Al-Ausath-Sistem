@@ -29,7 +29,8 @@ class DataJadwalPembelajaranImport implements ToCollection, WithHeadingRow, Skip
             $lineNumber++;
 
             $payload = [
-                'id_kelas_mapel' => $this->rowValue($row, 'id_kelas_mapel'),
+                'kode_kelas' => $this->rowValue($row, 'kode_kelas'),
+                'kode_mapel' => $this->rowValue($row, 'kode_mapel'),
                 'tahun_ajaran' => $this->rowValue($row, 'tahun_ajaran'),
                 'hari' => $this->rowValue($row, 'hari'),
                 'jam_mulai' => $this->rowValue($row, 'jam_mulai'),
@@ -43,6 +44,30 @@ class DataJadwalPembelajaranImport implements ToCollection, WithHeadingRow, Skip
             }
 
             $payload = $this->normalizeJadwalInput($payload);
+
+            // Lookup id_kelas_mapel from kode_kelas and kode_mapel
+            if (!empty($payload['kode_kelas']) && !empty($payload['kode_mapel'])) {
+                $kelasMapel = \App\Models\DataKelasMapel::where('kode_kelas', trim($payload['kode_kelas']))
+                    ->where('kode_mapel', trim($payload['kode_mapel']))
+                    ->where('status', 'AKTIF')
+                    ->first();
+                if ($kelasMapel) {
+                    $payload['id_kelas_mapel'] = $kelasMapel->id_kelas_mapel;
+                } else {
+                    $this->failed[] = [
+                        'line' => $lineNumber,
+                        'errors' => ["Kelas Mapel dengan Kode Kelas '{$payload['kode_kelas']}' dan Kode Mapel '{$payload['kode_mapel']}' tidak ditemukan atau tidak aktif."],
+                    ];
+                    continue;
+                }
+            } else {
+                $this->failed[] = [
+                    'line' => $lineNumber,
+                    'errors' => ['Kolom kode_kelas dan kode_mapel wajib diisi.'],
+                ];
+                continue;
+            }
+            unset($payload['kode_kelas'], $payload['kode_mapel']);
 
             $validator = Validator::make($payload, [
                 'id_kelas_mapel' => ['required', 'integer', 'exists:data_kelas_mapel,id_kelas_mapel'],
