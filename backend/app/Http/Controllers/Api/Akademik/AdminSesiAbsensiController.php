@@ -514,6 +514,7 @@ class AdminSesiAbsensiController extends Controller
             'jadwal.kelasMapel.mataPelajaran:kode_mapel,nama_mapel',
             'petugasHadir:id_petugas,nama_lengkap',
             'petugasPengganti:id_petugas,nama_lengkap',
+            'absensiPengajar',
         ])
         ->withCount('absensiSantri')
         ->where('tanggal', $today)
