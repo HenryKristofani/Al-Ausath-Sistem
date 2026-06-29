@@ -479,6 +479,93 @@ class AuthController extends Controller
         ]);
     }
 
+    public function billingPpdb(Request $request)
+    {
+        $akun = $this->resolveAuthenticatedPpdbUser();
+
+        if (!$akun) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $idPendaftaran = $request->input('id_pendaftaran') ?? $request->query('id_pendaftaran');
+        $pendaftar = $idPendaftaran
+            ? $akun->pendaftaran()->where('id_pendaftaran', $idPendaftaran)->first()
+            : $akun->pendaftaran()->orderByDesc('id_pendaftaran')->first();
+
+        if (!$pendaftar) {
+            return response()->json([
+                'message' => 'ID pendaftaran belum dibuat untuk akun ini.',
+            ], 422);
+        }
+
+        $rawJenjang = strtoupper(trim((string) ($pendaftar->jenjang ?? $pendaftar->program_pendaftaran ?? '')));
+        $jenjang = match ($rawJenjang) {
+            'MI', 'SD' => 'PRATAHFIDZ',
+            'SMP', 'MTS' => 'MTS',
+            'SMA', 'MA' => 'MA',
+            default => $rawJenjang,
+        };
+
+        $config = $this->getInfaqConfig($jenjang) ?? $this->getInfaqConfig('MTS');
+        $selectedUangGedung = in_array((int) ($pendaftar->pilihan_uang_gedung ?? 0), [1, 2], true)
+            ? (int) $pendaftar->pilihan_uang_gedung
+            : null;
+        $selectedInfaqBulanan = in_array((int) ($pendaftar->pilihan_infaq_bulanan ?? 0), [1, 2], true)
+            ? (int) $pendaftar->pilihan_infaq_bulanan
+            : null;
+
+        $buildOption = function (int $value, string $label, int $amount): array {
+            return [
+                'value' => $value,
+                'label' => $label,
+                'amount' => $amount,
+                'display' => 'Rp ' . number_format($amount, 0, ',', '.'),
+            ];
+        };
+
+        $uangGedungOptions = [];
+        if ($config) {
+            $uangGedungOptions = [
+                $buildOption(1, 'Pilihan A', (int) ($config['uang_pangkal_a'] ?? 0)),
+                $buildOption(2, 'Pilihan B', (int) ($config['uang_pangkal_b'] ?? 0)),
+            ];
+        }
+
+        $infaqBulananOptions = [];
+        if ($config) {
+            $infaqBulananOptions = [
+                $buildOption(1, 'Pilihan A', (int) ($config['infaq_bulanan_a'] ?? 0)),
+                $buildOption(2, 'Pilihan B', (int) ($config['infaq_bulanan_b'] ?? 0)),
+            ];
+        }
+
+        $selectedUangGedungOption = $selectedUangGedung !== null
+            ? ($uangGedungOptions[array_search($selectedUangGedung, array_column($uangGedungOptions, 'value'), true)] ?? null)
+            : null;
+        $selectedInfaqBulananOption = $selectedInfaqBulanan !== null
+            ? ($infaqBulananOptions[array_search($selectedInfaqBulanan, array_column($infaqBulananOptions, 'value'), true)] ?? null)
+            : null;
+
+        return response()->json([
+            'message' => 'Informasi billing PPDB berhasil dimuat.',
+            'data' => [
+                'is_anak_guru' => (bool) $pendaftar->is_anak_guru,
+                'pilihan_uang_gedung' => $selectedUangGedung,
+                'pilihan_infaq_bulanan' => $selectedInfaqBulanan,
+                'uang_gedung_options' => $uangGedungOptions,
+                'infaq_bulanan_options' => $infaqBulananOptions,
+                'selected_uang_gedung' => $selectedUangGedungOption,
+                'selected_infaq_bulanan' => $selectedInfaqBulananOption,
+                'uang_gedung_label' => $selectedUangGedungOption['label'] ?? null,
+                'uang_gedung_amount' => $selectedUangGedungOption['amount'] ?? null,
+                'infaq_bulanan_label' => $selectedInfaqBulananOption['label'] ?? null,
+                'infaq_bulanan_amount' => $selectedInfaqBulananOption['amount'] ?? null,
+                'perlengkapan_amount' => $config ? (int) ($config['perlengkapan'] ?? 0) : 0,
+                'uang_modul_amount' => $config ? (int) ($config['uang_modul'] ?? 0) : 0,
+            ],
+        ]);
+    }
+
     public function infaqPpdb(Request $request)
     {
         $akun = $this->resolveAuthenticatedPpdbUser();
@@ -754,44 +841,52 @@ class AuthController extends Controller
     {
         $configs = [
             'PAUD' => [
-                'uang_pangkal_a' => 1_000_000,
-                'uang_pangkal_b' => 1_500_000,
-                'perlengkapan' => 300_000,
+                'uang_pangkal_a' => 500000,
+                'uang_pangkal_b' => 500000,
+                'perlengkapan' => 300000,
                 'uang_modul' => 0,
-                'infaq_bulanan_a' => 200_000,
-                'infaq_bulanan_b' => 250_000,
+                'infaq_bulanan_a' => 200000,
+                'infaq_bulanan_b' => 250000,
+            ],
+            'TK' => [
+                'uang_pangkal_a' => 1000000,
+                'uang_pangkal_b' => 1500000,
+                'perlengkapan' => 1200000,
+                'uang_modul' => 0,
+                'infaq_bulanan_a' => 300000,
+                'infaq_bulanan_b' => 350000,
             ],
             'PRATAHFIDZ' => [
-                'uang_pangkal_a' => 1_000_000,
-                'uang_pangkal_b' => 1_500_000,
-                'perlengkapan' => 1_200_000,
-                'uang_modul' => 0,
-                'infaq_bulanan_a' => 300_000,
-                'infaq_bulanan_b' => 350_000,
+                'uang_pangkal_a' => 1800000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 0,
+                'uang_modul' => 200000,
+                'infaq_bulanan_a' => 350000,
+                'infaq_bulanan_b' => 400000,
             ],
             'MTS' => [
-                'uang_pangkal_a' => 1_500_000,
-                'uang_pangkal_b' => 2_000_000,
-                'perlengkapan' => 875_000, // meja, sekat, almari, kasur
-                'uang_modul' => 250_000,
-                'infaq_bulanan_a' => 600_000,
-                'infaq_bulanan_b' => 650_000,
+                'uang_pangkal_a' => 1500000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 875000,
+                'uang_modul' => 250000,
+                'infaq_bulanan_a' => 600000,
+                'infaq_bulanan_b' => 650000,
             ],
             'MA' => [
-                'uang_pangkal_a' => 1_500_000,
-                'uang_pangkal_b' => 2_000_000,
-                'perlengkapan' => 875_000,
-                'uang_modul' => 250_000,
-                'infaq_bulanan_a' => 650_000,
-                'infaq_bulanan_b' => 700_000,
+                'uang_pangkal_a' => 1500000,
+                'uang_pangkal_b' => 2000000,
+                'perlengkapan' => 875000,
+                'uang_modul' => 250000,
+                'infaq_bulanan_a' => 650000,
+                'infaq_bulanan_b' => 700000,
             ],
             'MTQU' => [
-                'uang_pangkal_a' => 1_800_000,
-                'uang_pangkal_b' => 2_000_000,
+                'uang_pangkal_a' => 1800000,
+                'uang_pangkal_b' => 2000000,
                 'perlengkapan' => 0,
-                'uang_modul' => 200_000,
-                'infaq_bulanan_a' => 350_000,
-                'infaq_bulanan_b' => 400_000,
+                'uang_modul' => 200000,
+                'infaq_bulanan_a' => 650000,
+                'infaq_bulanan_b' => 700000,
             ],
         ];
         
