@@ -576,8 +576,8 @@ class PembayaranSppController extends Controller
             'santri.kelas.unit:id_unit,kode_unit,nama_unit',
             'pendaftarPpdb:id_pendaftaran,nama_calon,nomor_induk_generated,no_pendaftaran_final,no_pendaftaran,jenjang,program_pendaftaran,kode_kelas_diterima,id_akun',
             'pendaftarPpdb.akun:id_akun,email',
-            'setting:id_setting,keterangan,jumlah,periode,id_kategori_tagihan',
-            'setting.kategoriTagihan:id_kategori_tagihan,nama_tagihan',
+            'setting:id_setting,keterangan,jumlah,periode,kategori_tagihan_id',
+            'setting.kategoriTagihan:id_kategori,nama_tagihan',
             'kwitansi:id_kwitansi,id_pembayaran,id_petugas,jenis,jumlah,file_path_pdf',
         ])->findOrFail($id);
 
