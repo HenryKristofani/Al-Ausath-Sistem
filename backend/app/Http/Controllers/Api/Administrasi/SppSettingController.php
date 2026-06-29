@@ -158,8 +158,6 @@ class SppSettingController extends Controller
 
     /**
      * Provision tagihan SPP untuk santri aktif berdasarkan setting yang tersedia.
-    /**
-     * Provision tagihan SPP untuk santri aktif berdasarkan setting yang tersedia.
      *
      * POIN 12 — OPTIMASI: Gunakan chunk() agar tidak load semua santri ke memori
      * sekaligus, dan reset static year cache antar-chunk agar tidak stale.
@@ -281,39 +279,30 @@ class SppSettingController extends Controller
 
         $santriQuery->whereRaw("UPPER(COALESCE(status, '')) = ?", ['AKTIF']);
 
-        $hasFilter = false;
+        // Bangun filter secara AND (bukan OR) agar hanya santri yang cocok
+        // dengan SEMUA kriteria setting yang akan ditagih.
         if (!empty($setting->id_santri)) {
             $santriQuery->where('id_santri', $setting->id_santri);
-            $hasFilter = true;
         }
 
         if (!empty($setting->kode_kelas)) {
-            $santriQuery->when($hasFilter, fn ($q) => $q->orWhere('kode_kelas', $setting->kode_kelas), fn ($q) => $q->where('kode_kelas', $setting->kode_kelas));
-            $hasFilter = true;
+            $santriQuery->where('kode_kelas', strtoupper(trim((string) $setting->kode_kelas)));
         }
 
         if (!empty($setting->id_unit)) {
-            $santriQuery->when($hasFilter,
-                fn ($q) => $q->orWhereHas('kelas.unit', fn ($u) => $u->where('id_unit', $setting->id_unit)),
-                fn ($q) => $q->whereHas('kelas.unit', fn ($u) => $u->where('id_unit', $setting->id_unit))
-            );
-            $hasFilter = true;
+            $santriQuery->whereHas('kelas.unit', fn ($u) => $u->where('id_unit', $setting->id_unit));
         }
 
         if (!empty($setting->jenjang)) {
             $jenjang = strtoupper(trim((string) $setting->jenjang));
-            $santriQuery->when($hasFilter,
-                fn ($q) => $q->orWhereHas('kelas.unit', fn ($u) => $u->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang])),
-                fn ($q) => $q->whereHas('kelas.unit', fn ($u) => $u->whereRaw("UPPER(COALESCE(kode_unit, nama_unit, '')) = ?", [$jenjang]))
-            );
-            $hasFilter = true;
+            $santriQuery->whereHas('kelas.unit', fn ($u) => $u->whereRaw(
+                "UPPER(TRIM(COALESCE(kode_unit, ''))) = ?",
+                [$jenjang]
+            ));
         }
 
         if (!empty($setting->id_golongan_spp)) {
-            $santriQuery->when($hasFilter,
-                fn ($q) => $q->orWhere('id_golongan_spp', $setting->id_golongan_spp),
-                fn ($q) => $q->where('id_golongan_spp', $setting->id_golongan_spp)
-            );
+            $santriQuery->where('id_golongan_spp', $setting->id_golongan_spp);
         }
 
         // Hanya ambil kolom yang dibutuhkan — tidak perlu SELECT *
@@ -350,7 +339,6 @@ class SppSettingController extends Controller
             ->all();
 
         // ── Bangun batch rows yang belum ada ─────────────────────────────────
-        $now = now()->toDateTimeString();
         $idSettingVal = $setting->id_setting;
 
         // Map is_anak_guru per santri untuk nominal kalkulasi
@@ -373,7 +361,6 @@ class SppSettingController extends Controller
                     'tanggal_bayar'   => null,
                     'metode_bayar'    => null,
                     'status'          => 'menunggu_pembayaran',
-                    'created_at'      => $now,
                 ];
             }
         }
