@@ -320,26 +320,6 @@
                 </tr>
             </tbody>
         </table>
-
-        <div class="signature-wrap">
-            <table class="signature-table">
-                <tr>
-                    <td width="50%" class="text-center">
-                        <div>Mengetahui</div>
-                        <div>Orang Tua / Wali</div>
-                        <div class="signature-line"></div>
-                    </td>
-                    <td width="50%" class="text-center">
-                        <div>Diberikan pada {{ $tanggalTerbit }}</div>
-                        <div>Wali Kelas</div>
-                        <div class="signature-line"></div>
-                        <div style="margin-top: 10px;">{{ $waliKelasNama }}</div>
-                    </td>
-                </tr>
-            </table>
-        </div>
-    </div>
-
     @if ($raport->semester % 2 != 0)
         @include('pdf.raport_page2_ganjil')
     @else
