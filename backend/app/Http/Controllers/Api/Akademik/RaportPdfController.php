@@ -168,6 +168,7 @@ class RaportPdfController extends Controller
                 'ns.nilai_akhir_mapel',
                 'ns.nilai_rapor_tampil',
                 'ns.flag_warna_rapor',
+                'ns.keterangan',
             ])
             ->orderBy('mp.urutan')
             ->orderBy('mp.nama_mapel')

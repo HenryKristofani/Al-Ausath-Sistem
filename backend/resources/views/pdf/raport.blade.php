@@ -294,7 +294,7 @@
                     <td class="subject-name">{{ $row->nama_mapel ?? $row->kode_mapel }}</td>
                     <td>{{ rtrim(rtrim(number_format((float) ($row->nilai_rapor_tampil ?? 0), 2, ',', '.'), '0'), ',') }}</td>
                     <td class="subject-huruf">{{ $terbilangNilai($row->nilai_rapor_tampil ?? 0) }}</td>
-                    <td class="subject-note">{{ $row->keterangan_mapel ?: ($row->predikat ?? '') }}</td>
+                    <td class="subject-note">{{ $row->keterangan ?: ($row->predikat ?? '') }}</td>
                 </tr>
                 @empty
                 <tr>
