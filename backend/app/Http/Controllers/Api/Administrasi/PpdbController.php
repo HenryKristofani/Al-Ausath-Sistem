@@ -269,6 +269,9 @@ class PpdbController extends Controller
             'status_verifikasi' => ['nullable', 'string', 'max:30'],
             'tanggal_daftar' => ['nullable', 'date'],
             'tanggal_pengumuman' => ['nullable', 'date'],
+            'is_anak_guru' => ['nullable', 'boolean'],
+            'pilihan_uang_gedung' => ['nullable', 'integer', 'in:1,2'],
+            'pilihan_infaq_bulanan' => ['nullable', 'integer', 'in:1,2'],
         ]);
 
         $tanggalDaftar = isset($validated['tanggal_daftar'])
@@ -418,12 +421,6 @@ class PpdbController extends Controller
     {
         $pendaftar = $this->resolvePendaftarByIdentifier($id);
 
-        if (!$this->isBisaUploadBerkas($pendaftar)) {
-            return response()->json([
-                'message' => 'Pendaftar dalam kota Karanganyar dimohon datang langsung ke kantor. Upload berkas hanya untuk pendaftar luar kota.',
-            ], 422);
-        }
-
         $validated = $request->validate([
             'jenis_berkas' => ['required', 'string', 'max:80'],
             'file_path' => ['nullable', 'string'],
@@ -460,12 +457,13 @@ class PpdbController extends Controller
             ]
         );
 
-        if (in_array($validated['jenis_berkas'], ['akta', 'kk', 'surat_rekomendasi', 'surat_pernyataan'], true)) {
+        if (in_array($validated['jenis_berkas'], ['akta', 'kk', 'surat_rekomendasi', 'surat_pernyataan', 'bukti_ortu_guru'], true)) {
             $fieldMap = [
                 'akta' => 'file_akta_path',
                 'kk' => 'file_kk_path',
                 'surat_rekomendasi' => 'file_surat_rekomendasi_path',
                 'surat_pernyataan' => 'surat_pernyataan_file_path',
+                'bukti_ortu_guru' => 'bukti_ortu_guru_path',
             ];
 
             $pendaftar->update([
