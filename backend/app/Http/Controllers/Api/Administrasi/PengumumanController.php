@@ -20,8 +20,9 @@ class PengumumanController extends Controller
     public function indexPublic(Request $request): JsonResponse
     {
         $query = Pengumuman::query()
-            ->with('lampirans')
+            ->with(['lampirans', 'unit'])
             ->where('is_aktif', true)
+            ->when($request->filled('id_unit'), fn ($q) => $q->where('id_unit', $request->id_unit))
             ->when($request->filled('kategori'), fn ($q) => $q->where('kategori', $request->kategori))
             ->when(
                 $request->boolean('expired', false) === false,
@@ -65,7 +66,8 @@ class PengumumanController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Pengumuman::query()
-            ->with('lampirans')
+            ->with(['lampirans', 'unit'])
+            ->when($request->filled('id_unit'), fn ($q) => $q->where('id_unit', $request->id_unit))
             ->when($request->filled('kategori'), fn ($q) => $q->where('kategori', $request->kategori))
             ->when($request->filled('is_aktif'), fn ($q) => $q->where('is_aktif', filter_var($request->is_aktif, FILTER_VALIDATE_BOOLEAN)))
             ->orderByDesc('is_pinned')
@@ -83,6 +85,7 @@ class PengumumanController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'id_unit'         => ['nullable', 'integer', 'exists:data_unit,id_unit'],
             'judul'           => ['required', 'string', 'max:255'],
             'konten'          => ['required', 'string'],
             'lampiran'        => ['nullable', 'file', 'max:10240'],
@@ -144,6 +147,7 @@ class PengumumanController extends Controller
         $pengumuman = Pengumuman::with('lampirans')->findOrFail($id);
 
         $validated = $request->validate([
+            'id_unit'         => ['nullable', 'integer', 'exists:data_unit,id_unit'],
             'judul'           => ['sometimes', 'string', 'max:255'],
             'konten'          => ['sometimes', 'string'],
             'lampiran'        => ['nullable', 'file', 'max:10240'],
@@ -228,7 +232,7 @@ class PengumumanController extends Controller
         $path = $attachment?->path ?? $pengumuman->lampiran_path;
 
         $data['lampiran_url'] = $path
-            ? Storage::url($path)
+            ? asset('storage/' . $path)
             : null;
 
         return $data;

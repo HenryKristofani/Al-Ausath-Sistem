@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
 use App\Http\Controllers\Api\Administrasi\PpdbPeriodController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\Administrasi\RekeningBankController;
+use App\Http\Controllers\Api\ProfilWebController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -61,6 +62,8 @@ Route::prefix('ppdb')->group(function () {
 // Public route untuk landing page — tanpa auth
 Route::get('/pengumuman', [PengumumanController::class, 'indexPublic']);
 Route::get('/pengumuman/{id}', [PengumumanController::class, 'showPublic']);
+Route::get('/profil-web', [ProfilWebController::class, 'index']);
+Route::get('/unit', [\App\Http\Controllers\Api\DataMaster\DataUnitController::class, 'indexPublic']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -377,6 +380,14 @@ Route::prefix('administrasi')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/{id}', [PengumumanController::class, 'show']);
         Route::put('/{id}', [PengumumanController::class, 'update']);
         Route::delete('/{id}', [PengumumanController::class, 'destroy']);
+    });
+
+    Route::prefix('profil-web')->group(function () {
+        Route::get('/', [ProfilWebController::class, 'index']);
+        Route::post('/', [ProfilWebController::class, 'store']);
+        Route::get('/{id}', [ProfilWebController::class, 'show']);
+        Route::put('/{id}', [ProfilWebController::class, 'update']);
+        Route::delete('/{id}', [ProfilWebController::class, 'destroy']);
     });
 
     Route::prefix('spp')->group(function () {

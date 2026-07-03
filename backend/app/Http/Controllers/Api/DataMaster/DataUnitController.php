@@ -44,6 +44,19 @@ class DataUnitController extends Controller
     }
 
     /**
+     * List data unit for public (landing page).
+     */
+    public function indexPublic(Request $request): JsonResponse
+    {
+        $units = DataUnit::where('status', 'AKTIF')
+            ->orderBy('kode_unit')
+            ->orderBy('nama_unit')
+            ->get();
+
+        return response()->json(['data' => $units]);
+    }
+
+    /**
      * Simpan data unit baru.
      */
     public function store(Request $request): JsonResponse

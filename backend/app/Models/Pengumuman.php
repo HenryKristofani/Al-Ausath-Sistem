@@ -11,6 +11,7 @@ class Pengumuman extends Model
     protected $table = 'pengumuman';
 
     protected $fillable = [
+        'id_unit',
         'judul',
         'konten',
         'lampiran_path',
@@ -46,5 +47,10 @@ class Pengumuman extends Model
         }
 
         return $this->lampirans()->latest()->first();
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(\App\Models\DataUnit::class, 'id_unit');
     }
 }
