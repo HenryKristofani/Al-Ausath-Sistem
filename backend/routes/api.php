@@ -153,10 +153,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         Route::get('/raport/catatan-wali', [RaportCatatanWaliController::class, 'show']);
         Route::post('/raport/catatan-wali', [RaportCatatanWaliController::class, 'upsert']);
+        Route::post('/raport/catatan-wali/bulk', [RaportCatatanWaliController::class, 'bulkUpsert']);
 
         Route::get('/raport', [RaportGenerateController::class, 'index']);
         Route::get('/raport/show', [RaportGenerateController::class, 'show']);
         Route::post('/raport/generate', [RaportGenerateController::class, 'generate']);
+        Route::post('/raport/generate/bulk', [RaportGenerateController::class, 'generateBulk']);
         Route::post('/raport/rank', [RaportGenerateController::class, 'rank']);
         Route::post('/rangking-kelas/generate', [RangkingKelasController::class, 'generate']);
         Route::post('/raport/publish', [RaportGenerateController::class, 'publish']);
