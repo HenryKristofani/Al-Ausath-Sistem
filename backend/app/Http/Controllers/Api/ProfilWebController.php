@@ -30,6 +30,7 @@ class ProfilWebController extends Controller
             'misi' => 'nullable|array',
             'sejarah' => 'nullable|string',
             'program_unggulan' => 'nullable|array',
+            'fasilitas' => 'nullable|array',
         ]);
 
         $profil = ProfilWeb::create($validated);
@@ -60,6 +61,7 @@ class ProfilWebController extends Controller
             'misi' => 'nullable|array',
             'sejarah' => 'nullable|string',
             'program_unggulan' => 'nullable|array',
+            'fasilitas' => 'nullable|array',
         ]);
 
         $profil->update($validated);

@@ -20,10 +20,12 @@ class ProfilWeb extends Model
         'misi',
         'sejarah',
         'program_unggulan',
+        'fasilitas',
     ];
 
     protected $casts = [
         'misi' => 'array',
         'program_unggulan' => 'array',
+        'fasilitas' => 'array',
     ];
 }
