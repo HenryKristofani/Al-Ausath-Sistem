@@ -111,4 +111,80 @@ class RaportCatatanWaliController extends Controller
             'data' => $raport->fresh(),
         ]);
     }
+    /**
+     * Simpan catatan wali massal.
+     */
+    public function bulkUpsert(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'kode_kelas' => ['required', 'string', 'max:10', 'exists:data_kelas,kode_kelas'],
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+            'santris' => ['required', 'array'],
+            'santris.*.nomor_induk' => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+            'santris.*.catatan_wali' => ['nullable', 'string'],
+            'santris.*.id_wali_kelas' => ['nullable', 'integer', 'exists:data_petugas,id_petugas'],
+            'santris.*.keseharian_kebersihan' => ['nullable', 'string', 'max:1'],
+            'santris.*.keseharian_kerapian' => ['nullable', 'string', 'max:1'],
+            'santris.*.keseharian_keterampilan' => ['nullable', 'string', 'max:1'],
+            'santris.*.keseharian_kelakuan' => ['nullable', 'string', 'max:1'],
+            'santris.*.keseharian_kerajinan' => ['nullable', 'string', 'max:1'],
+            'santris.*.keseharian_kedisiplinan' => ['nullable', 'string', 'max:1'],
+            'santris.*.keseharian_ketaatan' => ['nullable', 'string', 'max:1'],
+            'santris.*.ekstrakurikuler' => ['nullable', 'array'],
+            'santris.*.ekstrakurikuler.*.nama' => ['required_with:santris.*.ekstrakurikuler', 'string', 'max:100'],
+            'santris.*.ekstrakurikuler.*.nilai' => ['required_with:santris.*.ekstrakurikuler', 'string', 'max:10'],
+        ]);
+
+        $keseharianFields = [
+            'keseharian_kebersihan',
+            'keseharian_kerapian',
+            'keseharian_keterampilan',
+            'keseharian_kelakuan',
+            'keseharian_kerajinan',
+            'keseharian_kedisiplinan',
+            'keseharian_ketaatan',
+        ];
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $keseharianFields) {
+            foreach ($validated['santris'] as $santriData) {
+                $raport = DataRaport::query()->firstOrCreate(
+                    [
+                        'nomor_induk' => $santriData['nomor_induk'],
+                        'tahun_ajaran' => $validated['tahun_ajaran'],
+                        'semester' => $validated['semester'],
+                    ],
+                    ['kode_kelas' => $validated['kode_kelas']]
+                );
+
+                $updatePayload = [
+                    'kode_kelas'  => $validated['kode_kelas'],
+                ];
+
+                if (array_key_exists('catatan_wali', $santriData)) {
+                    $updatePayload['catatan_wali'] = $santriData['catatan_wali'];
+                }
+
+                if (array_key_exists('id_wali_kelas', $santriData)) {
+                    $updatePayload['id_wali_kelas'] = $santriData['id_wali_kelas'];
+                }
+
+                foreach ($keseharianFields as $field) {
+                    if (array_key_exists($field, $santriData)) {
+                        $updatePayload[$field] = $santriData[$field];
+                    }
+                }
+
+                if (array_key_exists('ekstrakurikuler', $santriData)) {
+                    $updatePayload['ekstrakurikuler'] = $santriData['ekstrakurikuler'];
+                }
+
+                $raport->update($updatePayload);
+            }
+        });
+
+        return response()->json([
+            'message' => 'Catatan wali massal berhasil disimpan.',
+        ]);
+    }
 }

@@ -127,14 +127,56 @@ class RaportGenerateController extends Controller
             'semester' => ['required', 'integer', 'in:1,2'],
         ]);
 
+        $result = $this->doGenerate(
+            $validated['nomor_induk'],
+            $validated['tahun_ajaran'],
+            $validated['semester']
+        );
+
+        return response()->json([
+            'message' => 'Rekap raport berhasil digenerate (DRAFT).',
+            'data' => $result['raport'],
+            'rekap' => $result['rekap'],
+        ]);
+    }
+
+    public function generateBulk(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tahun_ajaran' => ['required', 'string', 'max:20'],
+            'semester' => ['required', 'integer', 'in:1,2'],
+            'nomor_induks' => ['required', 'array'],
+            'nomor_induks.*' => ['required', 'string', 'max:20', 'exists:data_santri,nomor_induk'],
+        ]);
+
+        $results = [];
+        \Illuminate\Support\Facades\DB::transaction(function () use ($validated, &$results) {
+            foreach ($validated['nomor_induks'] as $nomorInduk) {
+                $res = $this->doGenerate(
+                    $nomorInduk,
+                    $validated['tahun_ajaran'],
+                    $validated['semester']
+                );
+                $results[] = $res['raport'];
+            }
+        });
+
+        return response()->json([
+            'message' => 'Raport massal berhasil digenerate.',
+            'data' => $results,
+        ]);
+    }
+
+    private function doGenerate(string $nomorInduk, string $tahunAjaran, int $semester): array
+    {
         $santri = DataSantri::query()
-            ->where('nomor_induk', $validated['nomor_induk'])
+            ->where('nomor_induk', $nomorInduk)
             ->firstOrFail();
 
         $nilaiRows = DB::table('data_nilai_siswa')
-            ->where('nomor_induk', $validated['nomor_induk'])
-            ->where('tahun_ajaran', $validated['tahun_ajaran'])
-            ->where('semester', $validated['semester'])
+            ->where('nomor_induk', $nomorInduk)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where('semester', $semester)
             ->whereNotNull('nilai_rapor_tampil')
             ->get(['kode_mapel', 'nilai_rapor_tampil', 'flag_warna_rapor']);
 
@@ -144,16 +186,16 @@ class RaportGenerateController extends Controller
             : 0.0;
 
         $absensi = $this->buildAbsensiSummary(
-            nomorInduk: $validated['nomor_induk'],
+            nomorInduk: $nomorInduk,
             kodeKelas: (string) $santri->kode_kelas,
-            tahunAjaran: $validated['tahun_ajaran'],
-            semester: (int) $validated['semester']
+            tahunAjaran: $tahunAjaran,
+            semester: $semester
         );
 
         $akhlakRows = NilaiAkhlak::query()
-            ->where('nomor_induk', $validated['nomor_induk'])
-            ->where('tahun_ajaran', $validated['tahun_ajaran'])
-            ->where('semester', $validated['semester'])
+            ->where('nomor_induk', $nomorInduk)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where('semester', $semester)
             ->orderBy('aspek')
             ->get(['aspek', 'nilai_angka', 'deskripsi']);
 
@@ -162,9 +204,9 @@ class RaportGenerateController extends Controller
             : null;
 
         $existing = DataRaport::query()
-            ->where('nomor_induk', $validated['nomor_induk'])
-            ->where('tahun_ajaran', $validated['tahun_ajaran'])
-            ->where('semester', $validated['semester'])
+            ->where('nomor_induk', $nomorInduk)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->where('semester', $semester)
             ->first();
 
         // Resolve id_wali_kelas:
@@ -180,9 +222,9 @@ class RaportGenerateController extends Controller
 
         $raport = DataRaport::updateOrCreate(
             [
-                'nomor_induk' => $validated['nomor_induk'],
-                'tahun_ajaran' => $validated['tahun_ajaran'],
-                'semester' => $validated['semester'],
+                'nomor_induk' => $nomorInduk,
+                'tahun_ajaran' => $tahunAjaran,
+                'semester' => $semester,
             ],
             [
                 'kode_kelas' => $santri->kode_kelas,
@@ -201,9 +243,8 @@ class RaportGenerateController extends Controller
             ]
         );
 
-        return response()->json([
-            'message' => 'Rekap raport berhasil digenerate (DRAFT).',
-            'data' => $raport,
+        return [
+            'raport' => $raport,
             'rekap' => [
                 'nilai_mapel_count' => $nilaiRows->count(),
                 'jumlah_nilai' => $this->roundHalfUp($jumlahNilai, 2),
@@ -214,7 +255,7 @@ class RaportGenerateController extends Controller
                     'items' => $akhlakRows,
                 ],
             ],
-        ]);
+        ];
     }
 
     public function rank(Request $request): JsonResponse

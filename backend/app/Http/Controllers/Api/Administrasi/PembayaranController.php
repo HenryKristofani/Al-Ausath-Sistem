@@ -144,42 +144,101 @@ class PembayaranController extends Controller
 
         $santriStats = [];
         $ppdbStats = [];
+
+        // Map id_pendaftaran to id_santri for linked accounts to ensure they are merged
+        $pendaftaranLinks = DB::table('ppdb_pendaftar')
+            ->whereNotNull('id_santri')
+            ->pluck('id_santri', 'id_pendaftaran')
+            ->toArray();
+
         foreach ($stats as $row) {
             $tagihan = (float) $row->total_tagihan;
             $dibayar = (float) $row->total_dibayar;
             $tunggakan = max($tagihan - $dibayar, 0);
+            $hasMenunggu = (bool) $row->has_menunggu;
+            $count = (int) $row->count_invoice;
 
-            $status = 'menunggu_pembayaran';
-            if ($tagihan > 0) {
-                if ($tunggakan <= 0) {
-                    $status = 'lunas';
-                } elseif ($row->has_menunggu) {
-                    $status = 'menunggu_konfirmasi';
-                }
+            // Determine if this row belongs to a santri (directly or via linked pendaftaran)
+            $targetSantriId = null;
+            if ($row->id_santri) {
+                $targetSantriId = $row->id_santri;
+            } elseif ($row->id_pendaftaran && isset($pendaftaranLinks[$row->id_pendaftaran])) {
+                $targetSantriId = $pendaftaranLinks[$row->id_pendaftaran];
             }
 
-            $statData = [
-                'tagihan' => $tagihan,
-                'dibayar' => $dibayar,
-                'tunggakan' => $tunggakan,
-                'status' => $status,
-                'count' => $row->count_invoice,
-            ];
-
-            if ($row->id_santri) {
-                $santriStats[$row->id_santri] = $statData;
+            if ($targetSantriId) {
+                if (!isset($santriStats[$targetSantriId])) {
+                    $santriStats[$targetSantriId] = [
+                        'tagihan' => 0.0,
+                        'dibayar' => 0.0,
+                        'tunggakan' => 0.0,
+                        'status' => 'menunggu_pembayaran',
+                        'has_menunggu' => false,
+                        'count' => 0,
+                    ];
+                }
+                $santriStats[$targetSantriId]['tagihan'] += $tagihan;
+                $santriStats[$targetSantriId]['dibayar'] += $dibayar;
+                $santriStats[$targetSantriId]['tunggakan'] += $tunggakan;
+                $santriStats[$targetSantriId]['count'] += $count;
+                if ($hasMenunggu) {
+                    $santriStats[$targetSantriId]['has_menunggu'] = true;
+                }
             } elseif ($row->id_pendaftaran) {
-                $ppdbStats[$row->id_pendaftaran] = $statData;
+                $idPendaftaran = $row->id_pendaftaran;
+                if (!isset($ppdbStats[$idPendaftaran])) {
+                    $ppdbStats[$idPendaftaran] = [
+                        'tagihan' => 0.0,
+                        'dibayar' => 0.0,
+                        'tunggakan' => 0.0,
+                        'status' => 'menunggu_pembayaran',
+                        'has_menunggu' => false,
+                        'count' => 0,
+                    ];
+                }
+                $ppdbStats[$idPendaftaran]['tagihan'] += $tagihan;
+                $ppdbStats[$idPendaftaran]['dibayar'] += $dibayar;
+                $ppdbStats[$idPendaftaran]['tunggakan'] += $tunggakan;
+                $ppdbStats[$idPendaftaran]['count'] += $count;
+                if ($hasMenunggu) {
+                    $ppdbStats[$idPendaftaran]['has_menunggu'] = true;
+                }
             }
         }
 
+        // Resolve initial status for santriStats
+        foreach ($santriStats as $idSantri => &$sStat) {
+            $sStat['status'] = 'menunggu_pembayaran';
+            if ($sStat['tagihan'] > 0) {
+                if ($sStat['tunggakan'] <= 0) {
+                    $sStat['status'] = 'lunas';
+                } elseif ($sStat['has_menunggu']) {
+                    $sStat['status'] = 'menunggu_konfirmasi';
+                }
+            }
+        }
+        unset($sStat);
+
+        // Resolve initial status for ppdbStats
+        foreach ($ppdbStats as $idPendaftaran => &$pStat) {
+            $pStat['status'] = 'menunggu_pembayaran';
+            if ($pStat['tagihan'] > 0) {
+                if ($pStat['tunggakan'] <= 0) {
+                    $pStat['status'] = 'lunas';
+                } elseif ($pStat['has_menunggu']) {
+                    $pStat['status'] = 'menunggu_konfirmasi';
+                }
+            }
+        }
+        unset($pStat);
+
         foreach ($bebasStatsRaw as $idSantri => $bebasRow) {
             if (isset($santriStats[$idSantri])) {
-                $santriStats[$idSantri]['tagihan'] += (float) $bebasRow->total_tagihan;
-                $santriStats[$idSantri]['dibayar'] += (float) $bebasRow->total_dibayar;
+                $santriStats[$idSantri]['tagihan']   += (float) $bebasRow->total_tagihan;
+                $santriStats[$idSantri]['dibayar']   += (float) $bebasRow->total_dibayar;
                 $santriStats[$idSantri]['tunggakan'] += (float) $bebasRow->total_sisa;
-                $santriStats[$idSantri]['count'] += $bebasRow->count_invoice;
-                
+                $santriStats[$idSantri]['count']     += $bebasRow->count_invoice;
+
                 if ($santriStats[$idSantri]['tagihan'] > 0) {
                     if ($santriStats[$idSantri]['tunggakan'] <= 0) {
                         $santriStats[$idSantri]['status'] = 'lunas';
@@ -195,11 +254,11 @@ class PembayaranController extends Controller
                     $status = 'lunas';
                 }
                 $santriStats[$idSantri] = [
-                    'tagihan' => (float) $bebasRow->total_tagihan,
-                    'dibayar' => (float) $bebasRow->total_dibayar,
+                    'tagihan'   => (float) $bebasRow->total_tagihan,
+                    'dibayar'   => (float) $bebasRow->total_dibayar,
                     'tunggakan' => (float) $bebasRow->total_sisa,
-                    'status' => $status,
-                    'count' => $bebasRow->count_invoice,
+                    'status'    => $status,
+                    'count'     => $bebasRow->count_invoice,
                 ];
             }
         }
@@ -570,21 +629,20 @@ class PembayaranController extends Controller
         ] : null;
 
         // Calculate summary from merged data
-        $totalTagihan = (float) $allInvoices
-            ->reject(fn ($item) => in_array($item['status_key'], ['dibatalkan']))
-            ->sum('jumlah_tagihan');
+        // Exclude canceled items from all three totals so ringkasan cards
+        // always match the per-row values shown in the invoice table.
+        $activeInvoices = $allInvoices
+            ->reject(fn ($item) => in_array($item['status_key'], ['dibatalkan']));
 
-        $totalDibayar = (float) $allInvoices
-            ->filter(fn ($item) => $item['status_key'] === 'lunas')
-            ->sum('jumlah_dibayar');
-
-        $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
+        $totalTagihan   = (float) $activeInvoices->sum('jumlah_tagihan');
+        $totalDibayar   = (float) $activeInvoices->sum('jumlah_dibayar');
+        $totalTunggakan = (float) $activeInvoices->sum('jumlah_tunggakan');
 
         return response()->json([
             'data' => [
                 'profil' => [
                     'id'           => $isSantri ? $linkedSantriId : $linkedPendaftaranId,
-                    'sumber'       => $pendaftar ? 'ppdb' : 'santri',
+                    'sumber'       => $isSantri ? 'santri' : 'ppdb',
                     'nama_lengkap' => $santri?->nama_lengkap_santri ?? $pendaftar?->nama_calon,
                     'nomor_induk'  => $santri?->nomor_induk
                         ?? $pendaftar?->nomor_induk_generated
@@ -1036,31 +1094,57 @@ class PembayaranController extends Controller
      */
     public function ringkasan(): JsonResponse
     {
+        $canceledStatuses = ['ditolak', 'dibatalkan', 'batal'];
+
+        // ── pembayaran_spp ──────────────────────────────────────────────────────
         $base = PembayaranSpp::query();
 
-        $total = (clone $base)->count();
-        $ppdb = (clone $base)->whereNotNull('id_pendaftaran')->count();
-        $spp = (clone $base)->whereNull('id_pendaftaran')->count();
+        $total          = (clone $base)->count();
+        $ppdb           = (clone $base)->whereNotNull('id_pendaftaran')->count();
+        $spp            = (clone $base)->whereNull('id_pendaftaran')->count();
+        $menunggu       = (clone $base)->where('status', 'menunggu_verifikasi')->count();
+        $terverifikasi  = (clone $base)->where('status', 'terverifikasi')->count();
+        $ditolak        = (clone $base)->whereIn('status', $canceledStatuses)->count();
 
-        $menunggu = (clone $base)->where('status', 'menunggu_verifikasi')->count();
-        $terverifikasi = (clone $base)->where('status', 'terverifikasi')->count();
-        $ditolak = (clone $base)->where('status', 'ditolak')->count();
+        // Total tagihan SPP (exclude yg dibatalkan)
+        $nominalSppTagihan = (float) ((clone $base)
+            ->whereNotIn('status', $canceledStatuses)
+            ->sum('nominal_bayar') ?? 0);
 
-        $nominalTotal = (float) ((clone $base)->sum('nominal_bayar') ?? 0);
-        $nominalTerverifikasi = (float) ((clone $base)
+        // Total dibayar SPP (hanya yg terverifikasi = lunas)
+        $nominalSppDibayar = (float) ((clone $base)
             ->where('status', 'terverifikasi')
             ->sum('nominal_bayar') ?? 0);
 
+        // ── administrasi_bebas ──────────────────────────────────────────────────
+        $bebasStats = DB::table('administrasi_bebas')
+            ->selectRaw('SUM(total_tagihan) as total_tagihan')
+            ->selectRaw('SUM(total_tagihan - sisa) as total_dibayar')
+            ->first();
+
+        $nominalBebasTagihan = (float) ($bebasStats->total_tagihan ?? 0);
+        $nominalBebasDibayar = (float) ($bebasStats->total_dibayar ?? 0);
+
+        // ── Grand totals (SPP + Bebas) ──────────────────────────────────────────
+        $grandTagihan   = $nominalSppTagihan + $nominalBebasTagihan;
+        $grandDibayar   = $nominalSppDibayar + $nominalBebasDibayar;
+        $grandTunggakan = max($grandTagihan - $grandDibayar, 0);
+
         return response()->json([
             'data' => [
-                'total_transaksi' => $total,
-                'total_ppdb' => $ppdb,
-                'total_spp' => $spp,
+                'total_transaksi'           => $total,
+                'total_ppdb'                => $ppdb,
+                'total_spp'                 => $spp,
                 'status_menunggu_verifikasi' => $menunggu,
-                'status_terverifikasi' => $terverifikasi,
-                'status_ditolak' => $ditolak,
-                'nominal_total' => $nominalTotal,
-                'nominal_terverifikasi' => $nominalTerverifikasi,
+                'status_terverifikasi'      => $terverifikasi,
+                'status_ditolak'            => $ditolak,
+                // Legacy fields (tetap ada untuk kompatibilitas)
+                'nominal_total'             => $grandTagihan,
+                'nominal_terverifikasi'     => $grandDibayar,
+                // Explicit totals (dipakai frontend untuk kartu ringkasan)
+                'total_tagihan'             => $grandTagihan,
+                'total_dibayar'             => $grandDibayar,
+                'total_tunggakan'           => $grandTunggakan,
             ],
         ]);
     }
@@ -1168,10 +1252,10 @@ class PembayaranController extends Controller
         $semuaTagihan = array_merge($sppTagihan, $bebasTagihan);
         usort($semuaTagihan, fn ($a, $b) => strcmp((string)($b['waktu_invoice'] ?? ''), (string)($a['waktu_invoice'] ?? '')));
 
-        // Ringkasan
-        $totalTagihan  = array_sum(array_column($semuaTagihan, 'jumlah_tagihan'));
-        $totalDibayar  = array_sum(array_column($semuaTagihan, 'jumlah_dibayar'));
-        $totalTunggakan = max($totalTagihan - $totalDibayar, 0);
+        // Ringkasan — sum langsung dari kolom agar konsisten dengan nilai per baris
+        $totalTagihan   = array_sum(array_column($semuaTagihan, 'jumlah_tagihan'));
+        $totalDibayar   = array_sum(array_column($semuaTagihan, 'jumlah_dibayar'));
+        $totalTunggakan = array_sum(array_column($semuaTagihan, 'jumlah_tunggakan'));
 
         return response()->json([
             'data' => [
