@@ -21,6 +21,7 @@ class DataSantri extends Model
         'tempat_lahir',
         'tanggal_lahir',
         'agama',
+        'hobi',
         'berat_badan',
         'tinggi_badan',
         'gol_darah',
