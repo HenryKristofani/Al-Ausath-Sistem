@@ -21,11 +21,13 @@ class SppSetting extends Model
         'jumlah',
         'periode',
         'keterangan',
+        'discount',
         'aktif',
     ];
 
     protected $casts = [
         'jumlah' => 'decimal:2',
+        'discount' => 'decimal:2',
         'aktif'  => 'boolean',
     ];
 

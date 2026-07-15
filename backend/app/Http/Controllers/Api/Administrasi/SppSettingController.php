@@ -32,6 +32,7 @@ class SppSettingController extends Controller
             ->with(['unit', 'kelas', 'kategoriTagihan', 'golonganSpp'])
             ->when($request->filled('jenjang'), fn ($q) => $q->whereRaw('UPPER(jenjang) = ?', [strtoupper((string) $request->jenjang)]))
             ->when($request->filled('id_unit'), fn ($q) => $q->where('id_unit', $request->id_unit))
+            ->when($request->filled('discount'), fn ($q) => $q->where('discount', $request->discount))
             ->when($request->filled('id_golongan_spp'), fn ($q) => $q->where('id_golongan_spp', $request->id_golongan_spp))
             ->when($request->filled('kode_kelas'), fn ($q) => $q->where('kode_kelas', strtoupper((string) $request->kode_kelas)))
             ->orderByDesc('id_setting');
@@ -45,14 +46,19 @@ class SppSettingController extends Controller
     public function kelasIndex(Request $request): JsonResponse
     {
         $query = DataKelas::query()
-            ->select(['id_kelas', 'kode_unit', 'kode_kelas', 'nama_kelas', 'tahun_ajaran', 'status'])
+            ->select(['id_kelas', 'kode_unit', 'kode_kelas', 'nama_kelas', 'tahun_ajaran', 'status', 'discount'])
             ->whereRaw('UPPER(status) = ?', ['AKTIF'])
             ->when($request->filled('kode_unit'), fn ($q) => $q->where('kode_unit', strtoupper((string) $request->kode_unit)))
             ->when($request->filled('tahun_ajaran'), fn ($q) => $q->where('tahun_ajaran', (string) $request->tahun_ajaran))
             ->orderBy('kode_unit')
             ->orderBy('nama_kelas');
 
-        if (Schema::hasColumn('data_kelas', 'is_deleted')) {
+        // Cache INFORMATION_SCHEMA check — avoid hitting it on every request
+        static $kelasHasIsDeleted = null;
+        if ($kelasHasIsDeleted === null) {
+            $kelasHasIsDeleted = Schema::hasColumn('data_kelas', 'is_deleted');
+        }
+        if ($kelasHasIsDeleted) {
             $query->where('is_deleted', false);
         }
 
@@ -83,6 +89,7 @@ class SppSettingController extends Controller
             'jenjang' => ['nullable', 'string', 'max:20'],
             'kategori_tagihan_id' => ['nullable', 'integer', 'exists:data_kategori_tagihan,id_kategori'],
             'jumlah' => ['nullable', 'numeric'],
+            'discount' => ['nullable', 'numeric'],
             'periode' => ['nullable', 'string', 'max:20'],
             'keterangan' => ['nullable', 'string'],
             'aktif' => ['nullable', 'boolean'],
@@ -124,6 +131,7 @@ class SppSettingController extends Controller
             'jumlah' => ['nullable', 'numeric'],
             'periode' => ['nullable', 'string', 'max:20'],
             'keterangan' => ['nullable', 'string'],
+            "discount" => ['nullable', 'numeric'],
             'aktif' => ['nullable', 'boolean'],
         ]);
 
@@ -170,11 +178,18 @@ class SppSettingController extends Controller
             'id_unit'        => ['nullable', 'integer', 'exists:data_unit,id_unit'],
             'id_golongan_spp' => ['nullable', 'integer', 'exists:spp_golongan,id_golongan'],
             'jenjang'        => ['nullable', 'string', 'max:20'],
+            'discount'       => ['nullable', 'numeric'],
         ]);
 
         $query = DataSantri::query()->with(['kelas.unit']);
 
-        if (Schema::hasColumn('data_santri', 'is_deleted')) {
+        // Cache INFORMATION_SCHEMA check to avoid repeated slow lookups
+        static $santriHasIsDeleted = null;
+        if ($santriHasIsDeleted === null) {
+            $santriHasIsDeleted = Schema::hasColumn('data_santri', 'is_deleted');
+        }
+
+        if ($santriHasIsDeleted) {
             $query->where(function ($subQuery) {
                 $subQuery->whereNull('is_deleted')->orWhere('is_deleted', false);
             });
@@ -207,6 +222,10 @@ class SppSettingController extends Controller
             });
         }
 
+        if (!empty($validated['discount'])) {
+            $query->where('discount', $validated['discount']);
+        }
+
         $service = app(SppBillingService::class);
         $processed = 0;
 
@@ -233,6 +252,7 @@ class SppSettingController extends Controller
                     'id_unit'        => $validated['id_unit'] ?? null,
                     'id_golongan_spp' => $validated['id_golongan_spp'] ?? null,
                     'jenjang'        => $validated['jenjang'] ?? null,
+                    'discount'       => $validated['discount'] ?? null,
                 ],
             ],
         ]);
@@ -271,7 +291,12 @@ class SppSettingController extends Controller
         // ── Bangun query santri ───────────────────────────────────────────────
         $santriQuery = DataSantri::query()->with(['kelas.unit']);
 
-        if (Schema::hasColumn('data_santri', 'is_deleted')) {
+        static $santriHasIsDeletedField = null;
+        if ($santriHasIsDeletedField === null) {
+            $santriHasIsDeletedField = Schema::hasColumn('data_santri', 'is_deleted');
+        }
+
+        if ($santriHasIsDeletedField) {
             $santriQuery->where(function ($subQuery) {
                 $subQuery->whereNull('is_deleted')->orWhere('is_deleted', false);
             });
@@ -360,7 +385,7 @@ class SppSettingController extends Controller
                     'nominal_bayar'   => $nominal,
                     'tanggal_bayar'   => null,
                     'metode_bayar'    => null,
-                    'status'          => 'menunggu_pembayaran',
+                    'status'          => 'menunggu_pembayaran',      
                 ];
             }
         }

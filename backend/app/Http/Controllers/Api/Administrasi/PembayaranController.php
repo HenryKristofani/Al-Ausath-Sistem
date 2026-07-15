@@ -110,291 +110,271 @@ class PembayaranController extends Controller
 
     /**
      * Daftar TAGIHAN untuk halaman khusus tagihan.
+     *
+     * IMPLEMENTASI BARU (v3) — Single SQL JOIN query:
+     * Menggantikan pendekatan lama yang:
+     *   1. Load SEMUA santri IDs ke PHP memory
+     *   2. Load SEMUA ppdb IDs ke PHP memory
+     *   3. Jalankan aggregate query dengan WHERE IN (ribuan ID)
+     *   4. Merge + filter + paginate di PHP
+     *
+     * Sekarang: satu query per source (santri & ppdb), dengan JOIN ke subquery aggregate,
+     * paginate langsung di DB, tidak ada transfer data berlebihan ke PHP.
      */
     public function tagihan(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
-        $perPage = max(1, min($perPage, 100));
-        $page = max(1, (int) $request->query('page', 1));
-        $keyword = mb_strtolower(trim((string) $request->query('q')));
+        $perPage  = max(1, min((int) $request->query('per_page', 10), 100));
+        $page     = max(1, (int) $request->query('page', 1));
+        $keyword  = mb_strtolower(trim((string) $request->query('q')));
         $nomorInduk = trim((string) $request->query('nomor_induk'));
+        $includeRingkasan = (bool) $request->query('include_ringkasan', false);
 
-        $statusFilter = $request->filled('status') ? $this->normalizeStatusForFrontend((string) $request->status) : null;
-        $sumberFilter = $request->filled('sumber') ? strtolower((string) $request->sumber) : null;
+        $statusFilter = $request->filled('status')
+            ? $this->normalizeStatusForFrontend((string) $request->status)
+            : null;
+        $sumberFilter = $request->filled('sumber')
+            ? strtolower((string) $request->sumber)
+            : null;
 
-        // 1. Fetch raw stats from PembayaranSpp for extremely fast status calculation
-        $stats = \Illuminate\Support\Facades\DB::table('pembayaran_spp')
-            ->select('id_santri', 'id_pendaftaran')
-            ->selectRaw("SUM(CASE WHEN status NOT IN ('batal', 'ditolak', 'dibatalkan') THEN nominal_bayar ELSE 0 END) as total_tagihan")
-            ->selectRaw("SUM(CASE WHEN status IN ('terverifikasi', 'lunas') THEN nominal_bayar ELSE 0 END) as total_dibayar")
-            ->selectRaw("MAX(CASE WHEN status IN ('menunggu_konfirmasi', 'menunggu_verifikasi') THEN 1 ELSE 0 END) as has_menunggu")
-            ->selectRaw("COUNT(id_pembayaran) as count_invoice")
-            ->groupBy('id_santri', 'id_pendaftaran')
-            ->get();
+        // ── Aggregate subquery: pembayaran_spp per santri ─────────────────────
+        // Ini adalah subquery yang akan di-JOIN, sehingga DB bisa optimize dengan index
+        $sppSantriSub = <<<'SQL'
+            SELECT
+                id_santri,
+                SUM(CASE WHEN status NOT IN ('batal','ditolak','dibatalkan') THEN nominal_bayar ELSE 0 END) AS spp_tagihan,
+                SUM(CASE WHEN status IN ('terverifikasi','lunas') THEN nominal_bayar ELSE 0 END) AS spp_dibayar,
+                MAX(CASE WHEN status IN ('menunggu_konfirmasi','menunggu_verifikasi') THEN 1 ELSE 0 END) AS spp_menunggu,
+                COUNT(id_pembayaran) AS spp_count
+            FROM pembayaran_spp
+            WHERE id_santri IS NOT NULL
+            GROUP BY id_santri
+        SQL;
 
-        $bebasStatsRaw = \Illuminate\Support\Facades\DB::table('administrasi_bebas')
-            ->select('id_santri')
-            ->selectRaw("SUM(total_tagihan) as total_tagihan")
-            ->selectRaw("SUM(total_tagihan - sisa) as total_dibayar")
-            ->selectRaw("SUM(sisa) as total_sisa")
-            ->selectRaw("COUNT(id_admin_bebas) as count_invoice")
-            ->groupBy('id_santri')
-            ->get()
-            ->keyBy('id_santri');
+        // ── Aggregate subquery: pembayaran_spp per pendaftaran (PPDB) ─────────
+        $sppPpdbSub = <<<'SQL'
+            SELECT
+                id_pendaftaran,
+                SUM(CASE WHEN status NOT IN ('batal','ditolak','dibatalkan') THEN nominal_bayar ELSE 0 END) AS spp_tagihan,
+                SUM(CASE WHEN status IN ('terverifikasi','lunas') THEN nominal_bayar ELSE 0 END) AS spp_dibayar,
+                MAX(CASE WHEN status IN ('menunggu_konfirmasi','menunggu_verifikasi') THEN 1 ELSE 0 END) AS spp_menunggu,
+                COUNT(id_pembayaran) AS spp_count
+            FROM pembayaran_spp
+            WHERE id_pendaftaran IS NOT NULL
+            GROUP BY id_pendaftaran
+        SQL;
 
-        $santriStats = [];
-        $ppdbStats = [];
-
-        // Map id_pendaftaran to id_santri for linked accounts to ensure they are merged
-        $pendaftaranLinks = DB::table('ppdb_pendaftar')
-            ->whereNotNull('id_santri')
-            ->pluck('id_santri', 'id_pendaftaran')
-            ->toArray();
-
-        foreach ($stats as $row) {
-            $tagihan = (float) $row->total_tagihan;
-            $dibayar = (float) $row->total_dibayar;
-            $tunggakan = max($tagihan - $dibayar, 0);
-            $hasMenunggu = (bool) $row->has_menunggu;
-            $count = (int) $row->count_invoice;
-
-            // Determine if this row belongs to a santri (directly or via linked pendaftaran)
-            $targetSantriId = null;
-            if ($row->id_santri) {
-                $targetSantriId = $row->id_santri;
-            } elseif ($row->id_pendaftaran && isset($pendaftaranLinks[$row->id_pendaftaran])) {
-                $targetSantriId = $pendaftaranLinks[$row->id_pendaftaran];
-            }
-
-            if ($targetSantriId) {
-                if (!isset($santriStats[$targetSantriId])) {
-                    $santriStats[$targetSantriId] = [
-                        'tagihan' => 0.0,
-                        'dibayar' => 0.0,
-                        'tunggakan' => 0.0,
-                        'status' => 'menunggu_pembayaran',
-                        'has_menunggu' => false,
-                        'count' => 0,
-                    ];
-                }
-                $santriStats[$targetSantriId]['tagihan'] += $tagihan;
-                $santriStats[$targetSantriId]['dibayar'] += $dibayar;
-                $santriStats[$targetSantriId]['tunggakan'] += $tunggakan;
-                $santriStats[$targetSantriId]['count'] += $count;
-                if ($hasMenunggu) {
-                    $santriStats[$targetSantriId]['has_menunggu'] = true;
-                }
-            } elseif ($row->id_pendaftaran) {
-                $idPendaftaran = $row->id_pendaftaran;
-                if (!isset($ppdbStats[$idPendaftaran])) {
-                    $ppdbStats[$idPendaftaran] = [
-                        'tagihan' => 0.0,
-                        'dibayar' => 0.0,
-                        'tunggakan' => 0.0,
-                        'status' => 'menunggu_pembayaran',
-                        'has_menunggu' => false,
-                        'count' => 0,
-                    ];
-                }
-                $ppdbStats[$idPendaftaran]['tagihan'] += $tagihan;
-                $ppdbStats[$idPendaftaran]['dibayar'] += $dibayar;
-                $ppdbStats[$idPendaftaran]['tunggakan'] += $tunggakan;
-                $ppdbStats[$idPendaftaran]['count'] += $count;
-                if ($hasMenunggu) {
-                    $ppdbStats[$idPendaftaran]['has_menunggu'] = true;
-                }
-            }
-        }
-
-        // Resolve initial status for santriStats
-        foreach ($santriStats as $idSantri => &$sStat) {
-            $sStat['status'] = 'menunggu_pembayaran';
-            if ($sStat['tagihan'] > 0) {
-                if ($sStat['tunggakan'] <= 0) {
-                    $sStat['status'] = 'lunas';
-                } elseif ($sStat['has_menunggu']) {
-                    $sStat['status'] = 'menunggu_konfirmasi';
-                }
-            }
-        }
-        unset($sStat);
-
-        // Resolve initial status for ppdbStats
-        foreach ($ppdbStats as $idPendaftaran => &$pStat) {
-            $pStat['status'] = 'menunggu_pembayaran';
-            if ($pStat['tagihan'] > 0) {
-                if ($pStat['tunggakan'] <= 0) {
-                    $pStat['status'] = 'lunas';
-                } elseif ($pStat['has_menunggu']) {
-                    $pStat['status'] = 'menunggu_konfirmasi';
-                }
-            }
-        }
-        unset($pStat);
-
-        foreach ($bebasStatsRaw as $idSantri => $bebasRow) {
-            if (isset($santriStats[$idSantri])) {
-                $santriStats[$idSantri]['tagihan']   += (float) $bebasRow->total_tagihan;
-                $santriStats[$idSantri]['dibayar']   += (float) $bebasRow->total_dibayar;
-                $santriStats[$idSantri]['tunggakan'] += (float) $bebasRow->total_sisa;
-                $santriStats[$idSantri]['count']     += $bebasRow->count_invoice;
-
-                if ($santriStats[$idSantri]['tagihan'] > 0) {
-                    if ($santriStats[$idSantri]['tunggakan'] <= 0) {
-                        $santriStats[$idSantri]['status'] = 'lunas';
-                    } else {
-                        if ($santriStats[$idSantri]['status'] !== 'menunggu_konfirmasi') {
-                            $santriStats[$idSantri]['status'] = 'menunggu_pembayaran';
-                        }
-                    }
-                }
-            } else {
-                $status = 'menunggu_pembayaran';
-                if ((float)$bebasRow->total_tagihan > 0 && (float)$bebasRow->total_sisa <= 0) {
-                    $status = 'lunas';
-                }
-                $santriStats[$idSantri] = [
-                    'tagihan'   => (float) $bebasRow->total_tagihan,
-                    'dibayar'   => (float) $bebasRow->total_dibayar,
-                    'tunggakan' => (float) $bebasRow->total_sisa,
-                    'status'    => $status,
-                    'count'     => $bebasRow->count_invoice,
-                ];
-            }
-        }
-
-        // 2. Fetch base IDs from entities to support search filters
-        $santriQuery = DataSantri::query()
-            ->select('id_santri', 'nomor_induk', 'nama_lengkap_santri', 'is_anak_guru')
-            ->when($nomorInduk, fn ($q) => $q->where('nomor_induk', $nomorInduk))
-            ->when($keyword, function ($q) use ($keyword) {
-                $q->where('nama_lengkap_santri', 'like', "%{$keyword}%")
-                  ->orWhere('nomor_induk', 'like', "%{$keyword}%");
-            });
-
-        $ppdbQuery = PpdbPendaftar::query()
-            ->select('id_pendaftaran', 'id_santri', 'no_pendaftaran', 'no_pendaftaran_final', 'nomor_induk_generated', 'nama_calon', 'is_anak_guru')
-            ->when($nomorInduk, function ($q) use ($nomorInduk) {
-                $q->where(function ($sub) use ($nomorInduk) {
-                    $sub->where('nomor_induk_generated', $nomorInduk)
-                        ->orWhere('no_pendaftaran_final', $nomorInduk)
-                        ->orWhere('no_pendaftaran', $nomorInduk);
-                });
-            })
-            ->when($keyword, function ($q) use ($keyword) {
-                $q->where('nama_calon', 'like', "%{$keyword}%")
-                  ->orWhere('no_pendaftaran', 'like', "%{$keyword}%")
-                  ->orWhere('no_pendaftaran_final', 'like', "%{$keyword}%");
-            });
-
-        // Filter arrays based on active filters
-        $allowedSantri = [];
-        if ($sumberFilter === null || $sumberFilter === 'santri') {
-            foreach ($santriQuery->get() as $s) {
-                $sStat = $santriStats[$s->id_santri] ?? ['tagihan' => 0, 'dibayar' => 0, 'tunggakan' => 0, 'status' => 'menunggu_pembayaran', 'count' => 0];
-                if ($statusFilter !== null && $sStat['status'] !== $statusFilter) continue;
-                $allowedSantri[] = $s->id_santri;
-            }
-        }
-
-        $allowedPpdb = [];
-        if ($sumberFilter === null || $sumberFilter === 'ppdb') {
-            // Get Santri IDs to exclude PPDB that are already Santri
-            $existingSantriIds = array_flip($santriQuery->pluck('id_santri')->toArray());
-            foreach ($ppdbQuery->get() as $p) {
-                if ($p->id_santri && isset($existingSantriIds[$p->id_santri])) continue;
-                
-                $pStat = $ppdbStats[$p->id_pendaftaran] ?? ['tagihan' => 0, 'dibayar' => 0, 'tunggakan' => 0, 'status' => 'menunggu_pembayaran', 'count' => 0];
-                if ($statusFilter !== null && $pStat['status'] !== $statusFilter) continue;
-                $allowedPpdb[] = $p->id_pendaftaran;
-            }
-        }
-
-        // 3. Paginate the IDs
-        $totalSantri = count($allowedSantri);
-        $totalPpdb = count($allowedPpdb);
-        $total = $totalSantri + $totalPpdb;
+        // ── Aggregate subquery: administrasi_bebas per santri ─────────────────
+        $bebasSub = <<<'SQL'
+            SELECT
+                id_santri,
+                SUM(total_tagihan) AS bebas_tagihan,
+                SUM(total_tagihan - sisa) AS bebas_dibayar,
+                SUM(sisa) AS bebas_sisa,
+                COUNT(id_admin_bebas) AS bebas_count
+            FROM administrasi_bebas
+            GROUP BY id_santri
+        SQL;
 
         $offset = ($page - 1) * $perPage;
-        
-        $pageSantriIds = array_slice($allowedSantri, $offset, $perPage);
-        $pagePpdbIds = [];
-        
-        $santriCount = count($pageSantriIds);
-        if ($santriCount < $perPage) {
-            $ppdbOffset = max(0, $offset - $totalSantri);
-            $pagePpdbIds = array_slice($allowedPpdb, $ppdbOffset, $perPage - $santriCount);
+
+        // ════════════════════════════════════════════════════════════════════════
+        // QUERY SANTRI — JOIN langsung ke aggregate subqueries
+        // ════════════════════════════════════════════════════════════════════════
+        $santriRows = collect();
+        $santriTotal = 0;
+
+        if ($sumberFilter === null || $sumberFilter === 'santri') {
+            $santriQuery = DB::table('data_santri AS ds')
+                ->select([
+                    'ds.id_santri',
+                    'ds.nomor_induk',
+                    'ds.nama_lengkap_santri',
+                    'ds.is_anak_guru',
+                    DB::raw('COALESCE(dk.nama_kelas, \'-\') AS nama_kelas'),
+                    DB::raw('COALESCE(dk.tahun_ajaran, \'-\') AS tahun_ajaran'),
+                    DB::raw('COALESCE(du.nama_unit, dk.kode_unit, \'-\') AS nama_unit'),
+                    // Total tagihan = SPP + Bebas
+                    DB::raw('COALESCE(sa.spp_tagihan, 0) + COALESCE(ba.bebas_tagihan, 0) AS total_tagihan'),
+                    DB::raw('COALESCE(sa.spp_dibayar, 0) + COALESCE(ba.bebas_dibayar, 0) AS total_dibayar'),
+                    DB::raw('GREATEST(
+                        (COALESCE(sa.spp_tagihan,0) + COALESCE(ba.bebas_tagihan,0))
+                        - (COALESCE(sa.spp_dibayar,0) + COALESCE(ba.bebas_dibayar,0)),
+                        0
+                    ) AS total_tunggakan'),
+                    DB::raw('COALESCE(sa.spp_count, 0) + COALESCE(ba.bebas_count, 0) AS count_invoice'),
+                    DB::raw('COALESCE(sa.spp_menunggu, 0) AS has_menunggu'),
+                    // Status inline — dihitung langsung di SQL
+                    DB::raw("CASE
+                        WHEN (COALESCE(sa.spp_tagihan,0)+COALESCE(ba.bebas_tagihan,0)) > 0
+                             AND GREATEST(
+                                   (COALESCE(sa.spp_tagihan,0)+COALESCE(ba.bebas_tagihan,0))
+                                   -(COALESCE(sa.spp_dibayar,0)+COALESCE(ba.bebas_dibayar,0)),0) <= 0
+                        THEN 'lunas'
+                        WHEN COALESCE(sa.spp_menunggu, 0) = 1
+                        THEN 'menunggu_konfirmasi'
+                        ELSE 'menunggu_pembayaran'
+                    END AS computed_status"),
+                ])
+                ->leftJoin('data_kelas AS dk', 'dk.kode_kelas', '=', 'ds.kode_kelas')
+                ->leftJoin('data_unit AS du', 'du.kode_unit', '=', 'dk.kode_unit')
+                ->leftJoinSub($sppSantriSub, 'sa', 'sa.id_santri', '=', 'ds.id_santri')
+                ->leftJoinSub($bebasSub, 'ba', 'ba.id_santri', '=', 'ds.id_santri')
+                ->when($keyword, fn ($q) => $q
+                    ->where('ds.nama_lengkap_santri', 'like', "%{$keyword}%")
+                    ->orWhere('ds.nomor_induk', 'like', "%{$keyword}%")
+                )
+                ->when($nomorInduk, fn ($q) => $q->where('ds.nomor_induk', $nomorInduk))
+                ->when($statusFilter, fn ($q) => $q->havingRaw("computed_status = ?", [$statusFilter]))
+                ->orderBy('ds.id_santri');
+
+            // COUNT total untuk pagination (tanpa LIMIT)
+            $santriTotal = DB::table(DB::raw("({$santriQuery->toSql()}) AS counted"))
+                ->mergeBindings($santriQuery)
+                ->count();
+
+            $santriRows = $santriQuery
+                ->offset($offset)
+                ->limit($perPage)
+                ->get();
         }
 
-        // 4. Hydrate ONLY the paginated records
-        $santriModels = DataSantri::with(['kelas.unit'])->whereIn('id_santri', $pageSantriIds)->get()->keyBy('id_santri');
-        $ppdbModels = PpdbPendaftar::whereIn('id_pendaftaran', $pagePpdbIds)->get()->keyBy('id_pendaftaran');
+        // ════════════════════════════════════════════════════════════════════════
+        // QUERY PPDB — hanya jika halaman ini masih belum penuh dengan santri
+        // ════════════════════════════════════════════════════════════════════════
+        $ppdbRows  = collect();
+        $ppdbTotal = 0;
 
+        if ($sumberFilter === null || $sumberFilter === 'ppdb') {
+            $ppdbQuery = DB::table('ppdb_pendaftar AS pp')
+                ->select([
+                    'pp.id_pendaftaran',
+                    'pp.id_santri',
+                    'pp.nama_calon',
+                    DB::raw('COALESCE(pp.nomor_induk_generated, pp.no_pendaftaran_final, pp.no_pendaftaran, \'-\') AS nomor_induk'),
+                    'pp.is_anak_guru',
+                    DB::raw('COALESCE(UPPER(pp.jenjang), UPPER(pp.program_pendaftaran), \'-\') AS nama_unit'),
+                    DB::raw('COALESCE(pp.kode_kelas_diterima, \'-\') AS nama_kelas'),
+                    DB::raw('COALESCE(sp.spp_tagihan, 0) AS total_tagihan'),
+                    DB::raw('COALESCE(sp.spp_dibayar, 0) AS total_dibayar'),
+                    DB::raw('GREATEST(COALESCE(sp.spp_tagihan,0) - COALESCE(sp.spp_dibayar,0), 0) AS total_tunggakan'),
+                    DB::raw('COALESCE(sp.spp_count, 0) AS count_invoice'),
+                    DB::raw("CASE
+                        WHEN COALESCE(sp.spp_tagihan,0) > 0
+                             AND GREATEST(COALESCE(sp.spp_tagihan,0)-COALESCE(sp.spp_dibayar,0),0) <= 0
+                        THEN 'lunas'
+                        WHEN COALESCE(sp.spp_menunggu,0) = 1
+                        THEN 'menunggu_konfirmasi'
+                        ELSE 'menunggu_pembayaran'
+                    END AS computed_status"),
+                ])
+                ->leftJoinSub($sppPpdbSub, 'sp', 'sp.id_pendaftaran', '=', 'pp.id_pendaftaran')
+                // Exclude PPDB yang sudah menjadi santri (sudah dihitung di atas)
+                ->whereNull('pp.id_santri')
+                ->when($keyword, fn ($q) => $q
+                    ->where('pp.nama_calon', 'like', "%{$keyword}%")
+                    ->orWhere('pp.no_pendaftaran', 'like', "%{$keyword}%")
+                    ->orWhere('pp.no_pendaftaran_final', 'like', "%{$keyword}%")
+                )
+                ->when($nomorInduk, fn ($q) => $q->where(fn ($sub) => $sub
+                    ->where('pp.nomor_induk_generated', $nomorInduk)
+                    ->orWhere('pp.no_pendaftaran_final', $nomorInduk)
+                    ->orWhere('pp.no_pendaftaran', $nomorInduk)
+                ))
+                ->when($statusFilter, fn ($q) => $q->havingRaw("computed_status = ?", [$statusFilter]))
+                ->orderBy('pp.id_pendaftaran');
+
+            $ppdbTotal = DB::table(DB::raw("({$ppdbQuery->toSql()}) AS counted"))
+                ->mergeBindings($ppdbQuery)
+                ->count();
+
+            // Hitung offset untuk PPDB setelah santri habis
+            $ppdbOffset = max(0, $offset - $santriTotal);
+            $ppdbLimit  = max(0, $perPage - $santriRows->count());
+
+            if ($ppdbLimit > 0) {
+                $ppdbRows = $ppdbQuery->offset($ppdbOffset)->limit($ppdbLimit)->get();
+            }
+        }
+
+        // ── Bangun response ───────────────────────────────────────────────────
         $combined = collect();
 
-        foreach ($pageSantriIds as $id) {
-            $s = $santriModels->get($id);
-            if (!$s) continue;
-            $sStat = $santriStats[$id] ?? ['tagihan' => 0, 'dibayar' => 0, 'tunggakan' => 0, 'status' => 'menunggu_pembayaran', 'count' => 0];
-            
-            $namaUnit = $s->kelas?->unit?->nama_unit ?? $s->kelas?->kode_unit ?? '-';
+        foreach ($santriRows as $row) {
             $combined->push([
-                'id'             => $id,
-                'nama_unit'      => $namaUnit,
-                'nomor_induk'    => $s->nomor_induk ?? '-',
-                'nama_lengkap'   => $s->nama_lengkap_santri ?? '-',
-                'kelas_saat_ini' => $s->kelas?->nama_kelas ?? '-',
-                'kelas_sekarang' => $s->kelas?->nama_kelas ?? '-',
-                'tahun_ajaran'   => $s->kelas?->tahun_ajaran ?? '-',
-                'status'         => $sStat['status'],
-                'total_tagihan'  => $sStat['tagihan'],
-                'total_dibayar'  => $sStat['dibayar'],
-                'total_tunggakan' => $sStat['tunggakan'],
-                'jumlah_invoice' => $sStat['count'],
-                'sumber_data'    => 'master_data_santri',
-                'id_santri'      => $id,
-                'id_pendaftaran' => null,
-                'is_anak_guru'   => (bool) $s->is_anak_guru,
+                'id'              => $row->id_santri,
+                'nama_unit'       => $row->nama_unit,
+                'nomor_induk'     => $row->nomor_induk ?? '-',
+                'nama_lengkap'    => $row->nama_lengkap_santri ?? '-',
+                'kelas_saat_ini'  => $row->nama_kelas,
+                'kelas_sekarang'  => $row->nama_kelas,
+                'tahun_ajaran'    => $row->tahun_ajaran,
+                'status'          => $row->computed_status,
+                'total_tagihan'   => (float) $row->total_tagihan,
+                'total_dibayar'   => (float) $row->total_dibayar,
+                'total_tunggakan' => (float) $row->total_tunggakan,
+                'jumlah_invoice'  => (int) $row->count_invoice,
+                'sumber_data'     => 'master_data_santri',
+                'id_santri'       => $row->id_santri,
+                'id_pendaftaran'  => null,
+                'is_anak_guru'    => (bool) $row->is_anak_guru,
             ]);
         }
 
-        foreach ($pagePpdbIds as $id) {
-            $p = $ppdbModels->get($id);
-            if (!$p) continue;
-            $pStat = $ppdbStats[$id] ?? ['tagihan' => 0, 'dibayar' => 0, 'tunggakan' => 0, 'status' => 'menunggu_pembayaran', 'count' => 0];
-            
-            $namaUnit = strtoupper((string) ($p->jenjang ?: $p->program_pendaftaran ?: '-'));
-            $nomorInduk = $p->nomor_induk_generated ?? $p->no_pendaftaran_final ?? $p->no_pendaftaran ?? '-';
+        foreach ($ppdbRows as $row) {
             $combined->push([
-                'id'             => $id,
-                'nama_unit'      => $namaUnit,
-                'nomor_induk'    => $nomorInduk,
-                'nama_lengkap'   => $p->nama_calon ?? '-',
-                'kelas_saat_ini' => $p->kode_kelas_diterima ?? '-',
-                'kelas_sekarang' => $p->kode_kelas_diterima ?? '-',
-                'tahun_ajaran'   => '-', // ppdb usually has no tahun ajaran assigned yet in this view
-                'status'         => $pStat['status'],
-                'total_tagihan'  => $pStat['tagihan'],
-                'total_dibayar'  => $pStat['dibayar'],
-                'total_tunggakan' => $pStat['tunggakan'],
-                'jumlah_invoice' => $pStat['count'],
-                'sumber_data'    => 'ppdb',
-                'id_santri'      => null,
-                'id_pendaftaran' => $id,
-                'is_anak_guru'   => (bool) $p->is_anak_guru,
+                'id'              => $row->id_pendaftaran,
+                'nama_unit'       => $row->nama_unit,
+                'nomor_induk'     => $row->nomor_induk,
+                'nama_lengkap'    => $row->nama_calon ?? '-',
+                'kelas_saat_ini'  => $row->nama_kelas,
+                'kelas_sekarang'  => $row->nama_kelas,
+                'tahun_ajaran'    => '-',
+                'status'          => $row->computed_status,
+                'total_tagihan'   => (float) $row->total_tagihan,
+                'total_dibayar'   => (float) $row->total_dibayar,
+                'total_tunggakan' => (float) $row->total_tunggakan,
+                'jumlah_invoice'  => (int) $row->count_invoice,
+                'sumber_data'     => 'ppdb',
+                'id_santri'       => null,
+                'id_pendaftaran'  => $row->id_pendaftaran,
+                'is_anak_guru'    => (bool) $row->is_anak_guru,
             ]);
         }
 
-        return response()->json([
+        $total = $santriTotal + $ppdbTotal;
+
+        $response = [
             'data' => $combined->values(),
             'meta' => [
                 'current_page' => $page,
-                'per_page' => $perPage,
-                'total' => $total,
-                'last_page' => (int) ceil(max($total, 1) / $perPage),
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => (int) ceil(max($total, 1) / $perPage),
             ],
-        ]);
+        ];
+
+        // Embed ringkasan agar frontend tidak perlu call /ringkasan terpisah
+        if ($includeRingkasan) {
+            $sppAgg = DB::table('pembayaran_spp')
+                ->selectRaw("SUM(CASE WHEN status NOT IN ('ditolak','dibatalkan','batal') THEN nominal_bayar ELSE 0 END) as tagihan")
+                ->selectRaw("SUM(CASE WHEN status = 'terverifikasi' THEN nominal_bayar ELSE 0 END) as dibayar")
+                ->first();
+            $bebasAgg = DB::table('administrasi_bebas')
+                ->selectRaw('SUM(total_tagihan) as tagihan, SUM(total_tagihan - sisa) as dibayar')
+                ->first();
+            $grandTagihan = (float)($sppAgg->tagihan ?? 0) + (float)($bebasAgg->tagihan ?? 0);
+            $grandDibayar = (float)($sppAgg->dibayar ?? 0) + (float)($bebasAgg->dibayar ?? 0);
+            $response['ringkasan'] = [
+                'total_tagihan'   => $grandTagihan,
+                'total_dibayar'   => $grandDibayar,
+                'total_tunggakan' => max($grandTagihan - $grandDibayar, 0),
+                'jumlah_santri'   => $total,
+            ];
+        }
+
+        return response()->json($response);
     }
+
 
     /**
      * Helper to transform a person + their payments into a row.
@@ -1097,24 +1077,25 @@ class PembayaranController extends Controller
         $canceledStatuses = ['ditolak', 'dibatalkan', 'batal'];
 
         // ── pembayaran_spp ──────────────────────────────────────────────────────
-        $base = PembayaranSpp::query();
+        $stats = DB::table('pembayaran_spp')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("COUNT(CASE WHEN id_pendaftaran IS NOT NULL THEN 1 END) as ppdb")
+            ->selectRaw("COUNT(CASE WHEN id_pendaftaran IS NULL THEN 1 END) as spp")
+            ->selectRaw("COUNT(CASE WHEN status = 'menunggu_verifikasi' THEN 1 END) as menunggu")
+            ->selectRaw("COUNT(CASE WHEN status = 'terverifikasi' THEN 1 END) as terverifikasi")
+            ->selectRaw("COUNT(CASE WHEN status IN ('ditolak', 'dibatalkan', 'batal') THEN 1 END) as ditolak")
+            ->selectRaw("SUM(CASE WHEN status NOT IN ('ditolak', 'dibatalkan', 'batal') THEN nominal_bayar ELSE 0 END) as nominal_spp_tagihan")
+            ->selectRaw("SUM(CASE WHEN status = 'terverifikasi' THEN nominal_bayar ELSE 0 END) as nominal_spp_dibayar")
+            ->first();
 
-        $total          = (clone $base)->count();
-        $ppdb           = (clone $base)->whereNotNull('id_pendaftaran')->count();
-        $spp            = (clone $base)->whereNull('id_pendaftaran')->count();
-        $menunggu       = (clone $base)->where('status', 'menunggu_verifikasi')->count();
-        $terverifikasi  = (clone $base)->where('status', 'terverifikasi')->count();
-        $ditolak        = (clone $base)->whereIn('status', $canceledStatuses)->count();
-
-        // Total tagihan SPP (exclude yg dibatalkan)
-        $nominalSppTagihan = (float) ((clone $base)
-            ->whereNotIn('status', $canceledStatuses)
-            ->sum('nominal_bayar') ?? 0);
-
-        // Total dibayar SPP (hanya yg terverifikasi = lunas)
-        $nominalSppDibayar = (float) ((clone $base)
-            ->where('status', 'terverifikasi')
-            ->sum('nominal_bayar') ?? 0);
+        $total          = (int) ($stats->total ?? 0);
+        $ppdb           = (int) ($stats->ppdb ?? 0);
+        $spp            = (int) ($stats->spp ?? 0);
+        $menunggu       = (int) ($stats->menunggu ?? 0);
+        $terverifikasi  = (int) ($stats->terverifikasi ?? 0);
+        $ditolak        = (int) ($stats->ditolak ?? 0);
+        $nominalSppTagihan = (float) ($stats->nominal_spp_tagihan ?? 0);
+        $nominalSppDibayar = (float) ($stats->nominal_spp_dibayar ?? 0);
 
         // ── administrasi_bebas ──────────────────────────────────────────────────
         $bebasStats = DB::table('administrasi_bebas')
