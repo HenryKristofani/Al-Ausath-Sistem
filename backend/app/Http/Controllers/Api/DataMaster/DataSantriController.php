@@ -42,6 +42,7 @@ class DataSantriController extends Controller
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($request->filled('kode_kelas'), fn($q) => $q->where('kode_kelas', $request->kode_kelas))
             ->when($request->filled('jenis_kelamin'), fn($q) => $q->where('jenis_kelamin', strtoupper($request->jenis_kelamin)))
+            ->when($request->filled('hobi'), fn($q) => $q->where('hobi', $request->hobi))
             ->when($request->filled('kode_unit') || $request->filled('tahun_ajaran'), function ($q) use ($request) {
                 $q->whereHas('kelas', function ($kelasQuery) use ($request) {
                     $kelasQuery
@@ -173,6 +174,7 @@ class DataSantriController extends Controller
             'kecamatan' => ['nullable', 'string', 'max:100'],
             'kelurahan' => ['nullable', 'string', 'max:100'],
             'alamat_tinggal' => ['nullable', 'string'],
+            'hobi' => ['nullable', 'string', 'max:100'],
             'nomor_telepon' => ['nullable', 'string', 'max:20'],
             'alamat_email' => ['nullable', 'email', 'max:100'],
             'nama_ayah_kandung' => ['nullable', 'string', 'max:200'],
@@ -262,6 +264,7 @@ class DataSantriController extends Controller
             'kecamatan' => ['nullable', 'string', 'max:100'],
             'kelurahan' => ['nullable', 'string', 'max:100'],
             'alamat_tinggal' => ['nullable', 'string'],
+            'hobi' => ['nullable', 'string', 'max:100'],
             'nomor_telepon' => ['nullable', 'string', 'max:20'],
             'alamat_email' => ['nullable', 'email', 'max:100'],
             'nama_ayah_kandung' => ['nullable', 'string', 'max:200'],
@@ -514,6 +517,7 @@ class DataSantriController extends Controller
                 'kecamatan' => ['nullable', 'string', 'max:100'],
                 'kelurahan' => ['nullable', 'string', 'max:100'],
                 'alamat_tinggal' => ['nullable', 'string'],
+                'hobi' => ['nullable', 'string', 'max:100'],
                 'nomor_telepon' => ['nullable', 'string', 'max:20'],
                 'alamat_email' => ['nullable', 'email', 'max:100'],
                 'nama_ayah_kandung' => ['nullable', 'string', 'max:200'],
@@ -607,6 +611,7 @@ class DataSantriController extends Controller
             'kecamatan',
             'kelurahan',
             'alamat_tinggal',
+            'hobi',
             'nomor_telepon',
             'alamat_email',
             'nama_ayah_kandung',
@@ -639,6 +644,7 @@ class DataSantriController extends Controller
                         $row->kecamatan,
                         $row->kelurahan,
                         $row->alamat_tinggal,
+                        $row->hobi,
                         $row->nomor_telepon,
                         $row->alamat_email,
                         $row->nama_ayah_kandung,
@@ -678,6 +684,7 @@ class DataSantriController extends Controller
             'kecamatan',
             'kelurahan',
             'alamat_tinggal',
+            'hobi',
             'nomor_telepon',
             'alamat_email',
             'nama_ayah_kandung',
@@ -990,6 +997,7 @@ class DataSantriController extends Controller
             'kecamatan' => $rowData['kecamatan'] ?? null,
             'kelurahan' => $rowData['kelurahan'] ?? null,
             'alamat_tinggal' => $rowData['alamat_tinggal'] ?? null,
+            'hobi' => $rowData['hobi'] ?? null,
             'nomor_telepon' => $rowData['nomor_telepon'] ?? null,
             'alamat_email' => $rowData['alamat_email'] ?? null,
             'nama_ayah_kandung' => $rowData['nama_ayah_kandung'] ?? null,
