@@ -20,6 +20,7 @@ class KkmMapel extends Model
         'tahun_ajaran',
         'semester',
         'nilai_kkm',
+        'status_ketuntasan',
         'keterangan',
     ];
 

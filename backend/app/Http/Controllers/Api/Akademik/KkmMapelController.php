@@ -69,6 +69,7 @@ class KkmMapelController extends Controller
             'tahun_ajaran' => ['required', 'string', 'max:20'],
             'semester' => ['required', 'integer', 'in:1,2'],
             'nilai_kkm' => ['required', 'numeric', 'min:0', 'max:100'],
+            'status_ketuntasan' => ['nullable', 'string', 'in:menguasai,ahli,menerapkan'],
             'keterangan' => ['nullable', 'string'],
         ]);
 
@@ -117,6 +118,7 @@ class KkmMapelController extends Controller
             'tahun_ajaran' => ['sometimes', 'string', 'max:20'],
             'semester' => ['sometimes', 'integer', 'in:1,2'],
             'nilai_kkm' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'status_ketuntasan' => ['nullable', 'string', 'in:menguasai,ahli,menerapkan'],
             'keterangan' => ['nullable', 'string'],
         ]);
 
