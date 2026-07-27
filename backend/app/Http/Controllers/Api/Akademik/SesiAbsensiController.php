@@ -92,6 +92,7 @@ class SesiAbsensiController extends Controller
             'tanggal_mulai'  => ['nullable', 'date'],
             'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
             'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
+            'semester'       => ['nullable', 'integer'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 25);
@@ -106,6 +107,7 @@ class SesiAbsensiController extends Controller
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereHas('sesi', fn ($sq) => $sq->whereDate('tanggal', '>=', $validated['tanggal_mulai'])))
             ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereHas('sesi', fn ($sq) => $sq->whereDate('tanggal', '<=', $validated['tanggal_selesai'])))
             ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->whereHas('sesi.jadwal.kelasMapel', fn ($sq) => $sq->where('tahun_ajaran', $validated['tahun_ajaran'])))
+            ->when(!empty($validated['semester']), fn ($q) => $q->whereHas('sesi.jadwal.kelasMapel', fn ($sq) => $sq->where('semester', (int) $validated['semester'])))
             ->orderByDesc('id_absensi');
 
         $paginated = $query->paginate($perPage);

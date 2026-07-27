@@ -92,6 +92,7 @@ class RekapAbsensiController extends Controller
             'nomor_induk'    => ['nullable', 'string', 'max:20'],
             'id_jadwal'      => ['nullable', 'integer', 'exists:jadwal_pembelajaran,id_jadwal'],
             'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
+            'semester'       => ['nullable', 'integer'],
             'q'              => ['nullable', 'string'],
         ]);
 
@@ -99,6 +100,7 @@ class RekapAbsensiController extends Controller
             ->join('sesi_absensi as s', 's.id_sesi', '=', 'a.id_sesi')
             ->join('data_santri as ds', 'ds.nomor_induk', '=', 'a.nomor_induk')
             ->leftJoin('jadwal_pembelajaran as j', 'j.id_jadwal', '=', 's.id_jadwal')
+            ->leftJoin('data_kelas_mapel as km', 'km.id_kelas_mapel', '=', 'j.id_kelas_mapel')
             ->leftJoin('data_kelas as k', 'k.kode_kelas', '=', 'ds.kode_kelas')
             ->where('s.status_sesi', '!=', 'BATAL')
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereDate('s.tanggal', '>=', $validated['tanggal_mulai']))
@@ -108,6 +110,7 @@ class RekapAbsensiController extends Controller
             ->when(!empty($validated['nomor_induk']), fn ($q) => $q->where('ds.nomor_induk', $validated['nomor_induk']))
             ->when(!empty($validated['id_jadwal']), fn ($q) => $q->where('s.id_jadwal', (int) $validated['id_jadwal']))
             ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->where('k.tahun_ajaran', $validated['tahun_ajaran']))
+            ->when(!empty($validated['semester']), fn ($q) => $q->where('km.semester', (int) $validated['semester']))
             ->when(!empty($validated['q']), function ($q) use ($validated) {
                 $keyword = trim((string) $validated['q']);
                 $q->where(function ($subQuery) use ($keyword) {
@@ -148,6 +151,7 @@ class RekapAbsensiController extends Controller
             'tanggal_selesai'=> ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
             'nomor_induk'    => ['required', 'string', 'max:20'],
             'tahun_ajaran'   => ['nullable', 'string', 'max:20'],
+            'semester'       => ['nullable', 'integer'],
         ]);
 
         $rows = DB::table('absensi_santri as a')
@@ -162,6 +166,7 @@ class RekapAbsensiController extends Controller
             ->when(!empty($validated['tanggal_mulai']), fn ($q) => $q->whereDate('s.tanggal', '>=', $validated['tanggal_mulai']))
             ->when(!empty($validated['tanggal_selesai']), fn ($q) => $q->whereDate('s.tanggal', '<=', $validated['tanggal_selesai']))
             ->when(!empty($validated['tahun_ajaran']), fn ($q) => $q->where('km.tahun_ajaran', $validated['tahun_ajaran']))
+            ->when(!empty($validated['semester']), fn ($q) => $q->where('km.semester', (int) $validated['semester']))
             ->selectRaw('m.nama_mapel')
             ->selectRaw('COUNT(*) as total_pertemuan')
             ->selectRaw("SUM(CASE WHEN UPPER(a.status_kehadiran) = 'HADIR' THEN 1 ELSE 0 END) as jumlah_hadir")
