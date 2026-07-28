@@ -3,7 +3,7 @@
 
 ![Laravel](https://img.shields.io/badge/Laravel-12.0-FF2D20?style=for-the-badge&logo=laravel)
 ![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=for-the-badge&logo=php)
-![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?style=for-the-badge&logo=mysql)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql)
 ![Sanctum](https://img.shields.io/badge/Authentication-Laravel_Sanctum-red?style=for-the-badge)
 
 Repositori REST API Backend untuk Sistem Informasi Akademik, Presensi, e-Rapor Digital, Keuangan/SPP, dan PPDB Online Pondok Pesantren Al-Ausath Karanganyar.
@@ -53,7 +53,7 @@ Repositori REST API Backend untuk Sistem Informasi Akademik, Presensi, e-Rapor D
 
 - **Framework**: Laravel 12.0
 - **Bahasa**: PHP 8.2+
-- **Database**: MySQL / MariaDB
+- **Database**: PostgreSQL (PgSQL)
 - **PDF Generator**: `barryvdh/laravel-dompdf`
 - **Excel Exporter**: `maatwebsite/excel`
 - **API Documentation**: `dedoc/scramble`
@@ -63,9 +63,9 @@ Repositori REST API Backend untuk Sistem Informasi Akademik, Presensi, e-Rapor D
 ## 💻 Panduan Instalasi & Pengoperasian
 
 ### 1. Prasyarat System
-- PHP >= 8.2 (Extension: OpenSSL, PDO, Mbstring, Tokenizer, XML, Ctype, JSON, BCMath, GD)
+- PHP >= 8.2 (Extension: pdo_pgsql, OpenSSL, Mbstring, XML, Ctype, JSON, BCMath, GD)
 - Composer >= 2.x
-- Database MySQL / MariaDB
+- Database PostgreSQL Server
 
 ### 2. Langkah Instalasi
 
@@ -83,12 +83,12 @@ cp .env.example .env
 # Generate Application Key
 php artisan key:generate
 
-# Konfigurasi Database di .env
-DB_CONNECTION=mysql
+# Konfigurasi Database PostgreSQL di .env
+DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
-DB_PORT=3306
+DB_PORT=5432
 DB_DATABASE=siakad_alausath
-DB_USERNAME=root
+DB_USERNAME=postgres
 DB_PASSWORD=
 
 # Migrasi Database & Seeder
