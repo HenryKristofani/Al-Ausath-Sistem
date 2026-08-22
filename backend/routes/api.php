@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\Administrasi\AdministrasiBebasController;
 use App\Http\Controllers\Api\Administrasi\PpdbPeriodController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\Administrasi\RekeningBankController;
+use App\Http\Controllers\Api\Administrasi\BackupController;
 use App\Http\Controllers\Api\ProfilWebController;
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -463,3 +464,13 @@ Route::prefix('master')->middleware(['auth:sanctum'])->group(function () {
         Route::get('/options', [DataSantriController::class, 'options']);
     });
 });
+
+// ─── Database Backup — hanya Petugas Admin ────────────────────────────────────
+Route::prefix('admin/backup')
+    ->middleware(['auth:sanctum', 'role:Petugas Admin'])
+    ->group(function () {
+        Route::get('/', [BackupController::class, 'index']);                  // list semua backup
+        Route::post('/create', [BackupController::class, 'create']);          // buat backup baru
+        Route::get('/{filename}/download', [BackupController::class, 'download']); // download backup
+        Route::delete('/{filename}', [BackupController::class, 'destroy']);   // hapus backup
+    });
