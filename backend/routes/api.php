@@ -66,6 +66,8 @@ Route::get('/pengumuman/{id}', [PengumumanController::class, 'showPublic']);
 Route::get('/profil-web', [ProfilWebController::class, 'index']);
 Route::get('/unit', [\App\Http\Controllers\Api\DataMaster\DataUnitController::class, 'indexPublic']);
 
+
+
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);

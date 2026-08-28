@@ -10,6 +10,7 @@ class ProfilWebController extends Controller
 {
     /**
      * Display a listing of the resource for public/landing page.
+     * Termasuk artikel_url agar navbar landing page bisa baca URL artikel pesantren.
      */
     public function index()
     {
@@ -23,14 +24,15 @@ class ProfilWebController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'tipe' => 'required|string|unique:profil_web,tipe',
-            'nama' => 'required|string',
-            'lama_pendidikan' => 'nullable|string',
-            'visi' => 'nullable|string',
-            'misi' => 'nullable|array',
-            'sejarah' => 'nullable|string',
+            'tipe'             => 'required|string|unique:profil_web,tipe',
+            'nama'             => 'required|string',
+            'lama_pendidikan'  => 'nullable|string',
+            'visi'             => 'nullable|string',
+            'misi'             => 'nullable|array',
+            'sejarah'          => 'nullable|string',
             'program_unggulan' => 'nullable|array',
-            'fasilitas' => 'nullable|array',
+            'fasilitas'        => 'nullable|array',
+            'artikel_url'      => 'nullable|url|max:500',
         ]);
 
         $profil = ProfilWeb::create($validated);
@@ -54,14 +56,15 @@ class ProfilWebController extends Controller
         $profil = ProfilWeb::findOrFail($id_profil);
 
         $validated = $request->validate([
-            'tipe' => 'required|string|unique:profil_web,tipe,' . $id_profil . ',id_profil',
-            'nama' => 'required|string',
-            'lama_pendidikan' => 'nullable|string',
-            'visi' => 'nullable|string',
-            'misi' => 'nullable|array',
-            'sejarah' => 'nullable|string',
+            'tipe'             => 'required|string|unique:profil_web,tipe,' . $id_profil . ',id_profil',
+            'nama'             => 'required|string',
+            'lama_pendidikan'  => 'nullable|string',
+            'visi'             => 'nullable|string',
+            'misi'             => 'nullable|array',
+            'sejarah'          => 'nullable|string',
             'program_unggulan' => 'nullable|array',
-            'fasilitas' => 'nullable|array',
+            'fasilitas'        => 'nullable|array',
+            'artikel_url'      => 'nullable|url|max:500',
         ]);
 
         $profil->update($validated);

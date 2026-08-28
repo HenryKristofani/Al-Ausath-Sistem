@@ -21,11 +21,14 @@ class ProfilWeb extends Model
         'sejarah',
         'program_unggulan',
         'fasilitas',
+        'artikel_links',
+        'artikel_url',
     ];
 
     protected $casts = [
-        'misi' => 'array',
+        'misi'           => 'array',
         'program_unggulan' => 'array',
-        'fasilitas' => 'array',
+        'fasilitas'      => 'array',
+        'artikel_links'  => 'array',
     ];
 }
