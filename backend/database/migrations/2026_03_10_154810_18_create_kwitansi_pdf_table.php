@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -21,8 +21,6 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
             
             $table->index('id_pembayaran');
-            $table->foreign('id_pembayaran')->references('id_pembayaran')->on('pembayaran_spp');
-            $table->foreign('id_petugas')->references('id_petugas')->on('data_petugas');
         });
     }
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -25,11 +25,6 @@ return new class extends Migration
             $table->integer('validated_by')->nullable();
             $table->timestamp('validated_at')->nullable();
             $table->timestamp('created_at')->useCurrent();
-            
-            $table->foreign('id_jadwal')->references('id_jadwal')->on('jadwal_pembelajaran');
-            $table->foreign('id_petugas_hadir')->references('id_petugas')->on('data_petugas');
-            $table->foreign('id_petugas_pengganti')->references('id_petugas')->on('data_petugas');
-            $table->foreign('validated_by')->references('id_petugas')->on('data_petugas');
         });
     }
 

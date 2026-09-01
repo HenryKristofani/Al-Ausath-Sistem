@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -41,7 +41,6 @@ return new class extends Migration
             
             $table->index('kode_kelas');
             $table->index('nama_lengkap_santri');
-            $table->foreign('kode_kelas')->references('kode_kelas')->on('data_kelas')->onUpdate('cascade')->onDelete('restrict');
         });
     }
 

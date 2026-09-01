@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -29,7 +29,6 @@ return new class extends Migration
                 $table->timestamp('updated_at')->useCurrent();
 
                 $table->index('nama_akun');
-                $table->foreign('nomor_induk')->references('nomor_induk')->on('data_santri')->onUpdate('cascade')->onDelete('cascade');
             });
         }
     }

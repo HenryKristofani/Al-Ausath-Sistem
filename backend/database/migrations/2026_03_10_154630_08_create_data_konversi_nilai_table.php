@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -20,8 +20,6 @@ return new class extends Migration
             $table->string('predikat', 50)->nullable();
             $table->string('status', 20)->default('AKTIF');
             $table->timestamp('created_at')->useCurrent();
-            
-            $table->foreign('kode_unit')->references('kode_unit')->on('data_unit')->onUpdate('cascade')->onDelete('setNull');
         });
     }
 

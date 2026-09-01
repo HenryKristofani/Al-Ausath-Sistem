@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -28,7 +28,6 @@ return new class extends Migration
             $table->index('id_akun');
             $table->index('no_pendaftaran');
             $table->index('status_verifikasi');
-            $table->foreign('id_akun')->references('id_akun')->on('akun_pendaftar');
         });
     }
 

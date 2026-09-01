@@ -22,45 +22,65 @@ return new class extends Migration
         // ── pembayaran_spp ─────────────────────────────────────────────────────
         Schema::table('pembayaran_spp', function (Blueprint $table) {
             // WHERE id_santri = ? ORDER BY id_pembayaran DESC
-            // (tagihanDetail, tunggakanRingkasan, proses)
-            $table->index(['id_santri', 'id_pembayaran'], 'idx_pembayaran_santri_id');
+            if (!$this->indexExists('pembayaran_spp', 'idx_pembayaran_santri_id')) {
+                $table->index(['id_santri', 'id_pembayaran'], 'idx_pembayaran_santri_id');
+            }
 
             // WHERE id_pendaftaran = ? ORDER BY id_pembayaran DESC
-            // (tagihanDetail PPDB, createTagihanPpdb, isPembayaranPpdbLunas)
-            $table->index(['id_pendaftaran', 'id_pembayaran'], 'idx_pembayaran_pendaftaran_id');
+            if (!$this->indexExists('pembayaran_spp', 'idx_pembayaran_pendaftaran_id')) {
+                $table->index(['id_pendaftaran', 'id_pembayaran'], 'idx_pembayaran_pendaftaran_id');
+            }
 
             // WHERE status = ? AND id_pendaftaran IS [NOT] NULL
-            // (filter PPDB vs SPP pada verifikasi & ringkasan)
-            $table->index(['status', 'id_pendaftaran'], 'idx_pembayaran_status_pendaftaran');
+            if (!$this->indexExists('pembayaran_spp', 'idx_pembayaran_status_pendaftaran')) {
+                $table->index(['status', 'id_pendaftaran'], 'idx_pembayaran_status_pendaftaran');
+            }
         });
 
         // ── ppdb_pendaftar ─────────────────────────────────────────────────────
         Schema::table('ppdb_pendaftar', function (Blueprint $table) {
             // WHERE status_verifikasi IN (...) AND id_santri IS [NOT] NULL
-            // (dashboard COUNT integrasi, ppdbNeedIntegration)
-            $table->index(['status_verifikasi', 'id_santri'], 'idx_pendaftar_status_santri');
+            if (!$this->indexExists('ppdb_pendaftar', 'idx_pendaftar_status_santri')) {
+                $table->index(['status_verifikasi', 'id_santri'], 'idx_pendaftar_status_santri');
+            }
 
-            // WHERE nama_calon LIKE '%...%' (search keyword di index & export)
-            $table->index('nama_calon', 'idx_pendaftar_nama_calon');
+            // WHERE nama_calon LIKE '%...%'
+            if (!$this->indexExists('ppdb_pendaftar', 'idx_pendaftar_nama_calon')) {
+                $table->index('nama_calon', 'idx_pendaftar_nama_calon');
+            }
         });
 
         // ── data_santri ────────────────────────────────────────────────────────
         Schema::table('data_santri', function (Blueprint $table) {
-            // WHERE kode_kelas = ? AND status = ? (proses pembayaran + filter aktif)
-            $table->index(['kode_kelas', 'status'], 'idx_santri_kelas_status');
+            // WHERE kode_kelas = ? AND status = ?
+            if (!$this->indexExists('data_santri', 'idx_santri_kelas_status')) {
+                $table->index(['kode_kelas', 'status'], 'idx_santri_kelas_status');
+            }
         });
 
         // ── data_kelas ─────────────────────────────────────────────────────────
         Schema::table('data_kelas', function (Blueprint $table) {
-            // WHERE kode_unit = ? AND tahun_ajaran = ? (filter unit pada proses)
-            $table->index(['kode_unit', 'tahun_ajaran'], 'idx_kelas_unit_tahun');
+            // WHERE kode_unit = ? AND tahun_ajaran = ?
+            if (!$this->indexExists('data_kelas', 'idx_kelas_unit_tahun')) {
+                $table->index(['kode_unit', 'tahun_ajaran'], 'idx_kelas_unit_tahun');
+            }
         });
 
         // ── kwitansi_pdf ───────────────────────────────────────────────────────
         Schema::table('kwitansi_pdf', function (Blueprint $table) {
             // JOIN / lookup nama petugas saat generate kwitansi
-            $table->index('id_petugas', 'idx_kwitansi_petugas');
+            if (!$this->indexExists('kwitansi_pdf', 'idx_kwitansi_petugas')) {
+                $table->index('id_petugas', 'idx_kwitansi_petugas');
+            }
         });
+    }
+
+    private function indexExists(string $table, string $indexName): bool
+    {
+        return collect(\Illuminate\Support\Facades\DB::select(
+            "SELECT indexname FROM pg_indexes WHERE tablename = ? AND indexname = ?",
+            [$table, $indexName]
+        ))->isNotEmpty();
     }
 
     public function down(): void

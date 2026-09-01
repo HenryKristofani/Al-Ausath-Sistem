@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -25,7 +25,6 @@ return new class extends Migration
             
             $table->index('kode_unit');
             $table->index('tahun_ajaran');
-            $table->foreign('kode_unit')->references('kode_unit')->on('data_unit')->onUpdate('cascade')->onDelete('restrict');
         });
     }
 

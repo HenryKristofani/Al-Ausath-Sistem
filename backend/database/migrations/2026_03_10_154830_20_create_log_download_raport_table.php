@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,10 +24,6 @@ return new class extends Migration
             $table->string('status_aksi', 20)->default('SUKSES');
             $table->text('keterangan')->nullable();
             $table->timestamp('created_at')->useCurrent();
-            
-            $table->foreign('id_raport')->references('id_raport')->on('data_raport')->onUpdate('cascade')->onDelete('cascade');
-            $table->foreign('nomor_induk')->references('nomor_induk')->on('data_santri')->onUpdate('cascade')->onDelete('setNull');
-            $table->foreign('id_petugas')->references('id_petugas')->on('data_petugas')->onUpdate('cascade')->onDelete('setNull');
         });
     }
 

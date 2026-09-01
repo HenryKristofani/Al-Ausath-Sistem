@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -29,7 +29,6 @@ return new class extends Migration
             
             $table->index('nomor_rekening');
             $table->index('kode_unit');
-            $table->foreign('kode_unit')->references('kode_unit')->on('data_unit')->onUpdate('cascade')->onDelete('restrict');
         });
     }
 

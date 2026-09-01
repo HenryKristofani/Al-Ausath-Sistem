@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,9 +24,6 @@ return new class extends Migration
             $table->index('id_santri');
             $table->index('id_setting');
             $table->index('tanggal_bayar');
-            $table->foreign('id_santri')->references('id_santri')->on('data_santri');
-            $table->foreign('id_setting')->references('id_setting')->on('spp_setting');
-            $table->foreign('id_rekening')->references('id_rekening')->on('data_rekening_bank');
         });
     }
 

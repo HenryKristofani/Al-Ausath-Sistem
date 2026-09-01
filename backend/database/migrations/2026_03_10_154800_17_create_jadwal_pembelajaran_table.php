@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -22,8 +22,6 @@ return new class extends Migration
             $table->string('status', 20)->default('AKTIF');
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent();
-            
-            $table->foreign('id_kelas_mapel')->references('id_kelas_mapel')->on('data_kelas_mapel');
         });
     }
 

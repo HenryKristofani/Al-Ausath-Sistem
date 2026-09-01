@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -19,7 +19,6 @@ return new class extends Migration
             $table->text('catatan')->nullable();
             
             $table->index('id_pendaftaran');
-            $table->foreign('id_pendaftaran')->references('id_pendaftaran')->on('ppdb_pendaftar')->onDelete('cascade');
         });
     }
 

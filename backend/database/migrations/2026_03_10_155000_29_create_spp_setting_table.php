@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -22,8 +22,6 @@ return new class extends Migration
             
             $table->index('id_unit');
             $table->index('kategori_tagihan_id');
-            $table->foreign('id_unit')->references('id_unit')->on('data_unit');
-            $table->foreign('kategori_tagihan_id')->references('id_kategori')->on('data_kategori_tagihan');
         });
     }
 
